@@ -85,6 +85,12 @@ namespace AppsInToss.Editor.Menu
                     AITPlatformHelper.ShowInfoDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
                     return;
                 }
+                if (!IsDeploymentKeyCommandSafe(deploymentKey))
+                {
+                    AITLog.Error("AIT: 배포 키 형식이 올바르지 않습니다 (큰따옴표/제어 문자 포함).", sentryCapture: false);
+                    AITPlatformHelper.ShowInfoDialog("오류", "배포 키 형식이 올바르지 않습니다.\n\nApps in Toss 콘솔에서 배포 키를 다시 복사해 Configuration에 붙여넣어주세요.", "확인");
+                    return;
+                }
 
                 // Production은 현행 Publish와 동일하게 클린 빌드, Test는 반복 속도를 위해 증분 빌드 +
                 // 빠른 빌드(IL2CPP Debug + Code Generation OptimizeSize + 에셋 최적화 검사 스킵).
@@ -298,6 +304,12 @@ namespace AppsInToss.Editor.Menu
                 AITPlatformHelper.ShowInfoDialog("오류", "배포 키가 설정되지 않았습니다.\n\nApps in Toss > Configuration에서 배포 키를 입력해주세요.", "확인");
                 return;
             }
+            if (!IsDeploymentKeyCommandSafe(deploymentKey))
+            {
+                AITLog.Error("AIT: 배포 키 형식이 올바르지 않습니다 (큰따옴표/제어 문자 포함).", sentryCapture: false);
+                AITPlatformHelper.ShowInfoDialog("오류", "배포 키 형식이 올바르지 않습니다.\n\nApps in Toss 콘솔에서 배포 키를 다시 복사해 Configuration에 붙여넣어주세요.", "확인");
+                return;
+            }
 
             string buildPath = PathValidator.GetBuildTemplatePath();
 
@@ -357,6 +369,11 @@ namespace AppsInToss.Editor.Menu
                 // EscapeMemoForShell은 그 위의 심층 방어층 — 이 명령 문자열 전체가 이후
                 // bash -l -c "..."로 한 번 더 감싸이므로(AITPlatformHelper.CreateProcessStartInfo)
                 // 이스케이프에만 의존하면 층이 중첩되어 원본에 없던 백슬래시가 memo에 남는다.
+                // Windows에서는 이 명령 문자열이 그대로 -Command 스크립트에 들어가고, 인용 경로로
+                // 시작하므로 앞에 호출 연산자 & 가 붙는다(BuildPowerShellScript). 스크립트 전체가
+                // QuoteWindowsCommandLineArgument로 argv 원소 하나로 인용되어 CommandLineToArgvW가
+                // 내부 큰따옴표를 quote 토글로 소비하지 않으므로, --api-key "..." 와 -m "..."가
+                // pnpm.cmd를 거쳐 ait에 각각 하나의 인자로 정확히 도달한다.
                 string escapedMemo = EscapeMemoForShell(memo);
                 string command = $"\"{pnpmPath}\" exec ait deploy --api-key \"{deploymentKey}\" -m \"{escapedMemo}\"";
                 var additionalPaths = AITNpmRunner.BuildAdditionalPaths(npmPath, buildPath);
@@ -365,7 +382,8 @@ namespace AppsInToss.Editor.Menu
                     buildPath,
                     additionalPaths.ToArray(),
                     timeoutMs: 300000,
-                    verbose: true
+                    verbose: true,
+                    sensitiveValues: new[] { deploymentKey }
                 );
 
                 if (!result.Success)
@@ -614,6 +632,15 @@ namespace AppsInToss.Editor.Menu
         }
 
         /// <summary>
+        /// memo에서 셸/PowerShell 인용 경계를 깨거나 cmd.exe가 확장하는 문자를 무해화 대상으로 판별한다.
+        /// </summary>
+        private static bool ShouldNeutralizeInMemo(char c) =>
+            c == '\\' || c == '"' || c == '$' || c == '`'
+            || c == '%'                                              // pnpm.cmd(.cmd 셈) → cmd.exe가 인용 안에서도 %VAR% 확장
+            || c == '\u201C' || c == '\u201D' || c == '\u201E'       // PowerShell 큰따옴표 구분자 변형
+            || c == '\u2018' || c == '\u2019' || c == '\u201A' || c == '\u201B'; // PowerShell 작은따옴표 구분자 변형
+
+        /// <summary>
         /// memo에서 셸 인용 경계를 깨는 문자를 소스 단계에서 제거한다.
         /// </summary>
         /// <remarks>
@@ -621,9 +648,13 @@ namespace AppsInToss.Editor.Menu
         /// 조립 경로는 이스케이프가 중첩된다 — 여기서 만든 문자열이 -m "..."에 들어간 뒤
         /// AITPlatformHelper.CreateProcessStartInfo가 macOS/Linux에서 명령 전체를 bash -l -c "..."로
         /// 한 번 더 이스케이프하고, 그 결과를 .NET이 argv로 파싱하면서 백슬래시 축약 규칙이 다시
-        /// 적용된다. 그래서 이스케이프 층을 더 쌓으면 원본에 없던 백슬래시가 최종 memo에 남고,
-        /// Windows(-Command 문자열)에서는 큰따옴표가 인자 경계를 깬다.
-        /// \ " ` $ 4종은 작은따옴표로 치환하고, 개행 등 제어 문자는 제거한다.
+        /// 적용된다. 그래서 이스케이프 층을 더 쌓으면 원본에 없던 백슬래시가 최종 memo에 남는다.
+        /// Windows는 이제 PowerShell 인자 인용이 -m "..."의 큰따옴표를 그대로 보존하므로, PowerShell
+        /// 토크나이저가 문자열 구분자로 보는 문자(큰따옴표 변형 U+201C/201D/201E, 작은따옴표 변형
+        /// U+2018/2019/201A/201B)도 함께 무해화해야 인자 경계가 깨지지 않는다. %는 pnpm.cmd가
+        /// cmd.exe로 실행되며 인용 안에서도 %VAR%를 확장하기 때문에 추가했다.
+        /// \ " ` $ % 및 스마트 따옴표 7종, 총 11종은 모두 작은따옴표로 1:1 치환하므로 MaxMemoLength
+        /// 절단에 영향이 없고, 개행 등 제어 문자는 제거한다.
         /// </remarks>
         internal static string SanitizeMemo(string value)
         {
@@ -632,7 +663,7 @@ namespace AppsInToss.Editor.Menu
             var sb = new StringBuilder(value.Length);
             foreach (char c in value)
             {
-                if (c == '\\' || c == '"' || c == '$' || c == '`')
+                if (ShouldNeutralizeInMemo(c))
                 {
                     sb.Append('\'');
                     continue;
@@ -641,6 +672,25 @@ namespace AppsInToss.Editor.Menu
                 sb.Append(c);
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 배포 키가 명령 문자열에 그대로 삽입해도 안전한 형태인지 검사한다.
+        /// </summary>
+        /// <remarks>
+        /// 배포 키는 <c>--api-key "..."</c> 안에 무해화 없이 그대로 들어간다(memo와 달리 키 값은
+        /// 원문 보존이 필요하다). 큰따옴표는 PowerShell/bash 양쪽에서 문자열 경계를 깨고, 제어 문자
+        /// (붙여넣기 시 섞인 개행 등)는 명령 자체를 깨뜨리는 동시에 <see cref="AITPlatformHelper.RedactSecrets"/>의
+        /// 부분 문자열 매칭도 무력화한다.
+        /// </remarks>
+        internal static bool IsDeploymentKeyCommandSafe(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return false;
+            foreach (char c in key)
+            {
+                if (c == '"' || char.IsControl(c)) return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -670,6 +720,7 @@ namespace AppsInToss.Editor.Menu
         /// ait CLI는 URL을 고정폭 박스(│ ... │) 안에 출력하므로 긴 URL(예: UUID deploymentId)은
         /// 여러 줄로 래핑된다 — 줄 단위 매칭은 URL을 중간에서 자르므로, 박스 문자·여백 제거 후
         /// 줄 끝까지 이어지는 URL을 연속 줄과 접합해 복원한다.
+        /// 셸 쌍둥이: .github/scripts/deploy/extract-deploy-url.sh (같은 의미론을 유지할 것).
         /// </summary>
         internal static string ExtractDeployUrl(string output)
         {

@@ -1,5 +1,13 @@
 {
   "enableAllProjectMcpServers": true,
+  "permissions": {
+    "deny": [
+      "Read(/sdk-runtime-generator~/pnpm-lock.yaml)",
+      "Read(/WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml)",
+      "Read(/Tests~/E2E/tests/pnpm-lock.yaml)",
+      "Read(/WebGLTemplates/AITTemplate/Runtime/devconsole/vconsole.min.js)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

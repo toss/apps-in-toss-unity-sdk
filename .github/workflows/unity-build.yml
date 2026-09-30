@@ -46,11 +46,6 @@ on:
         type: string
         required: false
         default: ''
-      run-unit-test:
-        description: 'Run Unity EditMode unit tests before build'
-        type: boolean
-        required: false
-        default: false
       clean-library:
         description: 'Clean Unity Library cache'
         type: boolean
@@ -200,146 +195,31 @@ jobs:
           # 다중 커밋 푸시도 커버하도록 50 depth — diff 실패 시 보수적으로 Bee 삭제.
           fetch-depth: 50
 
+      # 루트 체크아웃은 inputs.ref/repository(포크 PR·target_ref)를 따를 수 있어,
+      # 그 위치에 이 워크플로 YAML이 기대하는 .github/scripts/가 없을 수 있다.
+      # .ci 는 ref/repository 기본값(=워크플로 YAML을 로드한 커밋, github.sha)으로
+      # 별도 경로에 체크아웃해, 이후 스텝이 항상 자기 자신과 같은 커밋의 스크립트를 읽게 한다.
+      - name: Checkout CI 스크립트 (.ci)
+        uses: actions/checkout@v7
+        with:
+          path: .ci
+          sparse-checkout: |
+            .github/scripts
+          sparse-checkout-cone-mode: false
+
       # =====================================================
       # Runner 진단 (debug-runner 플래그 활성화 시)
       # Unity 관련 프로세스를 모두 kill하고 시스템 상태를 로깅
       # =====================================================
       - name: Debug Runner - Kill Unity Processes & Log System Info (macOS)
         if: inputs.debug-runner && inputs.os == 'macos'
-        run: |
-          echo "=== Runner Diagnostics ==="
-          echo "Hostname: $(hostname)"
-          echo "Date: $(date)"
-          echo ""
-
-          echo "=== CPU Info ==="
-          sysctl -n machdep.cpu.brand_string
-          echo "CPU cores: $(sysctl -n hw.ncpu)"
-          echo ""
-
-          echo "=== Memory Usage ==="
-          vm_stat | head -10
-          echo "Total RAM: $(sysctl -n hw.memsize | awk '{printf "%.1f GB", $1/1073741824}')"
-          echo ""
-
-          echo "=== Disk Usage ==="
-          df -h / | tail -1
-          echo ""
-
-          echo "=== Top 20 Processes by CPU ==="
-          ps aux --sort=-%cpu | head -21
-          echo ""
-
-          echo "=== Top 20 Processes by Memory ==="
-          ps aux --sort=-%mem | head -21
-          echo ""
-
-          echo "=== Unity-related Processes ==="
-          ps aux | grep -i -E "unity|Unity.Licensing|UnityHelper|UnityShaderCompiler|UnityPackageManager" | grep -v grep || echo "No Unity processes found"
-          echo ""
-
-          echo "=== Killing Unity-related Processes ==="
-          KILLED=0
-          for PROC_NAME in Unity Unity.Licensing.Client UnityHelper UnityShaderCompiler UnityPackageManager; do
-            PIDS=$(pgrep -x "$PROC_NAME" 2>/dev/null || true)
-            if [ -n "$PIDS" ]; then
-              echo "Killing $PROC_NAME (PIDs: $PIDS)..."
-              kill -9 $PIDS 2>/dev/null || true
-              KILLED=$((KILLED + 1))
-            fi
-          done
-          # 패턴으로도 추가 정리
-          UNITY_PIDS=$(pgrep -if "unity" 2>/dev/null || true)
-          if [ -n "$UNITY_PIDS" ]; then
-            echo "Killing remaining Unity-related processes (PIDs: $UNITY_PIDS)..."
-            kill -9 $UNITY_PIDS 2>/dev/null || true
-            KILLED=$((KILLED + 1))
-          fi
-          if [ $KILLED -eq 0 ]; then
-            echo "No Unity processes to kill"
-          fi
-          sleep 2
-          echo ""
-
-          echo "=== Post-cleanup Process Check ==="
-          ps aux | grep -i unity | grep -v grep || echo "No Unity processes remaining"
-          echo ""
-
-          echo "=== Memory After Cleanup ==="
-          vm_stat | head -10
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/debug-runner.sh"
 
       - name: Debug Runner - Kill Unity Processes & Log System Info (Windows)
         if: inputs.debug-runner && inputs.os == 'windows'
         shell: powershell
         run: |
-          Write-Host "=== Runner Diagnostics ==="
-          Write-Host "Hostname: $env:COMPUTERNAME"
-          Write-Host "Date: $(Get-Date)"
-          Write-Host ""
-
-          Write-Host "=== CPU Info ==="
-          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
-          Write-Host ""
-
-          Write-Host "=== Memory Usage ==="
-          $os = Get-CimInstance Win32_OperatingSystem
-          $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
-          $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-          $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
-          Write-Host "Total: ${totalGB} GB / Used: ${usedGB} GB / Free: ${freeGB} GB"
-          Write-Host ""
-
-          Write-Host "=== Disk Usage ==="
-          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{L='Used(GB)';E={[math]::Round($_.Used/1GB,1)}}, @{L='Free(GB)';E={[math]::Round($_.Free/1GB,1)}}
-          Write-Host ""
-
-          Write-Host "=== Top 20 Processes by CPU ==="
-          Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table
-          Write-Host ""
-
-          Write-Host "=== Top 20 Processes by Memory ==="
-          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}} | Format-Table
-          Write-Host ""
-
-          Write-Host "=== Unity-related Processes ==="
-          $unityProcs = Get-Process | Where-Object { $_.Name -match "Unity|UnityHelper|UnityShaderCompiler|UnityPackageManager" }
-          if ($unityProcs) {
-            $unityProcs | Format-Table Name, Id, CPU, @{L='Mem(MB)';E={[math]::Round($_.WorkingSet64/1MB,1)}}, Path
-          } else {
-            Write-Host "No Unity processes found"
-          }
-          Write-Host ""
-
-          Write-Host "=== Killing Unity-related Processes ==="
-          $killed = 0
-          $unityProcs = Get-Process | Where-Object { $_.Name -match "Unity|UnityHelper|UnityShaderCompiler|UnityPackageManager" }
-          foreach ($proc in $unityProcs) {
-            Write-Host "Killing $($proc.Name) (PID: $($proc.Id))..."
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            $killed++
-          }
-          if ($killed -eq 0) {
-            Write-Host "No Unity processes to kill"
-          } else {
-            Write-Host "Killed $killed process(es)"
-            Start-Sleep -Seconds 2
-          }
-          Write-Host ""
-
-          Write-Host "=== Post-cleanup Process Check ==="
-          $remaining = Get-Process | Where-Object { $_.Name -match "Unity" }
-          if ($remaining) {
-            $remaining | Format-Table Name, Id
-          } else {
-            Write-Host "No Unity processes remaining"
-          }
-          Write-Host ""
-
-          Write-Host "=== Memory After Cleanup ==="
-          $os = Get-CimInstance Win32_OperatingSystem
-          $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-          $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
-          Write-Host "Used: ${usedGB} GB / Free: ${freeGB} GB"
+          & "$env:GITHUB_WORKSPACE\.ci\.github\scripts\unity-build\debug-runner.ps1"
 
       # =====================================================
       # Windows: Node.js 가용성 보장
@@ -371,91 +251,7 @@ jobs:
         shell: node {0}
         env:
           OVERRIDE_VERSION: ${{ inputs.sdk-version-override }}
-        run: |
-          const fs = require('fs');
-          const os = require('os');
-          const path = require('path');
-          const { execFileSync } = require('child_process');
-
-          const overrideVersion = process.env.OVERRIDE_VERSION;
-          const onWindows = process.platform === 'win32';
-          // Windows에서 npx/pnpm은 .cmd 래퍼라 shell:true 필요. POSIX는 그대로.
-          const run = (cmd, args, opts = {}) =>
-            execFileSync(cmd, args, { stdio: 'inherit', shell: onWindows, ...opts });
-
-          console.log('=== SDK Version Override ===');
-          console.log(`Target SDK version: ${overrideVersion}`);
-          console.log('');
-
-          // 1. package.json 버전 변경 (메타데이터용 — AITVersion.Version의 소스)
-          console.log('=== Updating package.json version ===');
-          {
-            const pkgPath = 'package.json';
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-            console.log(`Original version: ${pkg.version}`);
-            pkg.version = overrideVersion;
-            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-            console.log(`Overridden version: ${pkg.version}`);
-          }
-
-          // 2. BuildConfig의 web-framework 버전만 동기화
-          // 주의: override는 web-framework 전용 버전(예: 3.0.0-beta.<hash>)이다.
-          // @apps-in-toss/web-analytics는 별도 버전 라인(latest=2.6.1)이라 해당
-          // 버전이 npm에 존재하지 않으며, web-framework 3.x는 web-analytics에
-          // 의존하지도 않는다(검증됨). web-analytics까지 override로 덮으면
-          // ait-build의 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로 실패하므로
-          // web-analytics는 BuildConfig 기본 핀(2.6.1)을 그대로 둔다.
-          console.log('');
-          console.log('=== Syncing BuildConfig web-framework version ===');
-          {
-            const buildConfig = 'WebGLTemplates/AITTemplate/BuildConfig~/package.json';
-            const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
-            for (const section of ['dependencies', 'devDependencies']) {
-              if (!pkg[section]) continue;
-              if (pkg[section]['@apps-in-toss/web-framework']) {
-                pkg[section]['@apps-in-toss/web-framework'] = overrideVersion;
-              }
-            }
-            fs.writeFileSync(buildConfig, JSON.stringify(pkg, null, 2) + '\n');
-            console.log('BuildConfig updated (web-analytics는 의도적으로 유지):');
-            console.log(fs.readFileSync(buildConfig, 'utf8'));
-          }
-
-          // 3. SDK 코드 재생성 (잡별 격리된 pnpm store — 동시 실행 store 충돌 방지)
-          console.log('');
-          console.log('=== SDK 코드 재생성 ===');
-          const generatorDir = 'sdk-runtime-generator~';
-          const isolatedStore = path.join(process.env.RUNNER_TEMP || os.tmpdir(), `pnpm-store-${process.pid}`);
-          run('npx', ['-y', 'pnpm@10', 'install', '--store-dir', isolatedStore], { cwd: generatorDir });
-          run('npx', ['-y', 'pnpm@10', 'update', `@apps-in-toss/web-framework@${overrideVersion}`,
-            '--force', '--registry', 'https://registry.npmjs.org', '--store-dir', isolatedStore], { cwd: generatorDir });
-
-          // 설치된 버전 검증
-          let installedVersion = 'unknown';
-          try {
-            const listJson = execFileSync('npx', ['-y', 'pnpm@10', 'list', '@apps-in-toss/web-framework', '--json'],
-              { cwd: generatorDir, shell: onWindows, encoding: 'utf8' });
-            installedVersion = JSON.parse(listJson)[0].dependencies['@apps-in-toss/web-framework'].version;
-          } catch (e) {
-            console.log(`::warning::설치 버전 파싱 실패: ${e.message}`);
-          }
-          console.log(`요청 버전: ${overrideVersion}`);
-          console.log(`설치된 버전: ${installedVersion}`);
-          if (installedVersion !== overrideVersion) {
-            console.log(`::warning::버전 불일치 - 요청: ${overrideVersion}, 설치됨: ${installedVersion}`);
-          }
-
-          console.log('SDK 코드 생성 중...');
-          run('npx', ['-y', 'pnpm@10', 'generate'], { cwd: generatorDir });
-          console.log('SDK 코드 생성 완료');
-
-          // 격리된 store 정리
-          try { fs.rmSync(isolatedStore, { recursive: true, force: true }); } catch (e) { /* best-effort */ }
-
-          // 4. 재생성된 SDK 파일 확인
-          console.log('');
-          console.log('=== Regenerated SDK files ===');
-          for (const f of fs.readdirSync('Runtime/SDK').slice(0, 20)) console.log(f);
+        run: require(process.env.GITHUB_WORKSPACE + '/.ci/.github/scripts/unity-build/override-sdk-version.cjs')
 
       # =====================================================
       # Windows Defender 제외 (Windows)
@@ -499,107 +295,18 @@ jobs:
       # =====================================================
       # 이전 빌드 정리
       # =====================================================
-      - name: Clean Previous Build Artifacts (macOS)
-        if: inputs.os == 'macos' && (inputs.test-level || '2') != '0'
-        run: |
-          PROJECT_PATH="Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          echo "Cleaning previous build artifacts..."
-          rm -rf "${PROJECT_PATH}/ait-build" 2>/dev/null || true
-          rm -rf "${PROJECT_PATH}/webgl" 2>/dev/null || true
-          if [ "${{ inputs.clean-library }}" = "true" ]; then
-            echo "Cleaning Library cache (requested via input)..."
-            rm -rf "${PROJECT_PATH}/Library" 2>/dev/null || true
-          else
-            # Bee는 SDK/asmdef/jslib rename 시 stale ref.dll을 캐시한다
-            # → 해당 변경이 있을 때만 Bee 삭제. 그 외엔 증분 빌드 보존.
-            BEFORE_SHA="${{ github.event.before }}"
-            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-              BEFORE_REF="HEAD~1"
-            else
-              BEFORE_REF="$BEFORE_SHA"
-            fi
-            CHANGED=""
-            if git rev-parse --verify "$BEFORE_REF" >/dev/null 2>&1; then
-              CHANGED=$(git diff --name-only "$BEFORE_REF" HEAD -- \
-                'Runtime/SDK/' '*.asmdef' '*.jslib' 2>/dev/null || echo "__diff_failed__")
-            else
-              CHANGED="__diff_failed__"
-            fi
-            if [ "$CHANGED" = "__diff_failed__" ] || [ -n "$CHANGED" ]; then
-              if [ "$CHANGED" = "__diff_failed__" ]; then
-                echo "Cannot resolve git diff base — wiping Bee conservatively"
-              else
-                echo "SDK/asmdef/jslib changes detected — wiping Bee to prevent stale ref.dll:"
-                echo "$CHANGED" | sed 's/^/  /'
-              fi
-              rm -rf "${PROJECT_PATH}/Library/Bee" 2>/dev/null || true
-            else
-              echo "No SDK/asmdef/jslib changes — preserving Bee for incremental build"
-            fi
-          fi
-          echo "Done."
-
-      # Windows: shell 의존성을 피하기 위해 node 로 git/diff/rm 를 직접 호출
-      # (위 BuildConfig 스텝의 WSL/Git-bash 이슈 주석 참조)
-      - name: Clean Previous Build Artifacts (Windows)
-        if: inputs.os == 'windows' && (inputs.test-level || '2') != '0'
+      # macOS/Windows 모두 shell 의존성을 피하기 위해 node 로 git/diff/rm 를 직접 호출
+      # (WSL/Git-bash 이슈는 아래 'Update BuildConfig SDK Version' 스텝 주석 참조). 두 OS 로직이 같아
+      # clean-build-artifacts.cjs 하나로 통합했다.
+      - name: Clean Previous Build Artifacts
+        if: (inputs.test-level || '2') != '0'
         shell: node {0}
         env:
           UNITY_VERSION: ${{ inputs.unity-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
           CLEAN_LIBRARY: ${{ inputs.clean-library }}
           BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          const fs = require('fs');
-          const path = require('path');
-          const { execFileSync } = require('child_process');
-
-          const projectPath = path.join('Tests~', 'E2E', `${process.env.PROJECT_DIR_PREFIX}-${process.env.UNITY_VERSION}`);
-          const rm = (rel) => {
-            const p = path.join(projectPath, rel);
-            if (fs.existsSync(p)) {
-              fs.rmSync(p, { recursive: true, force: true });
-              console.log(`  removed: ${p}`);
-            }
-          };
-
-          console.log('Cleaning previous build artifacts...');
-          rm('ait-build');
-          rm('webgl');
-
-          if (process.env.CLEAN_LIBRARY === 'true') {
-            console.log('Cleaning Library cache (requested via input)...');
-            rm('Library');
-            console.log('Done.');
-            return;
-          }
-
-          let beforeRef = process.env.BEFORE_SHA;
-          if (!beforeRef || /^0+$/.test(beforeRef)) beforeRef = 'HEAD~1';
-
-          let changed = null;
-          let diffFailed = false;
-          try {
-            execFileSync('git', ['rev-parse', '--verify', beforeRef], { stdio: 'ignore' });
-            changed = execFileSync('git', [
-              'diff', '--name-only', beforeRef, 'HEAD', '--',
-              'Runtime/SDK/', '*.asmdef', '*.jslib',
-            ], { encoding: 'utf8' }).trim();
-          } catch {
-            diffFailed = true;
-          }
-
-          if (diffFailed) {
-            console.log('Cannot resolve git diff base — wiping Bee conservatively');
-            rm(path.join('Library', 'Bee'));
-          } else if (changed && changed.length > 0) {
-            console.log('SDK/asmdef/jslib changes detected — wiping Bee to prevent stale ref.dll:');
-            for (const line of changed.split(/\r?\n/)) console.log('  ' + line);
-            rm(path.join('Library', 'Bee'));
-          } else {
-            console.log('No SDK/asmdef/jslib changes — preserving Bee for incremental build');
-          }
-          console.log('Done.');
+        run: require(process.env.GITHUB_WORKSPACE + '/.ci/.github/scripts/unity-build/clean-build-artifacts.cjs')
 
       # =====================================================
       # Unity 설치 감지
@@ -717,7 +424,7 @@ jobs:
           // npm에 존재하지 않으며, web-framework 3.x는 web-analytics에 의존하지도 않는다(검증됨).
           // web-analytics까지 덮으면 아래 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로
           // 실패하므로, bridge-core와 동일하게 BuildConfig 기본 핀을 그대로 둔다.
-          // (위 "Regenerate SDK" 스텝의 BuildConfig 동기화와 동일 정책.)
+          // (override-sdk-version.cjs의 BuildConfig 동기화 로직과 동일 정책.)
           const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
           for (const section of ['dependencies', 'devDependencies']) {
             if (!pkg[section]) continue;
@@ -917,70 +624,12 @@ jobs:
       # =====================================================
       - name: Run EditMode Tests (macOS)
         if: inputs.os == 'macos' && inputs.run-editmode-test
-        run: |
-          UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          RESULTS_FILE="$PROJECT_PATH/editmode-results.xml"
-          LOG_FILE="/tmp/unity-editmode-${{ inputs.unity-version }}.log"
-          MAX_WAIT=600  # Unity 프로세스 최대 대기 시간 (10분)
-
-          echo "Running EditMode Tests..."
-          echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-          echo "Log file: $LOG_FILE"
-
-          # 프로세스 치환으로 stdout/stderr를 tee에 흘려 파일을 보존한다 — 잡 종료 후
-          # 통합 분류기가 라이선스/Hub/캐시 등 인프라 결함을 grep으로 세분화할 수 있도록 한다.
-          # 파이프(`| tee`)를 쓰면 `$!`이 tee의 PID가 되어 아래 wait 루프가 깨지므로
-          # `> >(tee ...)` 형태를 사용해 `$!`이 Unity PID를 가리키도록 한다.
-          "$UNITY_PATH" -batchmode -nographics \
-            -projectPath "$PROJECT_PATH" \
-            -runTests -testPlatform EditMode \
-            -testResults "$RESULTS_FILE" \
-            -logFile - > >(tee "$LOG_FILE") 2>&1 &
-          UNITY_PID=$!
-
-          # 타임아웃 대기: 결과 파일이 생성되면 프로세스 종료를 기다리되, 최대 MAX_WAIT초
-          WAIT_SECONDS=0
-          while kill -0 $UNITY_PID 2>/dev/null; do
-            sleep 3
-            WAIT_SECONDS=$((WAIT_SECONDS + 3))
-
-            # 결과 파일이 생성된 후 60초 내에 프로세스가 종료되지 않으면 강제 종료
-            if [ -f "$RESULTS_FILE" ] && [ $WAIT_SECONDS -gt 60 ]; then
-              RESULT_AGE=$(( $(date +%s) - $(stat -f %m "$RESULTS_FILE") ))
-              if [ $RESULT_AGE -gt 60 ]; then
-                echo "::warning::Unity process did not exit within 60s after test results were written. Force killing (pid: $UNITY_PID)..."
-                kill -9 $UNITY_PID 2>/dev/null || true
-                break
-              fi
-            fi
-
-            if [ $WAIT_SECONDS -ge $MAX_WAIT ]; then
-              echo "::warning::Unity process timed out after ${MAX_WAIT}s. Force killing (pid: $UNITY_PID)..."
-              kill -9 $UNITY_PID 2>/dev/null || true
-              break
-            fi
-          done
-          wait $UNITY_PID 2>/dev/null || true
-
-          # Unity Test Runner는 테스트 실패 시 exit code 2를 반환
-          # editmode-results.xml을 파싱하여 실제 실패 여부 확인.
-          # 결과 파일이 없으면 라이선스/Hub/캐시 등 인프라 문제로 Unity가 테스트를 실행하지 못한 것이므로
-          # 회귀가 조용히 묻히지 않도록 fail 처리한다 (분류기가 results-missing으로 잡아낼 수 있도록).
-          if [ -f "$RESULTS_FILE" ]; then
-            echo "EditMode test results:"
-            if grep -q 'result="Failed"' "$RESULTS_FILE"; then
-              echo "::error::EditMode tests failed"
-              grep 'result="Failed"' "$RESULTS_FILE" | head -20
-              exit 1
-            else
-              PASSED=$(grep -o 'result="Passed"' "$RESULTS_FILE" | wc -l | tr -d ' ')
-              echo "✓ EditMode tests passed (${PASSED} tests)"
-            fi
-          else
-            echo "::error::EditMode test results file not found at $RESULTS_FILE — Unity가 테스트를 실행하지 못함 (라이선스/Hub/캐시 의심)"
-            exit 1
-          fi
+        env:
+          UNITY_PATH: ${{ steps.unity-macos.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/run-editmode-tests.sh"
 
       - name: Probe Windows runner PATH (diagnostic)
         if: inputs.os == 'windows' && inputs.run-editmode-test
@@ -1007,92 +656,19 @@ jobs:
           Write-Host "=== where.exe git ==="
           where.exe git 2>&1 | ForEach-Object { Write-Host "  $_" }
 
+      # run-editmode-tests.ps1의 로그 경로는 GitHub Actions의 runner.temp(=$env:RUNNER_TEMP)와
+      # 일치시켜 업로드 step의 path가 정확히 매치되게 한다 ($env:TEMP는 self-hosted Windows에서
+      # 다른 경로).
       - name: Run EditMode Tests (Windows)
         if: inputs.os == 'windows' && inputs.run-editmode-test
         shell: powershell
+        env:
+          UNITY_PATH: ${{ steps.unity-windows.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-windows.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
         run: |
-          # Windows PowerShell 5.1 reads scripts using the system code page; non-ASCII
-          # string literals (e.g. Korean) can be mis-decoded under CP949 and break the
-          # parser. Force UTF-8 output and keep user-facing messages ASCII-only.
-          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-          $OutputEncoding = [System.Text.Encoding]::UTF8
-
-          $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          $resultsFile = "$projectPath\editmode-results.xml"
-          $maxWaitSeconds = 600  # Unity process max wait (10 minutes)
-
-          Write-Host "Running EditMode Tests..."
-          Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
-
-          # GitHub Actions의 runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step의
-          # path가 정확히 매치되게 한다 ($env:TEMP는 self-hosted Windows에서 다른 경로).
-          $logFile = "$env:RUNNER_TEMP\unity-editmode-${{ inputs.unity-version }}.log"
-
-          $proc = Start-Process -FilePath $unityPath -ArgumentList @(
-            "-batchmode", "-nographics",
-            "-projectPath", $projectPath,
-            "-runTests", "-testPlatform", "EditMode",
-            "-testResults", $resultsFile,
-            "-logFile", $logFile
-          ) -PassThru -NoNewWindow
-
-          # Stream log to console and watch for timeout
-          $logReader = $null
-          $waitSeconds = 0
-          while (-not $proc.HasExited) {
-            Start-Sleep -Seconds 3
-            $waitSeconds += 3
-
-            if (-not $logReader -and (Test-Path $logFile)) {
-              $logReader = [System.IO.StreamReader]::new(
-                [System.IO.FileStream]::new($logFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-              )
-            }
-            if ($logReader) {
-              $chunk = $logReader.ReadToEnd()
-              if ($chunk) { Write-Host $chunk -NoNewline }
-            }
-
-            # Force-kill if process does not exit within 60s after results file was written
-            if ((Test-Path $resultsFile) -and $waitSeconds -gt 60) {
-              $resultAge = (New-TimeSpan -Start (Get-Item $resultsFile).LastWriteTime -End (Get-Date)).TotalSeconds
-              if ($resultAge -gt 60) {
-                Write-Host "::warning::Unity process did not exit within 60s after test results were written. Force killing (pid: $($proc.Id))..."
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                break
-              }
-            }
-
-            if ($waitSeconds -ge $maxWaitSeconds) {
-              Write-Host "::warning::Unity process timed out after ${maxWaitSeconds}s. Force killing (pid: $($proc.Id))..."
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-              break
-            }
-          }
-
-          if ($logReader) {
-            Start-Sleep -Seconds 1
-            $chunk = $logReader.ReadToEnd()
-            if ($chunk) { Write-Host $chunk -NoNewline }
-            $logReader.Close()
-          }
-
-          # Inspect results - missing results file means infra fault (license/Hub/cache),
-          # so fail the step loudly so the classifier picks it up as results-missing.
-          if (Test-Path $resultsFile) {
-            $content = Get-Content $resultsFile -Raw
-            if ($content -match 'result="Failed"') {
-              Write-Host "::error::EditMode tests failed"
-              exit 1
-            } else {
-              $passed = ([regex]::Matches($content, 'result="Passed"')).Count
-              Write-Host "EditMode tests passed ($passed tests)"
-            }
-          } else {
-            Write-Host "::error::EditMode test results file not found at $resultsFile - Unity failed to run tests (suspect license/Hub/cache)"
-            exit 1
-          }
+          & "$env:GITHUB_WORKSPACE\.ci\.github\scripts\unity-build\run-editmode-tests.ps1"
 
       # 디버그/리포트 artifact: actions/upload-artifact의 finalize transient 실패가
       # 빌드 자체를 fail로 만들지 않도록 continue-on-error로 격리
@@ -1241,314 +817,9 @@ jobs:
       # =====================================================
       - name: Fix LicensingClient Code Signature (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
-        run: |
-          UNITY_BASE="/Applications/Unity/Hub/Editor"
-          CURRENT_VERSION="${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-          CURRENT_DIR="${UNITY_BASE}/${CURRENT_VERSION}"
-
-          # LicensingClient.app 경로 탐색 (버전별로 위치가 다를 수 있음)
-          TARGET_APP=""
-          for candidate in \
-            "${CURRENT_DIR}/Unity.app/Contents/Frameworks/UnityLicensingClient.app" \
-            "${CURRENT_DIR}/Unity.app/Contents/Helpers/UnityLicensingClient.app"; do
-            if [ -d "$candidate" ]; then
-              TARGET_APP="$candidate"
-              break
-            fi
-          done
-
-          if [ -z "$TARGET_APP" ]; then
-            echo "LicensingClient.app not found, skipping"
-            exit 0
-          fi
-
-          echo "Verifying code signature: ${TARGET_APP}"
-
-          # codesign 검증 — 정상이면 아무것도 하지 않음
-          if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-            echo "Code signature is valid, no action needed"
-            exit 0
-          fi
-
-          VERIFY_MSG=$(codesign --verify --deep --strict "$TARGET_APP" 2>&1 || true)
-          echo "::warning::LicensingClient code signature invalid: ${VERIFY_MSG}"
-
-          # 서명이 유효한 LicensingClient.app 찾기
-          # 탐색 순서: Unity Hub 내장 → 다른 Unity 버전
-          DONOR_APP=""
-          DONOR_VERSION=""
-
-          # 1) Unity Hub 내장 LicensingClient (Hub가 설치되어 있으면 항상 최신 서명)
-          for hub_candidate in \
-            "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient_V1.app" \
-            "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient.app"; do
-            if [ -d "$hub_candidate" ] && codesign --verify --deep --strict "$hub_candidate" 2>/dev/null; then
-              DONOR_APP="$hub_candidate"
-              DONOR_VERSION="Unity Hub"
-              break
-            fi
-          done
-
-          # 2) 다른 Unity 버전
-          if [ -z "$DONOR_APP" ]; then
-            for dir in $(ls -d "${UNITY_BASE}"/*/ 2>/dev/null | sort -rV); do
-              version=$(basename "$dir")
-              [ "$version" = "$CURRENT_VERSION" ] && continue
-
-              for candidate in \
-                "${dir}Unity.app/Contents/Helpers/UnityLicensingClient.app" \
-                "${dir}Unity.app/Contents/Frameworks/UnityLicensingClient.app"; do
-                if [ -d "$candidate" ] && codesign --verify --deep --strict "$candidate" 2>/dev/null; then
-                  DONOR_APP="$candidate"
-                  DONOR_VERSION="$version"
-                  break 2
-                fi
-              done
-            done
-          fi
-
-          if [ -n "$DONOR_APP" ]; then
-            DONOR_LC_VERSION=$("${DONOR_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
-            TARGET_LC_VERSION=$("${TARGET_APP}/Contents/MacOS/Unity.Licensing.Client" --version 2>&1 || echo "unknown")
-            echo "Replacing invalid LicensingClient (${TARGET_LC_VERSION}) with valid one from ${DONOR_VERSION} (${DONOR_LC_VERSION})"
-
-            mv "$TARGET_APP" "${TARGET_APP}.bak"
-            cp -R "$DONOR_APP" "$TARGET_APP"
-
-            if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-              echo "LicensingClient replaced and verified successfully"
-              rm -rf "${TARGET_APP}.bak"
-              exit 0
-            else
-              echo "Replacement also failed, restoring backup and trying re-sign"
-              rm -rf "$TARGET_APP"
-              mv "${TARGET_APP}.bak" "$TARGET_APP"
-            fi
-          fi
-
-          # 다른 Unity 버전이 없거나 교체도 실패한 경우: ad-hoc 재서명
-          echo "Attempting ad-hoc re-sign of LicensingClient.app..."
-          codesign --force --deep --sign - "$TARGET_APP" 2>&1 || true
-
-          if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
-            echo "LicensingClient re-signed successfully"
-          else
-            echo "::warning::LicensingClient re-sign failed, build may fail due to license issues"
-          fi
-
-      # =====================================================
-      # Unity EditMode 유닛 테스트 (선택적)
-      # =====================================================
-      - name: Run Unity EditMode Tests (macOS)
-        if: inputs.os == 'macos' && inputs.run-unit-test
-        run: |
-          UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-          PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          LOG_FILE="/tmp/unity-test-${{ inputs.unity-version }}.log"
-          RESULTS_FILE="/tmp/unity-test-results-${{ inputs.unity-version }}.xml"
-
-          echo "Running Unity EditMode tests..."
-          echo "Unity: ${UNITY_PATH}"
-          echo "Project: ${PROJECT_PATH}"
-
-          "$UNITY_PATH" -quit -batchmode -nographics \
-            -projectPath "$PROJECT_PATH" \
-            -runTests \
-            -testPlatform EditMode \
-            -testResults "$RESULTS_FILE" \
-            -logFile - 2>&1 | tee "$LOG_FILE"
-          EXIT_CODE=${PIPESTATUS[0]}
-
-          echo "Unity Test Runner exited with code: $EXIT_CODE"
-
-          if [ -f "$RESULTS_FILE" ]; then
-            echo "=== Test Results ==="
-            cat "$RESULTS_FILE"
-          fi
-
-          if [ $EXIT_CODE -ne 0 ]; then
-            # 라이선스 오류는 무시하고 재시도하지 않음 (빌드 단계에서 처리)
-            if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505" "$LOG_FILE" 2>/dev/null; then
-              echo "::warning::Unity license issue during tests, skipping test failure..."
-            else
-              echo "::error::Unity EditMode tests failed with exit code: $EXIT_CODE"
-              exit $EXIT_CODE
-            fi
-          fi
-
-          echo "Unity EditMode tests completed"
-
-      - name: Run Unity EditMode Tests (Windows)
-        if: inputs.os == 'windows' && inputs.run-unit-test
-        shell: powershell
-        run: |
-          $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-          $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-          # runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step path가 매치되게 한다.
-          $logFile = "$env:RUNNER_TEMP\unity-test-${{ inputs.unity-version }}.log"
-          $resultsFile = "$env:RUNNER_TEMP\unity-test-results-${{ inputs.unity-version }}.xml"
-          $maxWaitSeconds = 600  # Unity 프로세스 최대 대기 시간 (10분)
-
-          Write-Host "Running Unity EditMode tests..."
-          Write-Host "Unity: $unityPath"
-          Write-Host "Project: $projectPath"
-
-          $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
-            "-quit", "-batchmode", "-nographics",
-            "-projectPath", $projectPath,
-            "-runTests",
-            "-testPlatform", "EditMode",
-            "-testResults", $resultsFile,
-            "-logFile", $logFile
-          ) -PassThru -NoNewWindow
-
-          Write-Host "Waiting for Unity tests to complete..."
-          $lastSize = 0
-          $waitSeconds = 0
-          while (-not $unityProcess.HasExited) {
-            Start-Sleep -Seconds 2
-            $waitSeconds += 2
-
-            if (Test-Path $logFile) {
-              $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-              if ($content -and $content.Length -gt $lastSize) {
-                $newContent = $content.Substring($lastSize)
-                Write-Host $newContent
-                $lastSize = $content.Length
-              }
-            }
-
-            # 결과 파일이 생성된 후 60초 내에 프로세스가 종료되지 않으면 강제 종료
-            if ((Test-Path $resultsFile) -and $waitSeconds -gt 60) {
-              $resultAge = (New-TimeSpan -Start (Get-Item $resultsFile).LastWriteTime -End (Get-Date)).TotalSeconds
-              if ($resultAge -gt 60) {
-                Write-Host "::warning::Unity process did not exit within 60s after test results were written. Force killing (pid: $($unityProcess.Id))..."
-                Stop-Process -Id $unityProcess.Id -Force -ErrorAction SilentlyContinue
-                break
-              }
-            }
-
-            if ($waitSeconds -ge $maxWaitSeconds) {
-              Write-Host "::warning::Unity process timed out after ${maxWaitSeconds}s. Force killing (pid: $($unityProcess.Id))..."
-              Stop-Process -Id $unityProcess.Id -Force -ErrorAction SilentlyContinue
-              break
-            }
-          }
-
-          try { $unityProcess.WaitForExit(5000) } catch {}
-
-          if (Test-Path $logFile) {
-            $content = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content.Length -gt $lastSize) {
-              Write-Host $content.Substring($lastSize)
-            }
-          }
-
-          if (Test-Path $resultsFile) {
-            Write-Host "=== Test Results ==="
-            Get-Content $resultsFile
-          }
-
-          $exitCode = $unityProcess.ExitCode
-          Write-Host "Unity Test Runner exited with code: $exitCode"
-
-          # 결과 파일 기반으로 최종 판정 (exit code나 크래시와 무관하게 결과 파일이 진실)
-          if (Test-Path $resultsFile) {
-            $resultsContent = Get-Content $resultsFile -Raw
-            if ($resultsContent -match 'result="Failed"') {
-              Write-Host "::error::Test results indicate failure"
-              exit 1
-            }
-            if ($resultsContent -match 'result="Passed"') {
-              $passed = ([regex]::Matches($resultsContent, 'result="Passed"')).Count
-              Write-Host "EditMode tests passed ($passed tests)"
-              if ($exitCode -ne 0 -and $null -ne $exitCode) {
-                Write-Host "::warning::Unity crashed after tests passed (exit code: $exitCode, likely DirectoryMonitor shutdown bug). Ignoring."
-              }
-              exit 0
-            }
-          }
-
-          # 결과 파일이 없는 경우: 로그 기반 판정
-          if (Test-Path $logFile) {
-            $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-            if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|LicensingClient has failed validation") {
-              Write-Host "::warning::Unity license issue during tests, skipping test failure..."
-              exit 0
-            }
-          }
-
-          # 첫 번째 EditMode(run-editmode-test)에서 이미 통과한 경우, 이 step 실패를 무시
-          $firstEditModeResults = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\editmode-results.xml"
-          if (Test-Path $firstEditModeResults) {
-            $firstContent = Get-Content $firstEditModeResults -Raw
-            if ($firstContent -match 'result="Passed"' -and $firstContent -notmatch 'result="Failed"') {
-              $passed = ([regex]::Matches($firstContent, 'result="Passed"')).Count
-              Write-Host "::warning::This step failed, but first EditMode already passed ($passed tests). Skipping."
-              exit 0
-            }
-          }
-
-          Write-Host "::error::Unity EditMode tests failed (no results file, exit code: $exitCode)"
-          exit 1
-
-      - name: Upload Test Results
-        id: upload-unit-test-results
-        if: inputs.run-unit-test && always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: unit-test-results-${{ inputs.os }}-${{ inputs.unity-version }}
-          path: |
-            /tmp/unity-test-results-${{ inputs.unity-version }}.xml
-            ${{ runner.temp }}/unity-test-results-${{ inputs.unity-version }}.xml
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload Unit Test Unity Log (macOS)
-        id: upload-unit-test-log-macos
-        if: inputs.os == 'macos' && inputs.run-unit-test && always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
-          path: /tmp/unity-test-${{ inputs.unity-version }}.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload Unit Test Unity Log (Windows)
-        id: upload-unit-test-log-windows
-        if: inputs.os == 'windows' && inputs.run-unit-test && always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: unity-log-unit-test-${{ inputs.os }}-${{ inputs.unity-version }}
-          path: ${{ runner.temp }}\unity-test-${{ inputs.unity-version }}.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Diagnose Windows artifact upload failure (Unit Test)
-        if: inputs.os == 'windows' && inputs.run-unit-test && always() && (steps.upload-unit-test-results.outcome == 'failure' || steps.upload-unit-test-log-windows.outcome == 'failure')
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          Write-Host "=== Artifact upload failure diagnosis (Unit Test block) ==="
-          Write-Host "Runner: $env:RUNNER_NAME"
-          Write-Host "Failed step outcomes: results=${{ steps.upload-unit-test-results.outcome }} log=${{ steps.upload-unit-test-log-windows.outcome }}"
-          Write-Host "Timestamp: $(Get-Date -Format o)"
-
-          Write-Host "`n--- Disk free ---"
-          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize | Out-String | Write-Host
-
-          Write-Host "`n--- Network: github.com reachability ---"
-          try { Test-NetConnection github.com -Port 443 -InformationLevel Detailed -WarningAction SilentlyContinue | Out-String | Write-Host } catch { Write-Host "Test-NetConnection failed: $_" }
-
-          Write-Host "`n--- Recent system errors (last 10 min) ---"
-          try {
-            Get-WinEvent -FilterHashtable @{LogName='System'; Level=1,2,3; StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 20 -ErrorAction SilentlyContinue |
-              Select-Object TimeCreated, ProviderName, Id, LevelDisplayName, Message |
-              Format-Table -AutoSize -Wrap | Out-String | Write-Host
-          } catch { Write-Host "Get-WinEvent failed: $_" }
+        env:
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/fix-licensing-client-signature.sh"
 
       # =====================================================
       # Unity WebGL 빌드
@@ -1569,6 +840,11 @@ jobs:
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          UNITY_PATH: ${{ steps.unity-macos.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          BUILD_METHOD: ${{ inputs.build-method }}
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -1587,131 +863,10 @@ jobs:
             echo "::warning::Retry #${ATTEMPT}: waiting ${DELAY}s (base=${BASE_DELAY}s + jitter=${JITTER}s) before next attempt..."
             sleep $DELAY
           command: |
-            # attempt 카운터 초기화 (매번 — self-hosted 러너 잔존 파일 방지)
-            ATTEMPT_FILE="/tmp/retry-attempt-${{ inputs.unity-version }}"
-            echo "0" > "$ATTEMPT_FILE"
-
-            UNITY_PATH="${{ steps.unity-macos.outputs.UNITY_PATH }}"
-            PROJECT_PATH="${{ github.workspace }}/Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-            LOG_FILE="/tmp/unity-build-${{ inputs.unity-version }}.log"
-
-            # Unity 프로세스 트리 강제 종료 (SIGKILL)
-            # websockify가 retry 액션의 pipe fd를 상속받으면 EOF가 안 되어 hang
-            cleanup_unity() {
-              [ -n "$UNITY_PID" ] && kill -9 $UNITY_PID 2>/dev/null || true
-              # Unity 프로세스 그룹의 자식만 정리 (다른 프로세스 영향 방지)
-              [ -n "$UNITY_PID" ] && pkill -9 -P $UNITY_PID 2>/dev/null || true
-              pkill -9 -P $$ 2>/dev/null || true
-            }
-            trap cleanup_unity EXIT
-
-            echo "Unity Version: ${{ steps.unity-macos.outputs.UNITY_VERSION }}"
-            echo "Unity Path: ${UNITY_PATH}"
-            echo "Project Path: ${PROJECT_PATH}"
-
-            # self-hosted 러너 잔존 로그 파일 정리
-            rm -f "$LOG_FILE"
-
-            # Unity 실행 (로그는 -logFile로 파일에 기록)
-            # 주의: >/dev/null 사용 불가 — Unity의 -logFile이 stdout fd에 의존함
-            "$UNITY_PATH" -quit -batchmode -nographics \
-              -projectPath "$PROJECT_PATH" \
-              -executeMethod ${{ inputs.build-method }} \
-              -buildTarget WebGL \
-              -logFile "$LOG_FILE" &
-            UNITY_PID=$!
-            echo "Unity started (PID: $UNITY_PID, log: $LOG_FILE)"
-
-            # 로그 파일 생성 대기
-            for i in $(seq 1 30); do
-              [ -f "$LOG_FILE" ] && break
-              sleep 1
-            done
-
-            # 로그 시그널 기반 대기 + 증분 로그 출력
-            # 증분 출력 헬퍼 (tail -f 대신 — 백그라운드 프로세스 0개 유지)
-            flush_log() {
-              [ -f "$LOG_FILE" ] || return
-              CURRENT_SIZE=$(stat -f%z "$LOG_FILE" 2>/dev/null || echo "0")
-              CURRENT_SIZE=${CURRENT_SIZE:-0}
-              if [ "$CURRENT_SIZE" -gt "$LOG_OFFSET" ]; then
-                tail -c +$((LOG_OFFSET + 1)) "$LOG_FILE" 2>/dev/null | head -c $((CURRENT_SIZE - LOG_OFFSET))
-                LOG_OFFSET=$CURRENT_SIZE
-              fi
-            }
-            LOG_OFFSET=0
-            MAX_WAIT=1500
-            WAIT_SECONDS=0
-            while [ $WAIT_SECONDS -lt $MAX_WAIT ]; do
-              sleep 5
-              WAIT_SECONDS=$((WAIT_SECONDS + 5))
-              flush_log
-              if [ -f "$LOG_FILE" ]; then
-                if grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then break; fi
-                if grep -qE "FAIL_NPM_BUILD|FAIL_NPM_INSTALL|No valid Unity Editor license found|batch mode failed" "$LOG_FILE" 2>/dev/null; then break; fi
-              fi
-              if ! kill -0 $UNITY_PID 2>/dev/null; then break; fi
-            done
-            flush_log
-
-            # 로그 기반 성공 판정 (exit code 대신 — websockify가 exit code를 왜곡할 수 있음)
-            EXIT_CODE=0
-            if ! grep -q "Exiting batchmode successfully now!" "$LOG_FILE" 2>/dev/null; then
-              EXIT_CODE=1
-            fi
-
-            # Unity 프로세스 트리 강제 종료
-            cleanup_unity
-            sleep 1
-
-            echo "Unity build finished (log-based exit code: $EXIT_CODE)"
-
-            if [ $EXIT_CODE -ne 0 ]; then
-              # C# 컴파일 오류 우선 감지 — 결정적 실패이므로 재시도는 순수 낭비다.
-              # Unity 로그에는 정상 기동 시에도 "Access token is unavailable" 같은 라이선스
-              # 문구가 섞여 있어, 이 검사가 없으면 아래 LICENSE_ERROR가 먼저 걸려 컴파일
-              # 오류가 라이선스 오류로 3회 재시도된다 (v3.0.4 릴리즈 실패 시 실제 발생).
-              if grep -qE "error CS[0-9]+" "$LOG_FILE" 2>/dev/null; then
-                echo "::error::C# compile error detected (not a license issue), failing immediately"
-                grep -E "error CS[0-9]+" "$LOG_FILE" 2>/dev/null | sort -u | head -10
-                exit $EXIT_CODE
-              fi
-
-              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
-              BUILD_TOOL_ERROR=false
-              if grep -qE "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!" "$LOG_FILE" 2>/dev/null; then
-                BUILD_TOOL_ERROR=true
-              fi
-
-              if [ "$BUILD_TOOL_ERROR" = true ]; then
-                echo "::error::Build tool error detected (not a license issue), failing immediately"
-                grep -E "Unknown Syntax Error|FAIL_NPM|Command not found|npm ERR!" "$LOG_FILE" 2>/dev/null | tail -5
-                exit $EXIT_CODE
-              fi
-
-              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              # signature/handshake/IPC 실패는 같은 self-hosted runner에서 다른 Unity 버전의
-              # LicensingClient가 살아있어 충돌하는 케이스 — retry로 회복 가능.
-              LICENSE_ERROR=false
-              if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|Code 10 while verifying Licensing Client signature|LicensingClient has failed validation|Failed to handshake to channel|IPC channel to LicensingClient doesn't exist" "$LOG_FILE" 2>/dev/null; then
-                LICENSE_ERROR=true
-              fi
-              if [ $EXIT_CODE -eq 199 ]; then
-                LICENSE_ERROR=true
-              fi
-
-              if [ "$LICENSE_ERROR" = true ]; then
-                echo "::warning::Unity license error detected, triggering retry..."
-                exit 42
-              fi
-
-              echo "::error::Unity build failed with exit code: $EXIT_CODE"
-              exit $EXIT_CODE
-            fi
-
-            # 성공 시 attempt 카운터 정리
-            rm -f "$ATTEMPT_FILE"
-            echo "Unity build completed successfully"
+            # macOS WebGL 빌드 명령 본문은 build-webgl.sh 로 이동(exit 42 재시도 계약,
+            # exit 199 라이선스 판정, C# 컴파일 오류 즉시 실패 순서는 그대로 유지).
+            # exec로 실행해 trap cleanup_unity와 pkill -P $$ 가 가리키는 PID를 그대로 유지한다.
+            exec bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/build-webgl.sh"
 
       - name: Build Unity WebGL (Windows)
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
@@ -1723,6 +878,11 @@ jobs:
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          UNITY_PATH: ${{ steps.unity-windows.outputs.UNITY_PATH }}
+          UNITY_VERSION_FULL: ${{ steps.unity-windows.outputs.UNITY_VERSION }}
+          UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
+          PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          BUILD_METHOD: ${{ inputs.build-method }}
         with:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
@@ -1748,146 +908,10 @@ jobs:
             Write-Host "::warning::Retry #${attempt}: waiting ${delay}s (base=${baseDelay}s + jitter=${jitter}s) before next attempt..."
             Start-Sleep -Seconds $delay
           command: |
-            # attempt 카운터 초기화 (첫 실행 시)
-            $attemptFile = "$env:TEMP\retry-attempt-${{ inputs.unity-version }}"
-            if (-not (Test-Path $attemptFile)) {
-              Set-Content -Path $attemptFile -Value "0"
-            }
-
-            $unityPath = "${{ steps.unity-windows.outputs.UNITY_PATH }}"
-            $projectPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}"
-
-            Write-Host "Unity Version: ${{ steps.unity-windows.outputs.UNITY_VERSION }}"
-            Write-Host "Unity Path: $unityPath"
-            Write-Host "Project Path: $projectPath"
-
-            # runner.temp(=$env:RUNNER_TEMP)와 일치시켜 업로드 step path가 매치되게 한다.
-            $logFile = "$env:RUNNER_TEMP\unity-build-${{ inputs.unity-version }}.log"
-            Write-Host "Starting Unity build..."
-            Write-Host "Log file: $logFile"
-
-            $unityProcess = Start-Process -FilePath $unityPath -ArgumentList @(
-              "-quit", "-batchmode", "-nographics",
-              "-projectPath", $projectPath,
-              "-executeMethod", "${{ inputs.build-method }}",
-              "-buildTarget", "WebGL",
-              "-logFile", $logFile
-            ) -PassThru -NoNewWindow
-
-            Write-Host "Waiting for Unity build to complete..."
-            $logReader = $null
-            while (-not $unityProcess.HasExited) {
-              Start-Sleep -Seconds 5
-              if (-not $logReader -and (Test-Path $logFile)) {
-                $logReader = [System.IO.StreamReader]::new(
-                  [System.IO.FileStream]::new($logFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-                )
-              }
-              if ($logReader) {
-                $chunk = $logReader.ReadToEnd()
-                if ($chunk) { Write-Host $chunk -NoNewline }
-              }
-            }
-
-            # WaitForExit()으로 ExitCode 설정 보장 (HasExited 후에도 즉시 설정되지 않을 수 있음)
-            $unityProcess.WaitForExit()
-
-            # 남은 로그 읽기
-            if ($logReader) {
-              $chunk = $logReader.ReadToEnd()
-              if ($chunk) { Write-Host $chunk -NoNewline }
-              $logReader.Close()
-            }
-
-            $exitCode = $unityProcess.ExitCode
-            Write-Host "Unity exited with code: $exitCode"
-
-            # ExitCode가 null인 경우 방어 (빌드 출력 존재 여부로 판단)
-            if ($null -eq $exitCode) {
-              Write-Host "::warning::ExitCode is null, checking build output..."
-              $distPath = "${{ github.workspace }}\Tests~\E2E\${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}\ait-build\dist"
-              if (Test-Path $distPath) {
-                Write-Host "Build output exists, treating as success"
-                $exitCode = 0
-              } else {
-                Write-Host "::error::Build output missing and ExitCode null, treating as failure"
-                $exitCode = 1
-              }
-            }
-
-            if ($exitCode -ne 0) {
-              # C# 컴파일 오류 우선 감지 — 결정적 실패이므로 재시도는 순수 낭비다.
-              # Unity 로그에는 정상 기동 시에도 라이선스 문구가 섞여 있어, 이 검사가 없으면
-              # 아래 licenseError가 먼저 걸려 컴파일 오류가 라이선스 오류로 재시도된다.
-              if (Test-Path $logFile) {
-                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "error CS[0-9]+") {
-                  Write-Host "::error::C# compile error detected (not a license issue), failing immediately"
-                  Select-String -Path $logFile -Pattern "error CS[0-9]+" |
-                    ForEach-Object { $_.Line } | Select-Object -Unique -First 10
-                  exit $exitCode
-                }
-              }
-
-              # 빌드 도구 에러 우선 감지 (라이선스 오분류 방지)
-              $buildToolError = $false
-              if (Test-Path $logFile) {
-                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "Unknown Syntax Error|FAIL_NPM_BUILD|FAIL_NPM_INSTALL|Command not found.*ait|npm ERR!") {
-                  $buildToolError = $true
-                }
-              }
-
-              if ($buildToolError) {
-                Write-Host "::error::Build tool error detected (not a license issue), failing immediately"
-                exit $exitCode
-              }
-
-              # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-              # signature/handshake/IPC 실패는 같은 self-hosted runner에서 다른 Unity 버전의
-              # LicensingClient가 살아있어 충돌하는 케이스 — retry로 회복 가능.
-              $licenseError = $false
-              if (Test-Path $logFile) {
-                $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-                if ($logContent -match "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|Code 10 while verifying Licensing Client signature|LicensingClient has failed validation|Failed to handshake to channel|IPC channel to LicensingClient doesn't exist") {
-                  $licenseError = $true
-                }
-              }
-              if ($exitCode -eq 199) {
-                $licenseError = $true
-              }
-
-              if ($licenseError) {
-                Write-Host "::warning::Unity license error detected, attempting recovery via Unity Hub..."
-
-                # Unity Hub를 headless로 실행하여 라이선스 토큰 갱신 유도
-                $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
-                if (Test-Path $hubPath) {
-                  try {
-                    & $hubPath -- --headless editors --installed 2>&1 | Out-Null
-                    Write-Host "Unity Hub license refresh attempted"
-                  } catch {
-                    Write-Host "Unity Hub refresh failed: $_"
-                  }
-                  Start-Sleep -Seconds 3
-
-                  # 기존 Licensing Client 프로세스 정리
-                  Get-Process -Name "Unity.Licensing.Client" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-                  Start-Sleep -Seconds 2
-                  Write-Host "Licensing Client processes cleared for fresh start"
-                }
-
-                Write-Host "::warning::Triggering retry after license recovery..."
-                exit 42
-              }
-
-              Write-Host "::error::Unity build failed with exit code: $exitCode"
-              exit $exitCode
-            }
-
-            # 성공 시 attempt 카운터 정리
-            Remove-Item -Path $attemptFile -ErrorAction SilentlyContinue
-            Write-Host "Unity build completed successfully (exit code: $exitCode)"
+            # Windows WebGL 빌드 명령 본문은 build-webgl.ps1 로 이동(exit 42 재시도 계약,
+            # exit 199 라이선스 판정, C# 컴파일 오류 즉시 실패 순서는 그대로 유지).
+            # 같은 세션에서 & 로 호출해 호출자의 오류 처리·LASTEXITCODE 를 그대로 물려받는다.
+            & "$env:GITHUB_WORKSPACE\.ci\.github\scripts\unity-build\build-webgl.ps1"; exit $LASTEXITCODE
 
       # =====================================================
       # 빌드 출력 검증

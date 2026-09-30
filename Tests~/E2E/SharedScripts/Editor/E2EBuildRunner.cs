@@ -195,7 +195,7 @@ public class E2EBuildRunner
         }
     }
 
-    // 빌드 커스터마이징 튜토리얼 진입점. e2e-full-pipeline.test.js의 Test 6(confetti)/Test 7(Firebase)이
+    // 빌드 커스터마이징 튜토리얼 진입점. suites/tutorials.suite.js의 Test 6(confetti)/Test 7(Firebase)이
     // 이 태그로 번들링된 BuildConfig~/src/main.ts의 실행 결과를 검증한다.
     private const string TUTORIAL_SCRIPT_TAG = "<script type=\"module\" src=\"./src/main.ts\"></script>";
 

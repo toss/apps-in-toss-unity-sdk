@@ -96,7 +96,8 @@ public class DeployMemoTests
     {
         // sanitize 이후에는 EscapeMemoForShell이 아무것도 바꾸지 않아야 한다
         // (= 이스케이프 백슬래시가 최종 memo에 잔존할 여지가 없다).
-        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Production, "Game`$\"\\Name", "2.0.0");
+        // %와 스마트 따옴표 7종도 SanitizeMemo가 처리하므로 함께 섞어 검증한다.
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Production, "Game`$\"\\%Name“”„‘’‚‛", "2.0.0");
 
         Assert.AreEqual(memo, AITDeployManager.EscapeMemoForShell(memo),
             "무해화된 memo는 셸 이스케이프 대상 문자를 포함하지 않아야 함.");
@@ -115,6 +116,19 @@ public class DeployMemoTests
     }
 
     [Test]
+    public void BuildDeployMemo_PercentAndSmartQuotesWithLongAppName_StillTruncatedToMaxLength()
+    {
+        // %와 스마트 따옴표 치환도 1:1이므로 절단 후 재팽창이 없어야 한다.
+        string longAppName = string.Concat(System.Linq.Enumerable.Repeat("%“", 1000));
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Test, longAppName, "1.0.0");
+
+        Assert.AreEqual(AITDeployManager.MaxMemoLength, memo.Length,
+            $"무해화 후에도 {AITDeployManager.MaxMemoLength}자로 잘라내야 함. 실제 길이: {memo.Length}");
+        Assert.IsFalse(memo.Contains("%"), "절단된 memo에 %가 남으면 안 됨.");
+        Assert.IsFalse(memo.Contains("“"), "절단된 memo에 U+201C가 남으면 안 됨.");
+    }
+
+    [Test]
     public void SanitizeMemo_PlainText_IsUnchanged()
     {
         Assert.AreEqual("MyGame v1.0.0", AITDeployManager.SanitizeMemo("MyGame v1.0.0"));
@@ -125,6 +139,64 @@ public class DeployMemoTests
     {
         Assert.IsNull(AITDeployManager.SanitizeMemo(null));
         Assert.AreEqual(string.Empty, AITDeployManager.SanitizeMemo(string.Empty));
+    }
+
+    [Test]
+    public void SanitizeMemo_SmartDoubleQuotes_BecomeApostrophe()
+    {
+        // U+201C/201D/201E — PowerShell -Command 스크립트가 실제 큰따옴표를 보존하게 된 뒤로는
+        // 이 변형들도 PS 토크나이저의 문자열 구분자로 오인될 수 있어 작은따옴표로 치환한다.
+        string memo = AITDeployManager.SanitizeMemo("“MyGame” „Studio„");
+
+        Assert.AreEqual("'MyGame' 'Studio'", memo);
+    }
+
+    [Test]
+    public void SanitizeMemo_SmartSingleQuotes_BecomeApostrophe()
+    {
+        // U+2018/2019/201A/201B — ToPowerShellSingleQuotedLiteral과 동일한 PS 단일 인용 구분자 집합.
+        string memo = AITDeployManager.SanitizeMemo("‘MyGame’ ‚Studio‛");
+
+        Assert.AreEqual("'MyGame' 'Studio'", memo);
+    }
+
+    [Test]
+    public void SanitizeMemo_Percent_BecomesApostrophe()
+    {
+        // pnpm.cmd(.cmd 셈)는 cmd.exe로 실행되어 인용 안에서도 %VAR% 확장이 일어난다.
+        string memo = AITDeployManager.SanitizeMemo("Fix %PATH% timeout");
+
+        Assert.AreEqual("Fix 'PATH' timeout", memo);
+    }
+
+    [Test]
+    public void SanitizeMemo_PreservesMiddleDotAndKorean()
+    {
+        string memo = AITDeployManager.SanitizeMemo("[Test] 게임이름 v1.0.0 · Unity SDK 3.2.0");
+
+        Assert.AreEqual("[Test] 게임이름 v1.0.0 · Unity SDK 3.2.0", memo);
+    }
+
+    [Test]
+    public void BuildDeployMemo_NoQuoteVariantOrPercentRemains()
+    {
+        // 스마트 따옴표 7종 + % + 기존 4종(\ " $ `)을 모두 섞은 appName으로 BuildDeployMemo까지
+        // 통과시켜, 실제 배포 memo 조립 경로에도 잔존물이 없는지 확인한다.
+        string appName = "My\"Game`$\\Studio“”„‘’‚‛%Co";
+        string memo = AITDeployManager.BuildDeployMemo(DeployKind.Test, appName, "1.0.0");
+
+        Assert.IsFalse(memo.Contains("\""), $"큰따옴표가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("`"), $"백틱이 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("$"), $"달러 기호가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("\\"), $"백슬래시가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("%"), $"퍼센트 기호가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("“"), $"U+201C가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("”"), $"U+201D가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("„"), $"U+201E가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("‘"), $"U+2018이 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("’"), $"U+2019가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("‚"), $"U+201A가 memo에 남아있음: {memo}");
+        Assert.IsFalse(memo.Contains("‛"), $"U+201B가 memo에 남아있음: {memo}");
     }
 
     // =====================================================
@@ -292,6 +364,44 @@ public class DeployMemoTests
     {
         Assert.IsNull(AITDeployManager.EscapeMemoForShell(null));
         Assert.AreEqual(string.Empty, AITDeployManager.EscapeMemoForShell(string.Empty));
+    }
+
+    // =====================================================
+    // IsDeploymentKeyCommandSafe: 배포 키를 명령 문자열에 그대로 삽입해도 안전한지 검사
+    // =====================================================
+
+    [Test]
+    public void IsDeploymentKeyCommandSafe_NormalToken_ReturnsTrue()
+    {
+        Assert.IsTrue(AITDeployManager.IsDeploymentKeyCommandSafe("ait_sk_1a2b3c4d5e6f"));
+    }
+
+    [Test]
+    public void IsDeploymentKeyCommandSafe_Null_ReturnsFalse()
+    {
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe(null));
+    }
+
+    [Test]
+    public void IsDeploymentKeyCommandSafe_Whitespace_ReturnsFalse()
+    {
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe("   "));
+    }
+
+    [Test]
+    public void IsDeploymentKeyCommandSafe_ContainsDoubleQuote_ReturnsFalse()
+    {
+        // "는 PowerShell/bash 양쪽에서 --api-key "..." 의 문자열 경계를 깬다.
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe("ab\"cd"));
+    }
+
+    [Test]
+    public void IsDeploymentKeyCommandSafe_ContainsControlCharacter_ReturnsFalse()
+    {
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe("ab\ncd"));
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe("ab\rcd"));
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe("ab\tcd"));
+        Assert.IsFalse(AITDeployManager.IsDeploymentKeyCommandSafe("abcd\r"));
     }
 
     // =====================================================

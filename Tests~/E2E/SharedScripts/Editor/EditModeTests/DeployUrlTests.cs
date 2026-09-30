@@ -10,6 +10,9 @@
 //
 // 메모: 이 파일은 AppsInTossEditModeTests 어셈블리에 속한다(DeployMemoTests.cs와 동일 위치).
 //   해당 어셈블리는 InternalsVisibleTo로 internal AITDeployManager에 접근 가능하다.
+//
+// 셸 쌍둥이: .github/scripts/deploy/extract-deploy-url.test.sh가 같은 케이스를
+//   awk 헬퍼로 검증한다. 이 파일의 케이스를 바꾸면 그 파일도 함께 갱신할 것.
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;

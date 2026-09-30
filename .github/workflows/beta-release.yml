@@ -442,6 +442,17 @@ jobs:
         with:
           ref: ${{ needs.beta-prepare.outputs.staging_ref }}
 
+      - name: Checkout .ci scripts
+        # ref를 지정하지 않아 워크플로 YAML과 같은 커밋에서 스크립트를 읽는다.
+        # 위 체크아웃은 staging_ref이고 source_ref가 과거 ref일 수 있어 스크립트가
+        # 없을 수 있다 — .github/scripts/deploy는 항상 이 워크플로 실행 커밋에서 읽는다.
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/scripts/deploy
+          sparse-checkout-cone-mode: false
+          path: .ci
+
       - name: Download AIT Build Artifact
         uses: actions/download-artifact@v8
         with:
@@ -540,27 +551,9 @@ jobs:
             exit "$DEPLOY_STATUS"
           fi
 
-          # ait CLI는 URL을 고정폭 박스(│ ... │) 안에 출력해 긴 URL이 여러 줄로 래핑됨 —
-          # 줄 단위 grep은 URL을 중간에서 자르므로, 박스 문자·여백 제거 후 줄 끝까지
-          # 이어지는 URL을 연속 줄과 접합해 복원한다.
-          DEPLOY_URL=$(echo "$CLEANED" | sed 's/│//g; s/^[[:space:]]*//; s/[[:space:]]*$//' | awk '
-            !url && match($0, /intoss-private:\/\/[A-Za-z0-9._~%=&?\/-]+/) {
-              url = substr($0, RSTART, RLENGTH)
-              wrapped = (RSTART + RLENGTH - 1 == length($0))
-              next
-            }
-            wrapped && /^[A-Za-z0-9._~%=&?\/-]+$/ { url = url $0; next }
-            { wrapped = 0 }
-            END { if (url) print url }')
-
-          # SDK 3.0(V3 host) 딥링크는 host 파라미터 필수 — V3로 출시된 적 없는 스킴은
-          # CDN에 deployment.json이 없어 host 없이는 진입 불가. CLI가 이미 붙였으면 유지.
-          if [ -n "$DEPLOY_URL" ] && ! printf '%s' "$DEPLOY_URL" | grep -qE '[?&]host='; then
-            case "$DEPLOY_URL" in
-              *\?*) DEPLOY_URL="${DEPLOY_URL}&host=appsInTossHost" ;;
-              *)    DEPLOY_URL="${DEPLOY_URL}?host=appsInTossHost" ;;
-            esac
-          fi
+          # 배포 URL 추출(박스 래핑 접합)과 host 파라미터 멱등 부가는
+          # .github/scripts/deploy/extract-deploy-url.sh로 옮겼다.
+          DEPLOY_URL=$(echo "$CLEANED" | bash "$GITHUB_WORKSPACE/.ci/.github/scripts/deploy/extract-deploy-url.sh")
 
           if [ -z "$DEPLOY_URL" ]; then
             DEPLOY_URL=$(echo "$CLEANED" | grep -oE 'https?://[^[:space:]]+' | head -1 || true)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -268,7 +269,8 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 크로스 플랫폼 프로세스 시작 정보 생성
-        /// ExecuteCommand, AITNpmRunner, AITAsyncCommandRunner에서 공유
+        /// ExecuteCommand, AITNpmRunner, AITAsyncCommandRunner, PnpmRunner가 공유하는
+        /// 유일한 Windows/Unix 셸 래핑 구현이다 (Windows: BuildPowerShellArguments, Unix: bash -l -c).
         /// </summary>
         internal static ProcessStartInfo CreateProcessStartInfo(
             string command,
@@ -282,10 +284,7 @@ namespace AppsInToss.Editor
             if (IsWindows)
             {
                 shell = "powershell.exe";
-                string escapedCommand = EscapeForPowerShell(command);
-                string escapedPathEnv = pathEnv.Replace("'", "''");
-                string envSetup = $"$env:CI = 'true'; $env:PATH = '{escapedPathEnv}';";
-                shellArgs = $"-ExecutionPolicy Bypass -NoProfile -NoLogo -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {envSetup} {escapedCommand}\"";
+                shellArgs = BuildPowerShellArguments(command, pathEnv);
             }
             else
             {
@@ -339,6 +338,10 @@ namespace AppsInToss.Editor
         /// <param name="additionalPaths">PATH에 추가할 경로들</param>
         /// <param name="timeoutMs">타임아웃 (밀리초)</param>
         /// <param name="verbose">상세 로그 출력 여부</param>
+        /// <param name="sensitiveValues">
+        /// 로그·결과에서 마스킹할 값들 (예: 배포 키). 명령 실행 로그, 셸 인자 로그, 타임아웃 로그,
+        /// result.Output/Error, 예외 메시지에 모두 적용된다. null이면 마스킹하지 않는다.
+        /// </param>
         /// <returns>명령 실행 결과</returns>
         public static CommandResult ExecuteCommand(
             string command,
@@ -346,7 +349,8 @@ namespace AppsInToss.Editor
             string[] additionalPaths = null,
             int timeoutMs = 300000,
             bool verbose = true,
-            Dictionary<string, string> additionalEnvVars = null)
+            Dictionary<string, string> additionalEnvVars = null,
+            IReadOnlyList<string> sensitiveValues = null)
         {
             var result = new CommandResult();
 
@@ -354,7 +358,7 @@ namespace AppsInToss.Editor
             {
                 if (verbose)
                 {
-                    Debug.Log($"[Platform] 명령 실행: {command}");
+                    Debug.Log($"[Platform] 명령 실행: {RedactSecrets(command, sensitiveValues)}");
                     if (!string.IsNullOrEmpty(workingDirectory))
                     {
                         Debug.Log($"[Platform] 작업 디렉토리: {workingDirectory}");
@@ -365,7 +369,7 @@ namespace AppsInToss.Editor
 
                 if (verbose)
                 {
-                    Debug.Log($"[Platform] 셸: {processInfo.FileName} {processInfo.Arguments}");
+                    Debug.Log($"[Platform] 셸: {processInfo.FileName} {RedactSecrets(processInfo.Arguments, sensitiveValues)}");
                 }
 
                 // 프로세스 실행 + 타임아웃 + 출력 캡처의 공통 패턴은 AITProcessExecutor가 담당.
@@ -379,14 +383,14 @@ namespace AppsInToss.Editor
 
                     if (verbose)
                     {
-                        Debug.LogError($"[Platform] 명령 시간 초과 ({timeoutMs}ms): {command}");
+                        Debug.LogError($"[Platform] 명령 시간 초과 ({timeoutMs}ms): {RedactSecrets(command, sensitiveValues)}");
                     }
 
                     return result;
                 }
 
-                result.Output = StripAnsiCodes(run.StdOut);
-                result.Error = StripAnsiCodes(run.StdErr);
+                result.Output = RedactSecrets(StripAnsiCodes(run.StdOut), sensitiveValues);
+                result.Error = RedactSecrets(StripAnsiCodes(run.StdErr), sensitiveValues);
                 result.ExitCode = run.ExitCode;
                 result.Success = run.ExitCode == 0;
 
@@ -422,12 +426,12 @@ namespace AppsInToss.Editor
             catch (Exception e)
             {
                 result.Success = false;
-                result.Error = e.Message;
+                result.Error = RedactSecrets(e.Message, sensitiveValues);
                 result.ExitCode = -1;
 
                 if (verbose)
                 {
-                    Debug.LogError($"[Platform] 명령 실행 예외: {e}");
+                    Debug.LogError($"[Platform] 명령 실행 예외: {RedactSecrets(e.ToString(), sensitiveValues)}");
                 }
             }
 
@@ -662,20 +666,145 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// PowerShell 명령용 문자열 이스케이프 (Windows 전용)
+        /// PowerShell -Command 스크립트 전체를 "-ExecutionPolicy ... -Command &lt;script&gt;" 인자
+        /// 문자열로 조립한다. PowerShell 5.1은 자신의 명령줄을 CommandLineToArgvW/MSVCRT 규칙으로
+        /// 쪼갠 뒤 -Command 다음에 오는 인자들을 공백 하나로 다시 join한다. 스크립트를 argv 원소
+        /// "하나"로 정확히 인용하지 않으면(=따옴표를 이스케이프하지 않으면) 안쪽 "가 quote 토글로
+        /// 소비되어 사라지고, 공백을 포함한 인자(-m memo, 공백 포함 경로, --store-dir)가 여러 개로
+        /// 쪼개진다 (포럼 제보: `ait deploy` "Extraneous positional argument").
         /// </summary>
+        internal static string BuildPowerShellArguments(string command, string pathEnv)
+        {
+            return "-ExecutionPolicy Bypass -NoProfile -NoLogo -Command "
+                + QuoteWindowsCommandLineArgument(BuildPowerShellScript(command, pathEnv));
+        }
+
+        /// <summary>
+        /// -Command 뒤에 올 PowerShell 스크립트 본문을 조립한다. UTF-8 출력 인코딩과 CI/PATH
+        /// 환경변수 설정을 앞에 붙이고, 뒤에 실제 명령을 잇는다.
+        /// </summary>
+        internal static string BuildPowerShellScript(string command, string pathEnv)
+        {
+            string body = EscapeForPowerShell(command ?? string.Empty).TrimStart();
+
+            // "C:\p\pnpm.cmd" args 형태는 PowerShell에서 문자열 리터럴 식 + 뒤따르는 토큰으로
+            // 파싱되어 ParserError(Unexpected token)가 난다. 인용된 경로(" 또는 ')로 시작하는
+            // 명령에만 호출 연산자 & 를 붙인다. cmdlet/taskkill/exit N 등 비인용 시작 명령은
+            // & 없이도 유효한 구문이므로 그대로 둔다.
+            if (body.Length > 0 && (body[0] == '"' || IsPowerShellSingleQuote(body[0])))
+            {
+                body = "& " + body;
+            }
+
+            return "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+                 + "$env:CI = 'true'; "
+                 + "$env:PATH = " + ToPowerShellSingleQuotedLiteral(pathEnv ?? string.Empty) + "; "
+                 + body;
+        }
+
+        /// <summary>
+        /// CommandLineToArgvW/MSVCRT가 원문 그대로 argv 원소 하나로 복원하도록 인용한다.
+        /// 항상 "..."로 감싼다. " 앞의 백슬래시 n개는 2n+1개로 늘리고 \"를 붙인다.
+        /// 문자열 끝의 백슬래시 n개는 2n개로 늘린다(뒤에 오는 닫는 "와 결합하지 않도록). 그 외의
+        /// 백슬래시는 그대로 둔다.
+        /// </summary>
+        internal static string QuoteWindowsCommandLineArgument(string arg)
+        {
+            arg = arg ?? string.Empty;
+            var sb = new StringBuilder(arg.Length + 8).Append('"');
+            int i = 0;
+            while (true)
+            {
+                int backslashCount = 0;
+                while (i < arg.Length && arg[i] == '\\')
+                {
+                    backslashCount++;
+                    i++;
+                }
+
+                if (i == arg.Length)
+                {
+                    sb.Append('\\', backslashCount * 2);
+                    break;
+                }
+
+                if (arg[i] == '"')
+                {
+                    sb.Append('\\', backslashCount * 2 + 1).Append('"');
+                }
+                else
+                {
+                    sb.Append('\\', backslashCount).Append(arg[i]);
+                }
+
+                i++;
+            }
+
+            return sb.Append('"').ToString();
+        }
+
+        /// <summary>
+        /// PowerShell 단일 인용 리터럴을 조립한다. PowerShell 토크나이저는 ASCII ' 외에
+        /// U+2018/2019/201A/201B(스마트 홑따옴표 변형)도 단일 인용 구분자로 인식하며,
+        /// "구분자 뒤에 같은 부류의 구분자가 또 오면" 두 번째 문자를 리터럴로 취급한다
+        /// (ScanStringLiteral의 ''-이스케이프 규칙과 동일). 그래서 값에 등장하는 구분자 문자는
+        /// 자기 자신을 두 번 써서 이스케이프한다.
+        /// </summary>
+        internal static string ToPowerShellSingleQuotedLiteral(string value)
+        {
+            value = value ?? string.Empty;
+            var sb = new StringBuilder(value.Length + 2).Append('\'');
+            foreach (char c in value)
+            {
+                if (IsPowerShellSingleQuote(c))
+                {
+                    sb.Append(c);
+                }
+
+                sb.Append(c);
+            }
+
+            return sb.Append('\'').ToString();
+        }
+
+        /// <summary>
+        /// PowerShell 토크나이저가 단일 인용 구분자로 인식하는 문자인지 판별한다
+        /// (ASCII ' 및 U+2018/2019/201A/201B 스마트 홑따옴표 변형).
+        /// </summary>
+        internal static bool IsPowerShellSingleQuote(char c)
+        {
+            return c == '\'' || c == '\u2018' || c == '\u2019' || c == '\u201A' || c == '\u201B';
+        }
+
+        /// <summary>
+        /// PowerShell 명령용 문자열 이스케이프 (Windows 전용). ` → ``(백틱 이스케이프),
+        /// $ → `$(변수 확장 방지)만 처리한다 — 이 함수는 PowerShell 파서 계층만 다룬다.
+        /// </summary>
+        /// <remarks>
+        /// 이력: d39392de(2025-12-31)가 cmd.exe→powershell.exe 전환 시 "를 백틱으로 이스케이프했으나,
+        /// 백틱은 CommandLineToArgvW/argv 계층의 이스케이프 문자가 아니라서 npm.cmd 호출 자체가
+        /// 깨졌다. 69a22013이 그 이스케이프를 제거했고, 그 뒤로는 "가 argv 계층에서 그대로 벗겨져
+        /// "우연히" 동작해 왔다 — "따옴표는 PowerShell 구문의 일부라 이스케이프하면 안 된다"는
+        /// 과거 주석은 오진이었다. 실제로는 PowerShell 자신의 명령줄이 CommandLineToArgvW 규칙으로
+        /// 쪼개질 때 -Command 스크립트 전체가 argv 원소 하나로 인용되지 않아 내부 "가 quote 토글로
+        /// 소비되어 사라진 것이다. argv 계층의 인용은 이제 <see cref="QuoteWindowsCommandLineArgument"/>
+        /// 가 전담한다.
+        ///
+        /// 알려진 한계(코드 변경 없이 문서화):
+        /// - PowerShell 5.1의 네이티브 인자 전달 규칙은 "공백을 포함하고 `\`로 끝나는" 인자를
+        ///   표현할 방법이 없다.
+        /// - .cmd/.bat 셈(pnpm.cmd 등)은 Windows가 내부적으로 cmd.exe를 통해 재실행하므로, 인용
+        ///   안에서도 cmd.exe가 정의된 `%VAR%`를 확장한다.
+        /// - `$`는 항상 이스케이프되므로 명령 문자열 안에서 PowerShell 변수를 사용할 수 없다.
+        ///   환경변수가 필요하면 `[Environment]::GetEnvironmentVariable('X')`를 쓴다.
+        /// </remarks>
         /// <param name="command">이스케이프할 명령</param>
         /// <returns>PowerShell에서 안전하게 사용 가능한 문자열</returns>
-        private static string EscapeForPowerShell(string command)
+        internal static string EscapeForPowerShell(string command)
         {
-            // PowerShell -Command에서 특수 문자 이스케이프
-            // 주의: 따옴표(")는 이스케이프하면 안 됨! 경로 인용에 필요한 유효한 구문임
-            // $ → `$ (변수 확장 방지)
-            // ` → `` (백틱 이스케이프)
             return command
                 .Replace("`", "``")   // 백틱 먼저 이스케이프
                 .Replace("$", "`$");  // 변수 확장 방지만
-            // 따옴표는 이스케이프하지 않음 - PowerShell 명령 구문의 일부
         }
 
         /// <summary>
@@ -690,6 +819,48 @@ namespace AppsInToss.Editor
                 .Replace("\"", "\\\"")
                 .Replace("$", "\\$")
                 .Replace("`", "\\`");
+        }
+
+        /// <summary>
+        /// 로그·결과 문자열에서 비밀값을 마스킹할 때 대신 채우는 자리표시자.
+        /// </summary>
+        internal const string RedactedPlaceholder = "***";
+
+        /// <summary>
+        /// <paramref name="text"/>에서 <paramref name="secrets"/>에 담긴 값들을 찾아
+        /// <see cref="RedactedPlaceholder"/>로 치환한다. 배포 키 등 비밀값이 로그(명령 실행/셸/타임아웃)나
+        /// result.Output/Error, 예외 메시지에 그대로 남지 않도록 ExecuteCommand가 사용한다.
+        /// </summary>
+        /// <param name="text">마스킹 대상 문자열 (null/빈 문자열이면 그대로 반환)</param>
+        /// <param name="secrets">마스킹할 값 목록 (null이면 마스킹하지 않음)</param>
+        /// <returns>비밀값이 치환된 문자열</returns>
+        internal static string RedactSecrets(string text, IReadOnlyList<string> secrets)
+        {
+            if (string.IsNullOrEmpty(text) || secrets == null)
+            {
+                return text;
+            }
+
+            foreach (var secret in secrets)
+            {
+                if (string.IsNullOrWhiteSpace(secret))
+                {
+                    continue; // string.Replace("", ...)는 예외를 던진다
+                }
+
+                // 로그에 등장 가능한 모든 형태를 치환한다: 원문, bash -c 이스케이프형, PowerShell 이스케이프형.
+                // (Windows argv 인용(QuoteWindowsCommandLineArgument)은 " 앞 백슬래시만 바꾸므로,
+                // " 를 포함하지 않는 값은 원문/PowerShell 이스케이프형이 그대로 부분 문자열로 남는다.)
+                foreach (var candidate in new[] { EscapeForBashDoubleQuotes(secret), EscapeForPowerShell(secret), secret })
+                {
+                    if (!string.IsNullOrEmpty(candidate))
+                    {
+                        text = text.Replace(candidate, RedactedPlaceholder);
+                    }
+                }
+            }
+
+            return text;
         }
 
         /// <summary>

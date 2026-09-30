@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -31,24 +35,134 @@ namespace AppsInToss.Editor.Menu
 
             try
             {
-                string command;
-
                 if (AITPlatformHelper.IsWindows)
                 {
-                    // Windows: netstat + taskkill
-                    command = $"for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :{port}') do taskkill /PID %a /F 2>nul";
-                }
-                else
-                {
-                    // Unix: lsof + kill
-                    command = $"lsof -ti :{port} | xargs kill -9 2>/dev/null";
+                    KillListeningProcessesWindows(port);
+                    return;
                 }
 
-                AITPlatformHelper.ExecuteCommand(command, null, null, timeoutMs: 2000, verbose: false);
+                // Unix: lsof + kill.
+                // NOTE: lsof -ti (필터 없음)는 LISTEN뿐 아니라 해당 포트로의 클라이언트 연결(ESTABLISHED 등)도
+                // 함께 잡아 종료할 수 있다. Windows 분기는 netstat 파싱으로 LISTEN 소유자만 골라 종료하지만,
+                // Unix 분기는 기존 동작(및 macOS/Linux 바이트 동일성 요구사항)을 유지하기 위해 그대로 둔다.
+                AITPlatformHelper.ExecuteCommand($"lsof -ti :{port} | xargs kill -9 2>/dev/null", null, null, timeoutMs: 2000, verbose: false);
             }
             catch
             {
                 // 무시
+            }
+        }
+
+        // %SystemRoot% 같은 환경변수 문자열은 UseShellExecute=false(CreateProcess) 경로에서는 확장되지 않는다.
+        // 실제 System32 경로를 조립하고, 실패 시 CreateProcess 검색 순서에 System32가 포함되어 있으므로
+        // 바로 실행 파일 이름으로 폴백한다.
+        internal static System.Diagnostics.ProcessStartInfo CreateNetstatStartInfo()
+        {
+            string systemDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            string exePath = string.IsNullOrEmpty(systemDir) ? null : Path.Combine(systemDir, "netstat.exe");
+
+            return new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = (exePath != null && File.Exists(exePath)) ? exePath : "netstat.exe",
+                Arguments = "-ano",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+        }
+
+        /// <summary>
+        /// netstat -ano 출력에서 지정 포트를 LISTEN 중인 PID 목록을 찾는다 (자기 프로세스 제외).
+        /// </summary>
+        internal static List<int> FindListeningPidsWindows(int port, int excludedPid)
+        {
+            try
+            {
+                var run = AITProcessExecutor.Run(CreateNetstatStartInfo(), 3000);
+                if (run.TimedOut || run.ExitCode != 0) return new List<int>();
+                return ParseListeningPids(run.StdOut, port, excludedPid);
+            }
+            catch
+            {
+                return new List<int>();
+            }
+        }
+
+        /// <summary>
+        /// netstat -ano 출력을 파싱해 지정 포트를 LISTEN 중인 PID 목록을 반환한다 (순수 함수, 로케일 무관).
+        /// TCP 행 + 로컬 포트 정확 일치 + 원격 포트 0(=LISTEN, 로케일별 상태 문자열 "LISTENING"/"ABHÖREN"/"수신 대기"
+        /// 등을 직접 비교하지 않아도 됨) + PID 4 초과(0/4는 시스템 프로세스) + 자기 PID 제외 + 중복 제거.
+        /// </summary>
+        internal static List<int> ParseListeningPids(string output, int port, int excludedPid)
+        {
+            var pids = new List<int>();
+            if (string.IsNullOrEmpty(output) || port <= 0) return pids;
+
+            foreach (var line in output.Split('\n'))
+            {
+                // Split(null, RemoveEmptyEntries)는 char.IsWhiteSpace 기준으로 나누므로 CRLF의 '\r'도 구분자로
+                // 소비된다. 아래 TrimEnd('\r')는 이 동작에 기대지 않으려는 방어 코드다.
+                var tokens = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                if (tokens.Length < 4 || !string.Equals(tokens[0], "TCP", StringComparison.OrdinalIgnoreCase)) continue;
+
+                if (!TryParseEndpointPort(tokens[1], out int localPort) || localPort != port) continue;
+                if (!TryParseEndpointPort(tokens[2], out int foreignPort) || foreignPort != 0) continue;
+
+                string pidToken = tokens[tokens.Length - 1].TrimEnd('\r');
+                if (!int.TryParse(pidToken, NumberStyles.None, CultureInfo.InvariantCulture, out int pid)) continue;
+
+                if (pid <= 4 || pid == excludedPid || pids.Contains(pid)) continue;
+                pids.Add(pid);
+            }
+
+            return pids;
+        }
+
+        /// <summary>
+        /// netstat 로컬/원격 주소 열("호스트:포트")에서 포트만 추출한다.
+        /// IPv6 주소는 "[::]:8081", "[fe80::1%12]:8081"처럼 콜론을 포함하므로 마지막 ':' 기준으로 분리한다.
+        /// </summary>
+        private static bool TryParseEndpointPort(string endpoint, out int port)
+        {
+            port = 0;
+            if (string.IsNullOrEmpty(endpoint)) return false;
+
+            int separatorIndex = endpoint.LastIndexOf(':');
+            if (separatorIndex < 0) return false;
+
+            return int.TryParse(endpoint.Substring(separatorIndex + 1), NumberStyles.None, CultureInfo.InvariantCulture, out port);
+        }
+
+        /// <summary>
+        /// 지정 포트를 LISTEN 중인 프로세스 중 Node 계열(node/pnpm/npm)만 강제 종료한다.
+        /// PID 재사용으로 무관한 프로세스를 잘못 종료하는 사고를 막기 위한 방어 기준으로,
+        /// <see cref="AITServerStateManager"/>가 저장된 PID를 kill할 때 쓰는 기준과 동일하다.
+        /// </summary>
+        private static void KillListeningProcessesWindows(int port)
+        {
+            int selfPid;
+            using (var self = System.Diagnostics.Process.GetCurrentProcess())
+            {
+                selfPid = self.Id;
+            }
+
+            foreach (int pid in FindListeningPidsWindows(port, selfPid))
+            {
+                try
+                {
+                    using (var process = System.Diagnostics.Process.GetProcessById(pid))
+                    {
+                        if (!AITBuildSessionRecovery.IsNodeLikeProcessName(process.ProcessName)) continue;
+
+                        process.Kill();
+                        process.WaitForExit(1000);
+                    }
+                }
+                catch
+                {
+                    // 이미 종료되었거나 권한 부족 — best-effort이므로 무시.
+                }
             }
         }
 

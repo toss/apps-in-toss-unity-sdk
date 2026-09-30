@@ -118,6 +118,21 @@ const sessionStorageMock = {
   removeItem: (k) => { sessionMap.delete(k); },
 };
 
+// stored 힌트용 localStorage mock. 기본 시나리오는 설치하지 않는다(localStorage 부재 = 판단 불가 →
+// 기존 조회 경로). 힌트 시나리오만 installLocalStorage() 로 켠다.
+const HINT_KEY = 'ait-dc-stored:ait-unity-test-1-2-3';
+const localMap = new Map();
+function installLocalStorage() {
+  defineGlobal('localStorage', {
+    get length() { return localMap.size; },
+    key: (i) => Array.from(localMap.keys())[i] ?? null,
+    getItem: (k) => (localMap.has(k) ? localMap.get(k) : null),
+    setItem: (k, v) => { localMap.set(k, String(v)); },
+    removeItem: (k) => { localMap.delete(k); },
+  });
+}
+function hintUrls() { return (localMap.get(HINT_KEY) || '').split('\n').filter(Boolean); }
+
 let navType = 'navigate';
 const performanceMock = { getEntriesByType: (t) => (t === 'navigation' ? [{ type: navType }] : []) };
 
@@ -391,6 +406,73 @@ async function scenarioCeNoLengthCheck() {
   if (!res || !res.ok) fail('CE joined response not ok');
 }
 
+async function scenarioNoHintKickSkipsLookup() {
+  deviceMemory = undefined;
+  navType = 'navigate';
+  globalThis.caches = cachesMock;
+  installLocalStorage();
+  // 이전 빌드 캐시명에 딸린 힌트는 콜드 로드에서 정리되어야 한다.
+  localMap.set('ait-dc-stored:ait-unity-old-9-9-9', DATA);
+  fetchFactories.set(DATA, dataFactoryOK(1000));
+  fetchFactories.set(WASM, wasmFactoryOK(2000));
+
+  runScript();
+  // 힌트가 없으면 킥오프가 캐시 조회를 기다리지 않고 스크립트 실행 중에 네트워크를 걸어야 한다.
+  if (countCalls(DATA) !== 1 || countCalls(WASM) !== 1) {
+    fail('no-hint kickoff must start both downloads synchronously, got ' + countCalls(DATA) + '/' + countCalls(WASM));
+  }
+  await settle();
+  if (cacheCalls.match.length !== 0) fail('no-hint kickoff must skip cache.match, got ' + cacheCalls.match.length);
+  if (localMap.has('ait-dc-stored:ait-unity-old-9-9-9')) fail('stale hint key of an old cache name must be removed');
+
+  const res = await window.fetch(DATA);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength !== 1000) fail('joined response body size mismatch: ' + buf.byteLength);
+  if (countCalls(DATA) !== 1) fail('expected no extra DATA network call after join, got ' + countCalls(DATA));
+  await settle();
+  if (!hintUrls().includes(DATA) || !hintUrls().includes(WASM)) {
+    fail('successful store must record the stored hint, got ' + JSON.stringify(hintUrls()));
+  }
+}
+
+async function scenarioHintedKickServesCache() {
+  deviceMemory = undefined;
+  navType = 'navigate';
+  globalThis.caches = cachesMock;
+  installLocalStorage();
+  localMap.set(HINT_KEY, DATA + '\n' + WASM);
+  cacheHandle('ait-unity-test-1-2-3');
+  cacheStores.get('ait-unity-test-1-2-3').set(DATA, new Response(stdBody(1000), { status: 200 }));
+  cacheStores.get('ait-unity-test-1-2-3').set(WASM, new Response(stdBody(2000), { status: 200 }));
+
+  runScript();
+  await settle();
+  const res = await window.fetch(DATA);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength !== 1000) fail('hinted kickoff must serve the cached body, got ' + buf.byteLength);
+  if (countCalls(DATA) !== 0 || countCalls(WASM) !== 0) {
+    fail('hinted kickoff with a cache hit must not touch network, got ' + countCalls(DATA) + '/' + countCalls(WASM));
+  }
+  if (!cacheCalls.match.some((c) => c.url === DATA)) fail('hinted kickoff must consult cache.match');
+}
+
+async function scenarioNoHintReloadSkipsLookup() {
+  deviceMemory = undefined;
+  navType = 'reload';
+  globalThis.caches = cachesMock;
+  installLocalStorage();
+  fetchFactories.set(DATA, dataFactoryOK(1000));
+
+  runScript();
+  await settle();
+  if (countCalls(DATA) !== 0) fail('reload must not kick off');
+  const res = await window.fetch(DATA);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength !== 1000) fail('reload response body size mismatch: ' + buf.byteLength);
+  if (cacheCalls.match.length !== 0) fail('no-hint reload fetch must skip cache.match, got ' + cacheCalls.match.length);
+  if (countCalls(DATA) !== 1) fail('expected one DATA network call, got ' + countCalls(DATA));
+}
+
 async function main() {
   switch (scenario) {
     case 'kick_and_join': await scenarioKickAndJoin(); break;
@@ -403,6 +485,9 @@ async function main() {
     case 'reload_skip_key_bypass': await scenarioReloadSkipKey(); break;
     case 'short_read_retry': await scenarioShortReadRetry(); break;
     case 'ce_no_length_check': await scenarioCeNoLengthCheck(); break;
+    case 'no_hint_kick_skips_lookup': await scenarioNoHintKickSkipsLookup(); break;
+    case 'hinted_kick_serves_cache': await scenarioHintedKickServesCache(); break;
+    case 'no_hint_reload_skips_lookup': await scenarioNoHintReloadSkipsLookup(); break;
     default: fail('unknown scenario ' + scenario); return;
   }
   process.stdout.write('HARNESS_OK\n');
@@ -561,5 +646,27 @@ main().catch((e) => fail('uncaught: ' + (e && e.stack ? e.stack : e)));
         // 본문 크기가 정의상 항상 달라, 길이 대조를 생략해야 한다(생략하지 않으면 성공 불가능한
         // 재다운로드 루프에 빠진다).
         RunScenario("ce_no_length_check");
+    }
+
+    [Test]
+    public void NoHint_KickoffSkipsCacheLookup_AndRecordsStoredHint()
+    {
+        // stored 힌트가 없는 첫 방문: 킥오프가 캐시 조회 없이 즉시 네트워크를 걸고, 저장 성공 후
+        // 힌트를 남긴다. 이전 빌드 캐시명에 딸린 힌트 키는 콜드 로드에서 정리된다.
+        RunScenario("no_hint_kick_skips_lookup");
+    }
+
+    [Test]
+    public void HintedKickoff_CacheHit_DoesNotTouchNetwork()
+    {
+        // 힌트가 있는 재방문: 기존대로 캐시를 조회해 HIT 를 서빙하고 네트워크를 건드리지 않는다.
+        RunScenario("hinted_kick_serves_cache");
+    }
+
+    [Test]
+    public void NoHint_ReloadFetchSkipsCacheLookup()
+    {
+        // 리로드(킥오프 없음)에서도 힌트가 없으면 오버라이드가 조회 없이 bufferedFetch 로 직행한다.
+        RunScenario("no_hint_reload_skips_lookup");
     }
 }

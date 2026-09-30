@@ -8,7 +8,7 @@
 //
 //  이 테스트는 AITPageCacheEmitter.GenerateInterceptorScript 가 생성한 스니펫 본문을
 //  Node 프로세스에서 실제로 실행해(window/location/caches/fetch/console mock 하네스,
-//  네이티브 Response 로 ok/arrayBuffer/clone 시맨틱 실물 유지) 9개 런타임 계약을 검증한다.
+//  네이티브 Response 로 ok/arrayBuffer/clone 시맨틱 실물 유지) 런타임 계약을 검증한다.
 //  계약 근거는 모두 Editor/Package/AITPageCacheEmitter.cs 의 JS 조각 주석에 있다.
 //  하네스 구조는 AITEarlyFetchRuntimeTests 와 동일 패턴(Node 미탐지 시 Assert.Ignore,
 //  ASSERT_FAIL/HARNESS_OK 프로토콜)을 따른다.
@@ -66,7 +66,7 @@ const fetchCalls = [];
 const fetchFactories = new Map();
 async function mockFetch(resource, init) {
   const url = typeof resource === 'string' ? resource : resource.url;
-  fetchCalls.push({ url, method: (init && init.method) || 'GET' });
+  fetchCalls.push({ url, method: (init && init.method) || 'GET', signal: init && init.signal, matchesBefore: cacheCalls.match.length });
   const factory = fetchFactories.get(url);
   if (!factory) throw new Error('mockFetch: no factory registered for ' + url);
   const spec = factory();
@@ -108,6 +108,20 @@ defineGlobal('isSecureContext', true);
 defineGlobal('caches', cachesMock);
 defineGlobal('indexedDB', undefined);
 defineGlobal('fetch', mockFetch);
+
+// populated 힌트용 localStorage mock. 기본 시나리오는 설치하지 않는다(localStorage 부재 = 판단 불가 →
+// 기존 cache-first 경로). 힌트 시나리오만 installLocalStorage() 로 켠다.
+const HINT_KEY = 'ait-pc-populated:' + CACHE;
+const localMap = new Map();
+function installLocalStorage() {
+  defineGlobal('localStorage', {
+    getItem: (k) => (localMap.has(k) ? localMap.get(k) : null),
+    setItem: (k, v) => { localMap.set(k, String(v)); },
+    removeItem: (k) => { localMap.delete(k); },
+  });
+}
+function hintUrls() { return (localMap.get(HINT_KEY) || '').split('\n').filter(Boolean); }
+function lastCall(url) { const a = fetchCalls.filter((c) => c.url === url); return a[a.length - 1]; }
 
 async function settle(times = 6) { for (let i = 0; i < times; i++) await new Promise((r) => setTimeout(r, 0)); }
 
@@ -234,6 +248,90 @@ async function scenarioNativeFirstServes() {
   if (!window.__aitCacheStats.hits.some((h) => h === 'native:' + DATA)) fail('stats.hits must record the native hit');
 }
 
+async function scenarioNoHintSpeculates() {
+  installLocalStorage();
+  fetchFactories.set(DATA, okFactory(1000));
+  runScript();
+  await settle();
+  const pending = window.fetch(DATA);
+  // 선시작: window.fetch 호출이 반환되기 전에(= 캐시 조회 응답을 기다리지 않고) 네트워크가 걸려야 한다.
+  if (countCalls(DATA) !== 1) fail('no-hint boot must start the network request synchronously, got ' + countCalls(DATA));
+  if (lastCall(DATA).matchesBefore !== 0) fail('speculative request must not wait for cache.match');
+  const res = await pending;
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength !== 1000) fail('speculative response body size mismatch: ' + buf.byteLength);
+  await settle();
+  if (countCalls(DATA) !== 1) fail('miss must reuse the speculative request (no double download), got ' + countCalls(DATA));
+  if (lastCall(DATA).signal.aborted) fail('speculative request must not be aborted on a miss');
+  if (!window.__aitCacheStats.puts.includes(DATA)) fail('stats.puts must record ' + DATA);
+  if (!hintUrls().includes(DATA)) fail('put success must record the populated hint, got ' + JSON.stringify(hintUrls()));
+}
+
+async function scenarioNoHintHitAbortsAndHeals() {
+  installLocalStorage();
+  // 힌트를 남기지 않는 populator 가 채운 캐시: 조회 히트가 선시작을 취소하고 힌트를 보정해야 한다.
+  store(CACHE).set(DATA, new Response(bodyBytes(1000), { status: 200 }));
+  fetchFactories.set(DATA, okFactory(555));
+  runScript();
+  await settle();
+  const res = await window.fetch(DATA);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength !== 1000) fail('cache hit must win over the speculative response, got ' + buf.byteLength);
+  if (countCalls(DATA) !== 1) fail('expected exactly one speculative request, got ' + countCalls(DATA));
+  if (!lastCall(DATA).signal.aborted) fail('cache hit must abort the speculative request');
+  if (!window.__aitCacheStats.hits.includes(DATA)) fail('stats.hits must record ' + DATA);
+  if (!hintUrls().includes(DATA)) fail('hit without hint must heal the hint, got ' + JSON.stringify(hintUrls()));
+  // 보정 이후에는 선시작 없이 cache-first 로 돌아가야 한다.
+  const again = await window.fetch(DATA);
+  if (!again || !again.ok) fail('second hit response not ok');
+  if (countCalls(DATA) !== 1) fail('healed hint must restore zero-network hits, got ' + countCalls(DATA));
+}
+
+async function scenarioHintedHitNoNetwork() {
+  installLocalStorage();
+  localMap.set(HINT_KEY, OLD + '\n' + DATA);
+  store(CACHE).set(DATA, new Response(bodyBytes(1000), { status: 200 }));
+  fetchFactories.set(DATA, okFactory(555));
+  runScript();
+  await settle();
+  const res = await window.fetch(DATA);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength !== 1000) fail('hinted hit body size mismatch: ' + buf.byteLength);
+  if (countCalls(DATA) !== 0) fail('hinted hit must not touch network, got ' + countCalls(DATA));
+}
+
+async function scenarioHintedMissFetchesAfterLookup() {
+  installLocalStorage();
+  // 힌트는 있는데 엔트리가 축출된 경우: 조회 미스 뒤에 네트워크 1회(선시작 아님), put 후 힌트 유지.
+  localMap.set(HINT_KEY, OLD + '\n' + DATA);
+  fetchFactories.set(DATA, okFactory(1000));
+  runScript();
+  await settle();
+  const res = await window.fetch(DATA);
+  if (!res || !res.ok) fail('hinted miss response not ok');
+  if (countCalls(DATA) !== 1) fail('hinted miss must hit network exactly once, got ' + countCalls(DATA));
+  if (lastCall(DATA).matchesBefore !== 1) fail('hinted URL must consult cache.match before the network');
+  if (lastCall(DATA).signal) fail('non-speculative request must not carry an abort signal');
+  await settle();
+  // put 이 힌트를 다시 쓸 때 allowlist 밖의 옛 URL 은 정리된다.
+  if (hintUrls().includes(OLD)) fail('hint rewrite must drop non-allowlist URLs, got ' + JSON.stringify(hintUrls()));
+  if (!hintUrls().includes(DATA)) fail('hint must keep ' + DATA);
+}
+
+async function scenarioCallerSignalNoSpeculation() {
+  installLocalStorage();
+  // 호출자가 취소 시그널을 넘기면 선시작하지 않는다(호출자의 취소 시맨틱을 덮어쓰지 않도록).
+  fetchFactories.set(DATA, okFactory(1000));
+  runScript();
+  await settle();
+  const ctrl = new AbortController();
+  const res = await window.fetch(DATA, { signal: ctrl.signal });
+  if (!res || !res.ok) fail('caller-signal response not ok');
+  if (countCalls(DATA) !== 1) fail('expected one network call, got ' + countCalls(DATA));
+  if (lastCall(DATA).matchesBefore !== 1) fail('caller-signal request must follow the cache lookup');
+  if (lastCall(DATA).signal !== ctrl.signal) fail('caller signal must be passed through untouched');
+}
+
 async function main() {
   switch (scenario) {
     case 'hit_short_circuit': await scenarioHitShortCircuit(); break;
@@ -245,6 +343,11 @@ async function main() {
     case 'no_backend_no_patch': await scenarioNoBackendNoPatch(); break;
     case 'install_error_warns': await scenarioInstallErrorWarns(); break;
     case 'native_first_serves': await scenarioNativeFirstServes(); break;
+    case 'no_hint_speculates': await scenarioNoHintSpeculates(); break;
+    case 'no_hint_hit_aborts_and_heals': await scenarioNoHintHitAbortsAndHeals(); break;
+    case 'hinted_hit_no_network': await scenarioHintedHitNoNetwork(); break;
+    case 'hinted_miss_fetches_after_lookup': await scenarioHintedMissFetchesAfterLookup(); break;
+    case 'caller_signal_no_speculation': await scenarioCallerSignalNoSpeculation(); break;
     default: fail('unknown scenario ' + scenario); return;
   }
   process.stdout.write('HARNESS_OK\n');
@@ -406,5 +509,43 @@ main().catch((e) => fail('uncaught: ' + (e && e.stack ? e.stack : e)));
         // cache.put 하지 않아야 한다(스토어 이중화 방지 계약). 신호(__aitNativeSourceEnabled)
         // 노출과 통계 기록('native:' 접두 히트)도 함께 확인한다.
         RunScenario("native_first_serves", nativeOn: true);
+    }
+
+    [Test]
+    public void NoHint_StartsNetworkBeforeCacheLookup_ThenRecordsHint()
+    {
+        // 힌트 없는 부팅(첫 방문): 캐시 조회 응답을 기다리지 않고 네트워크를 선시작해야 한다.
+        // 미스면 그 요청을 그대로 쓰고(이중 다운로드 없음), put 성공 후 힌트를 남긴다.
+        RunScenario("no_hint_speculates");
+    }
+
+    [Test]
+    public void NoHint_CacheHitAbortsSpeculativeRequest_AndHealsHint()
+    {
+        // 힌트 없이 채워진 캐시(힌트를 남기지 않는 populator): 히트가 선시작을 abort 하고 힌트를
+        // 보정해, 다음 요청부터는 네트워크 0 의 cache-first 로 돌아가야 한다.
+        RunScenario("no_hint_hit_aborts_and_heals");
+    }
+
+    [Test]
+    public void HintedUrl_CacheHit_DoesNotTouchNetwork()
+    {
+        // 힌트가 있는 재방문: 선시작 없이 기존 cache-first 그대로(네트워크 0 — 이 기능의 존재 이유).
+        RunScenario("hinted_hit_no_network");
+    }
+
+    [Test]
+    public void HintedUrl_CacheMiss_FetchesAfterLookup_AndPrunesHint()
+    {
+        // 힌트는 있으나 엔트리가 축출된 경우: 조회 뒤 네트워크 1회. 힌트 재기록 시 allowlist 밖의
+        // 옛 URL 은 정리한다.
+        RunScenario("hinted_miss_fetches_after_lookup");
+    }
+
+    [Test]
+    public void CallerAbortSignal_DisablesSpeculation()
+    {
+        // 호출자가 init.signal 을 넘기면 선시작하지 않고 시그널을 그대로 전달한다.
+        RunScenario("caller_signal_no_speculation");
     }
 }

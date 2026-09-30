@@ -51,13 +51,50 @@ wait $UNITY_PID 2>/dev/null || true
 # 회귀가 조용히 묻히지 않도록 fail 처리한다 (분류기가 results-missing으로 잡아낼 수 있도록).
 if [ -f "$RESULTS_FILE" ]; then
   echo "EditMode test results:"
-  if grep -q 'result="Failed"' "$RESULTS_FILE"; then
+
+  # <test-run>의 집계 속성에서 카운트를 읽는다. `grep -o 'result="Passed"'`는
+  # <test-suite>/<test-run> 롤업 요소까지 함께 세어 부풀려진 값을 낸다
+  # (예: 실제 통과 1450건인데 1601건으로 표시되는 문제).
+  extract_attr() {
+    printf '%s' "$1" | grep -oE "${2}=\"[0-9]+\"" | grep -oE '[0-9]+' | head -1
+  }
+
+  TESTRUN_LINE=$(grep -m1 '<test-run ' "$RESULTS_FILE" 2>/dev/null || true)
+
+  TOTAL=""
+  PASSED=""
+  FAILED=""
+  INCONCLUSIVE=""
+  SKIPPED=""
+  if [ -n "$TESTRUN_LINE" ]; then
+    TOTAL=$(extract_attr "$TESTRUN_LINE" "total")
+    PASSED=$(extract_attr "$TESTRUN_LINE" "passed")
+    FAILED=$(extract_attr "$TESTRUN_LINE" "failed")
+    INCONCLUSIVE=$(extract_attr "$TESTRUN_LINE" "inconclusive")
+    SKIPPED=$(extract_attr "$TESTRUN_LINE" "skipped")
+  fi
+
+  # <test-run> 파싱에 실패하면(포맷 변경 등) <test-case> 요소를 직접 세어 대체한다.
+  if [ -z "$PASSED" ]; then
+    echo "::warning::<test-run> 속성을 읽지 못해 <test-case> 개별 카운트로 대체합니다"
+    PASSED=$(grep -o '<test-case[^>]*result="Passed"' "$RESULTS_FILE" | wc -l | tr -d ' ')
+    FAILED=$(grep -o '<test-case[^>]*result="Failed"' "$RESULTS_FILE" | wc -l | tr -d ' ')
+    TOTAL=""
+    INCONCLUSIVE=""
+    SKIPPED=""
+  fi
+
+  HAS_FAILED_CASE=false
+  if grep -q '<test-case[^>]*result="Failed"' "$RESULTS_FILE"; then
+    HAS_FAILED_CASE=true
+  fi
+
+  if [ "$HAS_FAILED_CASE" = true ] || { [ -n "$FAILED" ] && [ "$FAILED" -gt 0 ]; }; then
     echo "::error::EditMode tests failed"
-    grep 'result="Failed"' "$RESULTS_FILE" | head -20
+    grep -o '<test-case[^>]*result="Failed"[^>]*' "$RESULTS_FILE" | head -20
     exit 1
   else
-    PASSED=$(grep -o 'result="Passed"' "$RESULTS_FILE" | wc -l | tr -d ' ')
-    echo "✓ EditMode tests passed (${PASSED} tests)"
+    echo "✓ EditMode tests passed (passed=${PASSED:-0}, failed=${FAILED:-0}, inconclusive=${INCONCLUSIVE:-0}, skipped=${SKIPPED:-0}, total=${TOTAL:-N/A})"
   fi
 else
   echo "::error::EditMode test results file not found at $RESULTS_FILE — Unity가 테스트를 실행하지 못함 (라이선스/Hub/캐시 의심)"

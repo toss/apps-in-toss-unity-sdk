@@ -67,12 +67,54 @@ if ($logReader) {
 # so fail the step loudly so the classifier picks it up as results-missing.
 if (Test-Path $resultsFile) {
   $content = Get-Content $resultsFile -Raw
-  if ($content -match 'result="Failed"') {
+
+  # Read counts from the <test-run> element's aggregate attributes.
+  # 'result="Passed"' alone also matches rollup <test-suite>/<test-run>
+  # elements and inflates the count (e.g. 1450 real passes reported as 1601).
+  function Get-XmlIntAttr([string]$attrs, [string]$name) {
+    $pattern = $name + '="(\d+)"'
+    $m = [regex]::Match($attrs, $pattern)
+    if ($m.Success) { return [int]$m.Groups[1].Value } else { return $null }
+  }
+
+  $total = $null
+  $passed = $null
+  $failed = $null
+  $inconclusive = $null
+  $skipped = $null
+
+  $testRunMatch = [regex]::Match($content, '<test-run\b[^>]*>')
+  if ($testRunMatch.Success) {
+    $attrs = $testRunMatch.Value
+    $total = Get-XmlIntAttr $attrs "total"
+    $passed = Get-XmlIntAttr $attrs "passed"
+    $failed = Get-XmlIntAttr $attrs "failed"
+    $inconclusive = Get-XmlIntAttr $attrs "inconclusive"
+    $skipped = Get-XmlIntAttr $attrs "skipped"
+  }
+
+  # Fall back to counting individual <test-case> elements if <test-run>
+  # attributes could not be parsed (e.g. format change).
+  if ($null -eq $passed) {
+    Write-Host "::warning::Could not read <test-run> attributes, falling back to <test-case> count"
+    $passed = ([regex]::Matches($content, '<test-case\b[^>]*result="Passed"')).Count
+    $failed = ([regex]::Matches($content, '<test-case\b[^>]*result="Failed"')).Count
+    $total = $null
+    $inconclusive = $null
+    $skipped = $null
+  }
+
+  $hasFailedCase = [regex]::IsMatch($content, '<test-case\b[^>]*result="Failed"')
+  $failedCount = if ($null -ne $failed) { $failed } else { 0 }
+
+  if ($hasFailedCase -or ($failedCount -gt 0)) {
     Write-Host "::error::EditMode tests failed"
     exit 1
   } else {
-    $passed = ([regex]::Matches($content, 'result="Passed"')).Count
-    Write-Host "EditMode tests passed ($passed tests)"
+    $totalStr = if ($null -ne $total) { $total } else { "N/A" }
+    $inconclusiveStr = if ($null -ne $inconclusive) { $inconclusive } else { 0 }
+    $skippedStr = if ($null -ne $skipped) { $skipped } else { 0 }
+    Write-Host "EditMode tests passed (passed=$passed, failed=$failedCount, inconclusive=$inconclusiveStr, skipped=$skippedStr, total=$totalStr)"
   }
 } else {
   Write-Host "::error::EditMode test results file not found at $resultsFile - Unity failed to run tests (suspect license/Hub/cache)"

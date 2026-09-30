@@ -2,6 +2,26 @@
 # scripts~/test-editmode.sh — Unity EditMode 테스트 (단일 / 병렬)
 # lib-globals.sh, lib-logging.sh, lib-unity-discovery.sh 이후에 source되어야 함
 
+# NUnit3 결과 XML에서 <test-run> 집계 속성의 passed 카운트를 읽는다.
+# `grep -o 'result="Passed"'`는 <test-suite>/<test-run> 롤업 요소까지 함께 세어
+# 부풀려진 값을 낸다 — <test-run> 파싱이 실패하면 <test-case> 요소를 직접 센다.
+_editmode_passed_count() {
+    local results_file="$1"
+    local testrun_line
+    testrun_line=$(grep -m1 '<test-run ' "$results_file" 2>/dev/null || true)
+
+    local passed=""
+    if [ -n "$testrun_line" ]; then
+        passed=$(printf '%s' "$testrun_line" | grep -oE 'passed="[0-9]+"' | grep -oE '[0-9]+' | head -1)
+    fi
+
+    if [ -z "$passed" ]; then
+        passed=$(grep -o '<test-case[^>]*result="Passed"' "$results_file" | wc -l | tr -d ' ')
+    fi
+
+    printf '%s' "$passed"
+}
+
 # 6. Unity EditMode 테스트
 test_editmode() {
     local version_pattern="${1:-$UNITY_VERSION}"
@@ -61,7 +81,8 @@ test_editmode() {
             print_failure "Unity EditMode Tests ($detected_version)"
             return 1
         else
-            local passed_count=$(grep -o 'result="Passed"' "$RESULTS_FILE" | wc -l | tr -d ' ')
+            local passed_count
+            passed_count=$(_editmode_passed_count "$RESULTS_FILE")
             echo ""
             echo "EditMode: ${passed_count} tests passed"
             print_success "Unity EditMode Tests ($detected_version)"
@@ -164,7 +185,8 @@ run_parallel_editmode() {
                 EDITMODE_FAILED_VERSIONS+=("$pattern")
                 ((FAILED++))
             else
-                local passed_count=$(grep -o 'result="Passed"' "$results_file" | wc -l | tr -d ' ')
+                local passed_count
+                passed_count=$(_editmode_passed_count "$results_file")
                 echo -e "${GREEN}✓${NC} $pattern EditMode tests passed (${passed_count} tests)"
                 ((PASSED++))
             fi

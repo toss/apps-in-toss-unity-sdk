@@ -60,9 +60,9 @@ SDK 정상 흐름의 fallback이나 timeout, 예측된 분기에서 나는 warni
 
 ## 이중 안전망
 
-`Editor/ErrorTracker/AITEditorErrorTracker.cs`의 필터 체인은 두 메커니즘으로 노이즈를 막습니다.
+`Editor/ErrorTracker/AITEditorErrorTracker*.cs`(partial 클래스)의 필터 체인은 두 메커니즘으로 노이즈를 막습니다.
 
-1. **`NonSdkMessagePatterns` 배열** — 알려진 Unity·사용자 메시지의 부분 문자열 매칭. 명시적이라 코드 리뷰로 의도를 확인할 수 있습니다.
+1. **`NonSdkMessagePatterns` 배열**(`AITEditorErrorTracker.NoiseFilter.cs`) — 알려진 Unity·사용자 메시지의 부분 문자열 매칭. 명시적이라 코드 리뷰로 의도를 확인할 수 있습니다.
 2. **strict error_source 게이트**(`ShouldDropAsNonSdkSource`) — `DetermineErrorSource()`가 `"sdk"`로 분류하지 않은 메시지를 전부 드롭합니다. 새 노이즈가 등장해도 패턴 추가 없이 차단됩니다.
 
 두 메커니즘은 독립적이라 한쪽이 실패해도 다른 쪽이 보완합니다. strict 게이트가 SDK 결함을 false negative로 드롭하면 위 무시 가능 이슈 모니터링에서 포착한 뒤 `IsAitRelated` 화이트리스트나 `SdkMessagePatterns` 키워드 추가로 복구합니다.

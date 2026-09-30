@@ -386,6 +386,18 @@ namespace AppsInToss.Editor.Package
       }
     } catch (e) {}
 
+    // populated 힌트 기록: 인터셉터는 이 localStorage 키에 실린 URL 만 네트워크 선시작 없이 cache-first 로
+    // 서빙한다(AITPageCacheEmitter 의 HINT_KEY 와 같은 키·형식 — 절대 URL 을 개행으로 연결).
+    // 힌트가 빠져도 인터셉터가 첫 히트에서 보정하므로 실패는 무시한다.
+    try {
+      var filledKeys = await cache.keys();
+      var filled = [];
+      for (var f = 0; f < filledKeys.length; f++) {
+        if (manifestUrlSet[filledKeys[f].url]) { filled.push(filledKeys[f].url); }
+      }
+      window.localStorage.setItem('ait-pc-populated:' + cacheName, filled.join('\n'));
+    } catch (e) {}
+
     var elapsedMs = Date.now() - startMs;
     signal({
       type: 'ait:warm:done',

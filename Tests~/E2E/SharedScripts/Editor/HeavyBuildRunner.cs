@@ -120,6 +120,21 @@ public class HeavyBuildRunner
             Debug.Log($"[heavy] {posture} posture 적용: {levers}");
         }
 
+        // perf speed posture: 코드 크기 레버(DiskSize(LTO) + IL2CPP OptimizeSize)를 실행 속도 쪽으로 뒤집는다.
+        // 크기 레버는 전송량을 줄이는 대신 엔진 초기화 CPU 를 늘릴 수 있어, 전송이 없는 재방문(warm)과
+        // 고대역 cold 에서 손익이 뒤집히는지를 default↔speed 페어로 잰다. SDK 기본값은 바꾸지 않고
+        // 빌드 파이프라인의 기존 env 오버라이드만 이 프로세스에 주입한다.
+        if (posture == "speed")
+        {
+            string unityVersion = Application.unityVersion;
+            string codeOpt = unityVersion.StartsWith("6000.0.") ? "RuntimeSpeed"   // 6000.0 은 LTO 링크 OOM 위험
+                : unityVersion.StartsWith("6000.") ? "RuntimeSpeedLTO"
+                : "Speed";                                                        // 2021/2022 enum {Speed, Size}
+            System.Environment.SetEnvironmentVariable("AIT_WEBGL_CODE_OPTIMIZATION", codeOpt);
+            System.Environment.SetEnvironmentVariable("AIT_IL2CPP_CODE_GENERATION", "OptimizeSpeed");
+            Debug.Log($"[heavy] speed posture 적용: AIT_WEBGL_CODE_OPTIMIZATION={codeOpt}, AIT_IL2CPP_CODE_GENERATION=OptimizeSpeed");
+        }
+
         // 갤러리 씬(index 1)을 EditorBuildSettings.scenes 에 추가 예약 — ExtraSceneEnvVar 문서 참조.
         // GenerateHeavyContent() 가 이미 씬 저장 성공을 확인했지만(BuildGalleryScene 내부 검증),
         // 이 시점에 다시 한번 존재를 확인해 "씬 누락 → OBJ 세트 전량 누락"을 확실히 차단한다.

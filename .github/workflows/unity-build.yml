@@ -129,11 +129,14 @@ on:
 jobs:
   build:
     name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
-    # Unity 버전별 머신 핀: 같은 self-hosted runner에 두 개 이상의 Unity
-    # LicensingClient가 동시에 살아 있으면 signature/handshake/IPC 충돌이
-    # 발생한다(run #683의 Code 10 등). runner 풀에 unity-<version> 라벨을
-    # 1머신=1버전으로 부여해두고, 매트릭스 잡이 자기 라벨이 붙은 머신으로만
-    # 라우팅되게 해서 LicensingClient가 절대 다른 버전과 마주치지 않게 한다.
+    # Unity 버전별 머신 핀: 매트릭스 잡을 unity-<version> 라벨이 붙은 러너로만
+    # 라우팅해 같은 러너 슬롯이 여러 버전의 Unity를 번갈아 띄우는 것을 막는다
+    # (run #683의 Code 10 등). 다만 macOS·Windows 모두 라벨 5개가 실제로는
+    # 물리 머신 한 대를 공유한다(동일 사용자 계정, actions-runner-N 작업 디렉토리만
+    # 다름) — 라이선싱 IPC 채널도 머신에 하나뿐이라 "1머신=1버전"은 아니다. 이 핀은
+    # "같은 슬롯의 버전 교차"만 막을 뿐이고, 채널을 먼저 만든 에디터의 클라이언트가
+    # 오래된 버전이라 겪는 라이선스 실패는 fix-licensing-client.sh(버전 비교 후
+    # 최신 클라이언트로 자동 교체)가 따로 방어한다.
     #
     # 운영 측 라벨 매핑(필수 선결 조건):
     #   macos-1-1 / windows-2-1 → unity-2021.3
@@ -620,6 +623,21 @@ jobs:
           Write-Host "Firebase .env written to $envFile"
 
       # =====================================================
+      # LicensingClient 서명/버전 자동 복구 (macOS)
+      # macOS 러너는 라벨은 5개지만 실제로는 물리 머신 한 대와 라이선싱 IPC
+      # 채널을 공유한다. 채널을 먼저 만든 에디터의 번들 클라이언트가 오래된
+      # 버전이면(예 2021.3의 v1.15.x) 이후 잡이 "0 entitlements"로 라이선스
+      # 인증에 실패하므로, EditMode 테스트를 포함해 Unity를 실행하는 모든
+      # 경로보다 먼저 실행해 서명 무효/버전 노후 클라이언트를 이 머신에서
+      # 구할 수 있는 가장 최신 서명본으로 교체한다.
+      # =====================================================
+      - name: Fix LicensingClient (macOS)
+        if: inputs.os == 'macos' && (inputs.run-editmode-test || (inputs.run-build && (inputs.test-level || '2') != '0'))
+        env:
+          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
+        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/fix-licensing-client.sh"
+
+      # =====================================================
       # EditMode 테스트 (Level 0+, 빌드 없이 C# 순수 로직 검증)
       # =====================================================
       - name: Run EditMode Tests (macOS)
@@ -763,9 +781,13 @@ jobs:
           fi
 
       # =====================================================
-      # Licensing Client 프로세스 정리 (다른 Unity 버전 충돌 방지)
-      # 같은 머신에서 다른 Unity 버전의 Licensing Client가 실행 중이면
-      # 프로토콜 버전 불일치(505)로 빌드가 실패합니다.
+      # Licensing Client 프로세스 정리 (macOS는 비활성화)
+      # macOS 러너 5개는 물리 머신 한 대를 공유해서, 다른 버전의 LC를 kill하면
+      # 그 순간 같은 머신에서 동시에 돌고 있는 다른 잡의 에디터/라이선스까지
+      # 함께 죽이는 순환 학살이 된다. 그래서 여기서는 kill을 하지 않는다 —
+      # 버전 불일치로 인한 라이선스 실패는 대신 앞단의
+      # "Fix LicensingClient (macOS)" 스텝(서명/버전 비교 후 최신 클라이언트로
+      # 교체)이 방어한다.
       # =====================================================
       - name: Cleanup Licensing Client (macOS)
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
@@ -807,19 +829,6 @@ jobs:
             Write-Host "No conflicting Licensing Client processes found"
           }
           Write-Host "Licensing Client cleanup complete"
-
-      # =====================================================
-      # LicensingClient 코드 서명 검증 및 자동 복구 (macOS)
-      # Unity 구버전의 LicensingClient.app 번들이 코드 서명 무효화(sealed
-      # resource missing or invalid)로 인해 -batchmode에서 라이선스 인증에
-      # 실패하는 문제를 자동 복구합니다.
-      # 조건: codesign --verify가 실패하는 경우에만 작동합니다.
-      # =====================================================
-      - name: Fix LicensingClient Code Signature (macOS)
-        if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
-        env:
-          UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
-        run: bash "$GITHUB_WORKSPACE/.ci/.github/scripts/unity-build/fix-licensing-client-signature.sh"
 
       # =====================================================
       # Unity WebGL 빌드

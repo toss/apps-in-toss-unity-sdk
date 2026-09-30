@@ -1200,6 +1200,25 @@ public class IsKnownNonSdkMessageTests
             "[AIT] diag: warning CS0414 reported in SDK fallback path"));
     }
 
+    [Test]
+    public void UserCodeCS0414_StorageManagerAppsInTossPath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-15T — 사용자 스크립트 AppsInTossStorageManager.cs의 CS0414 경고.
+        // 위 140 composite AND 가드는 파일명을 특정하지 않고 warning CS0414 + Assets 경로 + .cs(L,C)로
+        // 일반화돼 있어 이 메시지도 이미 매칭한다(회귀 확인용, 새 패턴 불필요).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Assets\\ArrowPuzzle\\Scripts\\AppsInToss\\AppsInTossStorageManager.cs(159,49): warning CS0414: The field 'AppsInTossStorageManager.timeoutSeconds' is assigned but its value is never used"));
+    }
+
+    [Test]
+    public void UserCodeCS0414_IAPManagerAppsInTossPath_ReturnsTrue()
+    {
+        // Sentry APPS-IN-TOSS-UNITY-SDK-15S — 사용자 스크립트 AppsInTossIAPManager.cs의 CS0414 경고.
+        // 동일하게 140 composite AND 가드가 파일명 무관하게 이미 매칭한다(회귀 확인용, 새 패턴 불필요).
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityWarning: Assets\\ArrowPuzzle\\Scripts\\AppsInToss\\AppsInTossIAPManager.cs(18,49): warning CS0414: The field 'AppsInTossIAPManager.purchaseResultTimeoutSeconds' is assigned but its value is never used"));
+    }
+
     #endregion
 
     #region pnpm stdout/stderr 패스스루 (SDK-HA, SDK-R6, SDK-VF, SDK-VA)

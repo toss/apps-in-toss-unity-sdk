@@ -62,7 +62,9 @@
         background: var(--loading-bg);
         display: flex;
         flex-direction: column;
-        font-family: 'Toss Product Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        /* 'Apple SD Gothic Neo': SF(-apple-system)에 한글 글리프가 없어 Chrome이 시스템 폴백 폰트를 찾는 비용
+           (4x CPU 실측 재방문 TTFF ~70ms)을 없앤다. Apple 기기의 한글 폴백과 같은 폰트라 모양은 그대로다. */
+        font-family: 'Toss Product Sans', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
     }
 
     .ait-loading-content {

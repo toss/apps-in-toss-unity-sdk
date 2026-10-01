@@ -84,17 +84,23 @@ public class HeavyBuildRunner
 
         var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE") ?? "";
 
-        // "-explicit" 접미사: WebGL 예외 처리를 SDK 기본값(FullWithStacktrace) 대신 Unity 기본값
-        // (ExplicitlyThrownExceptionsOnly)으로 빌드한다. 같은 posture 의 접미사 유무 페어로 예외 처리 비용을 잰다.
-        const string ExplicitSuffix = "-explicit";
-        if (posture.EndsWith(ExplicitSuffix))
+        // 예외 처리 접미사: WebGL 예외 처리를 SDK 기본값(FullWithStacktrace) 대신 다른 모드로 빌드한다.
+        // 같은 posture 의 접미사 유무 페어로 예외 처리 모드별 비용을 잰다.
+        //   -explicit → ExplicitlyThrownExceptionsOnly(Unity 기본값), -nostack → FullWithoutStacktrace
+        foreach (var (suffix, stored, label) in new[]
+                 {
+                     ("-explicit", 1, "ExplicitlyThrownExceptionsOnly"),
+                     ("-nostack", 3, "FullWithoutStacktrace"),
+                 })
         {
-            posture = posture.Substring(0, posture.Length - ExplicitSuffix.Length);
+            if (!posture.EndsWith(suffix)) continue;
+            posture = posture.Substring(0, posture.Length - suffix.Length);
             var config = UnityUtil.GetEditorConf();
-            config.exceptionSupport = 1;   // 저장값 1 = ExplicitlyThrownExceptionsOnly
+            config.exceptionSupport = stored;   // 저장값(UI 순서) — AITBuildInitializer.ConvertToExceptionSupport 참조
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
-            Debug.Log("[heavy] exceptionSupport=ExplicitlyThrownExceptionsOnly 적용");
+            Debug.Log($"[heavy] exceptionSupport={label} 적용");
+            break;
         }
 
         // perf minimal posture: 무거운 콘텐츠도 E2E 픽스처도 없이 SDK 만 얹은 빈 씬을 빌드한다.

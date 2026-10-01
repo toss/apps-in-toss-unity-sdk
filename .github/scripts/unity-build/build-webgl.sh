@@ -21,6 +21,22 @@ echo "Unity Version: $UNITY_VERSION_FULL"
 echo "Unity Path: ${UNITY_PATH}"
 echo "Project Path: ${PROJECT_PATH}"
 
+# perf minimal posture 는 Sentry 를 설치하지 않은 빈 프로젝트를 잰다. Sentry 는 AlwaysLinkAssembly 라
+# 옵션 에셋을 지워도 패키지가 설치돼 있으면 어셈블리가 빌드에 들어가므로(wasm ~0.8MB) 패키지 자체를 뺀다.
+# 테스트 스크립트의 Sentry 코드는 AIT_SENTRY_AVAILABLE versionDefine 으로 막혀 있다.
+if [[ "${AIT_PERF_POSTURE:-}" == minimal* ]]; then
+  python3 - "$PROJECT_PATH/Packages/manifest.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    manifest = json.load(f)
+if manifest.get("dependencies", {}).pop("io.sentry.unity", None) is not None:
+    with open(path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print("[perf] minimal posture: io.sentry.unity 를 매니페스트에서 제거")
+PY
+fi
+
 # self-hosted 러너 잔존 로그 파일 정리
 rm -f "$LOG_FILE"
 

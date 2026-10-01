@@ -114,6 +114,15 @@ public class HeavyBuildRunner
             AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
             // 픽스처의 CreatePrimitive 콜라이더를 지키는 link.xml 이 남으면 빈 씬에도 PhysX(wasm ~2.5MB)가 실린다.
             AssetDatabase.DeleteAsset("Assets/link.xml");
+#if UNITY_6000_3_OR_NEWER
+            {
+                var dm = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/DynamicsManager.asset");
+                var so = new SerializedObject(dm[0]);
+                var prop = so.FindProperty("m_CurrentBackendId");
+                Debug.Log($"[heavy] probe: m_CurrentBackendId {(prop == null ? "없음" : prop.longValue.ToString("x"))} -> decafbad");
+                if (prop != null) { prop.longValue = 0xdecafbad; so.ApplyModifiedPropertiesWithoutUndo(); AssetDatabase.SaveAssets(); }
+            }
+#endif
             System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
             Debug.Log("[heavy] minimal posture: 생성 콘텐츠·픽스처·Sentry 없이 빈 씬 + SDK 로 빌드");
             E2EBuildRunner.BuildWithSDK(minimal: true);

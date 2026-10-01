@@ -30,7 +30,8 @@ import json, sys
 path = sys.argv[1]
 with open(path) as f:
     manifest = json.load(f)
-if manifest.get("dependencies", {}).pop("io.sentry.unity", None) is not None:
+manifest.get("dependencies", {}).pop("com.unity.modules.physics", None)
+if True:
     with open(path, "w") as f:
         json.dump(manifest, f, indent=2)
     print("[perf] minimal posture: io.sentry.unity 를 매니페스트에서 제거")

@@ -229,12 +229,15 @@ namespace AppsInToss.Editor
                 }
             }
             // ===== IL2CPP Code Generation (Meta 로드타임 스택: OptimizeSize) =====
-            // 제네릭 인스턴스화 공유로 wasm 코드 크기 축소. Unity 6+ 전용 API.
-#if UNITY_6000_0_OR_NEWER
-            Il2CppCodeGeneration il2cppCodeGen = editorConfig.il2cppCodeGeneration >= 0
-                ? (Il2CppCodeGeneration)editorConfig.il2cppCodeGeneration
+            // 제네릭 인스턴스화 공유로 wasm 코드 크기 축소. 2022.3 샘플 빌드에서 OptimizeSpeed 로 남은
+            // 제네릭 코드가 wasm 의 약 1/3(20MB)을 차지해 Unity 6 미만에도 같은 기본값을 쓴다.
+            UnityEditor.Build.Il2CppCodeGeneration il2cppCodeGen = editorConfig.il2cppCodeGeneration >= 0
+                ? (UnityEditor.Build.Il2CppCodeGeneration)editorConfig.il2cppCodeGeneration
                 : AITDefaultSettings.GetDefaultIl2CppCodeGeneration();
-            PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, il2cppCodeGen);
+#if UNITY_2022_2_OR_NEWER
+            PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.WebGL, il2cppCodeGen);
+#else
+            EditorUserBuildSettings.il2CppCodeGeneration = il2cppCodeGen;
 #endif
             // ===== WebAssembly 2023 (Meta 로드타임 스택: native exception/SIMD/BigInt/Table) =====
             // 코드 크기·다운로드·시작 시간 단축. 미지원 브라우저에서는 로드 실패하므로
@@ -252,7 +255,7 @@ namespace AppsInToss.Editor
             // fastBuild가 아니면 null을 돌려받아 프로젝트에 이미 설정된 Code Generation 값을
             // 그대로 유지한다 — Player Settings에서 명시적으로 OptimizeSize를 선택한 사용자의
             // 설정을 Production/Deploy Release Candidate/Build & Package에서 조용히 덮어쓰지 않기 위함.
-            // (perf 채널: 위 U6+ 기본 적용이 먼저 실행되고, 빠른 빌드/env 오버라이드가 있으면 여기서 덮어쓴다.)
+            // (perf 채널: 위 기본 적용이 먼저 실행되고, 빠른 빌드/env 오버라이드가 있으면 여기서 덮어쓴다.)
             UnityEditor.Build.Il2CppCodeGeneration? il2cppCodeGeneration = ResolveIl2CppCodeGeneration(fastBuild);
 
             string il2cppCodeGenEnv = System.Environment.GetEnvironmentVariable("AIT_IL2CPP_CODE_GENERATION");

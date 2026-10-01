@@ -16,7 +16,7 @@
   "devDependencies": {
     "@apps-in-toss/devtools": "3.5.0",
     "typescript": "7.0.2",
-    "vite": "8.3.0"
+    "vite": "8.3.1"
   },
   "packageManager": "pnpm@11.6.0"
 }

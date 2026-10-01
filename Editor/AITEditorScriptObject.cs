@@ -929,12 +929,46 @@ namespace AppsInToss
         /// <summary>
         /// 기본 예외 처리 모드
         /// 출처: UnityVersion.md:393, 431
+        /// - Sentry(io.sentry.unity)를 쓰거나 Development 빌드: FullWithStacktrace
+        ///   (Sentry가 stack trace를 캡처하려면 필요. 낮추면 Sentry SDK-8A 런타임 경고 재발)
+        /// - 그 외: FullWithoutStacktrace. null 체크·예외 catch 동작은 그대로이고 stack trace만 빠진다.
+        ///   perf.yml 9회 paired 실측(heavy, gzip, 4× CPU): TTFF 2021.3 −668ms, 6000.0 −222ms,
+        ///   6000.3 −256ms, 세 버전 모두 9/9 음수. stack trace 계측 코드가 빠져 wasm이 1~2.5MB 줄어든다.
         /// </summary>
-        public static WebGLExceptionSupport GetDefaultExceptionSupport()
+        public static WebGLExceptionSupport GetDefaultExceptionSupport(bool developmentBuild = false)
         {
-            // Sentry/에러 추적 SDK가 stack trace를 캡처하려면 FullWithStacktrace 필요.
-            // Unity 기본값(ExplicitlyThrownExceptionsOnly)을 올려서 Sentry의 런타임 경고 제거.
-            return WebGLExceptionSupport.FullWithStacktrace;
+            if (developmentBuild || IsSentryConfigured())
+            {
+                return WebGLExceptionSupport.FullWithStacktrace;
+            }
+            return WebGLExceptionSupport.FullWithoutStacktrace;
+        }
+
+        // ScriptableSentryUnityOptions.GetConfigPath() 기본값. 메인 Editor asmdef는 Sentry를 참조하지 않아 상수로 둔다.
+        private const string SentryOptionsAssetPath = "Assets/Resources/Sentry/SentryOptions.asset";
+
+        /// <summary>
+        /// 이 빌드가 Sentry로 에러를 수집하는지 판별한다.
+        /// 패키지(Sentry.Unity 어셈블리)가 있고, 옵션 asset이 있거나 빌드 시 SENTRY_DSN 주입
+        /// (AITSentryDsnInjector)이 예정된 경우. 패키지만 깔리고 설정이 없으면 수집하지 않으므로 제외한다.
+        /// </summary>
+        internal static bool IsSentryConfigured()
+        {
+            bool installed = false;
+            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly.GetName().Name == "Sentry.Unity")
+                {
+                    installed = true;
+                    break;
+                }
+            }
+            if (!installed)
+            {
+                return false;
+            }
+            return System.IO.File.Exists(SentryOptionsAssetPath)
+                || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("SENTRY_DSN"));
         }
 
         /// <summary>

@@ -114,7 +114,10 @@ namespace AppsInToss.Editor
             // ===== 예외 처리 (사용자 지정 또는 자동) =====
             // 출처: UnityVersion.md:393, 431
             // 실제 적용은 아래 ApplySentryFriendlyWebGLSettings에서 수행 (stack trace와 함께 관리)
-            WebGLExceptionSupport exceptionSupport = ConvertToExceptionSupport(editorConfig.exceptionSupport);
+            WebGLExceptionSupport exceptionSupport = editorConfig.exceptionSupport >= 0
+                ? ConvertToExceptionSupport(editorConfig.exceptionSupport)
+                : AITDefaultSettings.GetDefaultExceptionSupport(developmentBuild: profile != null && profile.developmentBuild);
+            Debug.Log($"[AIT] 예외 처리 모드: {exceptionSupport}{(editorConfig.exceptionSupport < 0 ? " (자동)" : "")}");
 
             // ===== 파일 해싱 =====
             // Unity 2021.3에서 nameFilesAsHashes = true 시 Bee 빌드 루프 버그 발생
@@ -521,7 +524,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// Sentry/에러 추적 SDK가 요구하는 WebGL 설정을 적용한다.
         /// 호출 위치: <see cref="Init"/> 내 IL2CPP 설정 직후 (Init이 이 메서드에 위임).
-        /// - WebGL exceptionSupport를 지정 값으로 설정 (기본 FullWithStacktrace — stack trace 캡처 가능)
+        /// - WebGL exceptionSupport를 지정 값으로 설정 (기본값은 AITDefaultSettings.GetDefaultExceptionSupport 참조)
         /// - Stack Trace Log Type은 WebGL에서 지원되는 ScriptOnly로 고정 (Full은 IL2CPP/WebGL 조합 미지원)
         ///
         /// 주의: PlayerSettings.SetStackTraceLogType은 플랫폼별이 아닌 프로젝트 전역 설정이다.

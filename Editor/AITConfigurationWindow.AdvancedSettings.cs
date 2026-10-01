@@ -27,10 +27,8 @@ namespace AppsInToss.Editor
             // (전 버전 reflection 적용이라 #if 가드 없음. API 부재 버전은 fail-safe)
             DrawWebGLCodeOptimizationSetting();
 
-#if UNITY_6000_0_OR_NEWER
             // IL2CPP Code Generation (OptimizeSize) — Meta 로드타임 스택
             DrawIl2CppCodeGenerationSetting();
-#endif
 
 #if UNITY_2023_3_OR_NEWER
             GUILayout.Space(10);
@@ -239,7 +237,6 @@ namespace AppsInToss.Editor
             }
         }
 
-#if UNITY_6000_0_OR_NEWER
         private void DrawIl2CppCodeGenerationSetting()
         {
             UnityEditor.Build.Il2CppCodeGeneration defaultCodeGen = AITDefaultSettings.GetDefaultIl2CppCodeGeneration();
@@ -265,7 +262,6 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.EndHorizontal();
         }
-#endif
 
 #if UNITY_6000_0_OR_NEWER
         private void DrawWasm2023Setting()

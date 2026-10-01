@@ -333,7 +333,7 @@ namespace AppsInToss
 
         [Tooltip("-1 = 자동 (Disk Size with LTO 적용 — Coatsink/Meta 로드타임 스택의 실제 LTO 레버). 0 = 미적용(Unity 설정 유지), 1 = 적용")]
         public int webGLCodeOptimization = -1;
-        [Tooltip("-1 = 자동 (OptimizeSize, Unity 6+). 0 = OptimizeSpeed, 1 = OptimizeSize — 제네릭 인스턴스 공유로 wasm 코드 크기 축소")]
+        [Tooltip("-1 = 자동 (OptimizeSize). 0 = OptimizeSpeed, 1 = OptimizeSize — 제네릭 인스턴스 공유로 wasm 코드 크기 축소")]
         public int il2cppCodeGeneration = -1;
 
         [Header("Unity 6 전용 설정")]
@@ -888,9 +888,8 @@ namespace AppsInToss
         {
             return AppsInToss.Editor.AITWebGLCodeOptimization.DiskSizeLTO;
         }
-#if UNITY_6000_0_OR_NEWER
         /// <summary>
-        /// 기본 IL2CPP 코드 생성 방식 (Unity 6+): OptimizeSize
+        /// 기본 IL2CPP 코드 생성 방식: OptimizeSize
         /// Meta+Unity 로드타임 스택의 "Faster (smaller) builds" — 제네릭 인스턴스화를
         /// 공유해 제네릭 폭발(측정상 ~130k 함수)을 붕괴시켜 wasm 코드 크기를 축소한다.
         /// trade-off: 공유 제네릭의 미세한 런타임 디스패치 비용(정확성 변화 아님).
@@ -900,7 +899,6 @@ namespace AppsInToss
         {
             return UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize;
         }
-#endif
         /// 기본 WebAssembly 2023 타겟 여부 (Unity 6+): 활성화
         /// Meta+Unity 로드타임 최적화: native exception/SIMD/BigInt/WebAssembly.Table 등
         /// 2023 기능셋을 번들해 코드 크기·다운로드·시작 시간을 단축한다.

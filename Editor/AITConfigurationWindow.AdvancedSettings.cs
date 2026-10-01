@@ -367,7 +367,7 @@ namespace AppsInToss.Editor
             DrawModifiedIndicator(isModified);
 
             string label = config.exceptionSupport < 0
-                ? $"예외 처리 모드 (자동: {defaultValue})"
+                ? $"예외 처리 모드 (자동: {defaultValue}, Dev 빌드는 FullWithStacktrace)"
                 : "예외 처리 모드";
 
             string[] options = { $"자동 ({defaultValue})", "None", "ExplicitlyThrownOnly", "FullWithStacktrace", "FullWithoutStacktrace" };

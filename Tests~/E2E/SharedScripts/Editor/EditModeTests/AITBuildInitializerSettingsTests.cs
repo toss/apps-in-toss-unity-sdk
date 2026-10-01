@@ -34,13 +34,29 @@ public class AITBuildInitializerSettingsTests
     // =====================================================
 
     [Test]
-    public void GetDefaultExceptionSupport_Returns_FullWithStacktrace()
+    public void GetDefaultExceptionSupport_Keeps_Stacktrace_When_Sentry_Or_DevBuild()
     {
         // Sentry가 stack trace를 캡처하려면 FullWithStacktrace 필요
         // 이 값이 낮아지면 Sentry에서 SDK-8A 경고가 재발생함
+        Assert.AreEqual(WebGLExceptionSupport.FullWithStacktrace,
+            AITDefaultSettings.GetDefaultExceptionSupport(developmentBuild: true),
+            "Development builds must keep FullWithStacktrace");
+
+        var expected = AITDefaultSettings.IsSentryConfigured()
+            ? WebGLExceptionSupport.FullWithStacktrace
+            : WebGLExceptionSupport.FullWithoutStacktrace;
+        Assert.AreEqual(expected, AITDefaultSettings.GetDefaultExceptionSupport(),
+            "Production default must keep stack traces only when Sentry is configured");
+    }
+
+    [Test]
+    public void GetDefaultExceptionSupport_Never_Drops_Below_FullWithoutStacktrace()
+    {
+        // None/ExplicitlyThrownOnly는 null 체크가 빠져 NRE 동작이 바뀌므로 자동 기본값으로 쓰지 않는다
         var result = AITDefaultSettings.GetDefaultExceptionSupport();
-        Assert.AreEqual(WebGLExceptionSupport.FullWithStacktrace, result,
-            "Default exception support must be FullWithStacktrace to avoid Sentry SDK-8A warning");
+        Assert.That(result == WebGLExceptionSupport.FullWithStacktrace
+                    || result == WebGLExceptionSupport.FullWithoutStacktrace,
+            $"Unexpected default exception support: {result}");
     }
 
     // =====================================================

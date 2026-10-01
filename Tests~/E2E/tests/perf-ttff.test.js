@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { execSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as net from 'net';
+import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -130,6 +131,8 @@ console.log(`📦 Heavy project: ${PROJECT}`);
 console.log(`🏷️  Unity version: ${UNITY_VERSION}`);
 console.log(`🔌 Perf server port: ${serverPort}`);
 console.log(`🎚️  Throttle: CPU ${CPU_THROTTLE}×, net ${NET_DOWN_MBPS}/${NET_UP_MBPS} Mbps, RTT ${NET_RTT_MS}ms, iters=${ITERATIONS}`);
+// 호스티드 러너는 같은 이미지라도 CPU 가 달라 run 간 TTFF 가 1초 가까이 벌어진다. 비교할 때 기준으로 남긴다.
+console.log(`🖥️  Runner CPU: ${os.cpus()[0]?.model ?? 'unknown'} × ${os.cpus().length}`);
 if (PAIR_MODE) {
   console.log(`🔀 Pair mode: A[${LABEL_A}]=${PROJECT} vs B[${LABEL_B}]=${PAIR_PROJECT}`);
   console.log(`🔌 Pair(B) server port: ${pairPort}`);

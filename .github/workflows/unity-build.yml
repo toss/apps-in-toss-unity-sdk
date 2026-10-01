@@ -847,7 +847,9 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         uses: nick-invision/retry@v4
         env:
-          AIT_DEBUG_CONSOLE: "true"
+          # perf(HeavyBuildRunner)는 배포 산출물과 같아야 하므로 디버그 콘솔(vConsole)을 넣지 않는다.
+          # 넣으면 vConsole 스크립트 ~340KB 전송과 부팅 전 실행이 TTFF 에 섞인다.
+          AIT_DEBUG_CONSOLE: ${{ inputs.build-method == 'HeavyBuildRunner.CommandLineHeavyBuild' && 'false' || 'true' }}
           # 압축 포맷: compression-format 입력이 명시되면 우선(perf=1/gzip), 빈 값이면 fast-build 파생.
           #   E2E 기본 fast-build(true)→0(Disabled, vite preview 전용·압축 불필요·wallclock 절감).
           #   preview/perf 의 fast-build=false 경로에서 빈 값이면 ''(SDK 기본 압축). perf 는 '1' 명시.
@@ -893,7 +895,7 @@ jobs:
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         uses: nick-invision/retry@v4
         env:
-          AIT_DEBUG_CONSOLE: "true"
+          AIT_DEBUG_CONSOLE: ${{ inputs.build-method == 'HeavyBuildRunner.CommandLineHeavyBuild' && 'false' || 'true' }}
           # macOS step의 동일 주석 참조 (compression-format 명시 우선, dev/il2cpp 는 fast-build 단일 스위치).
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
           AIT_PERF_POSTURE: ${{ inputs.perf-posture }}

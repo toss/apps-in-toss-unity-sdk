@@ -82,16 +82,32 @@ public class HeavyBuildRunner
         Debug.Log("Heavy Perf Fixture Build");
         Debug.Log("========================================");
 
-        var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE");
+        var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE") ?? "";
+
+        // "-explicit" 접미사: WebGL 예외 처리를 SDK 기본값(FullWithStacktrace) 대신 Unity 기본값
+        // (ExplicitlyThrownExceptionsOnly)으로 빌드한다. 같은 posture 의 접미사 유무 페어로 예외 처리 비용을 잰다.
+        const string ExplicitSuffix = "-explicit";
+        if (posture.EndsWith(ExplicitSuffix))
+        {
+            posture = posture.Substring(0, posture.Length - ExplicitSuffix.Length);
+            var config = UnityUtil.GetEditorConf();
+            config.exceptionSupport = 1;   // 저장값 1 = ExplicitlyThrownExceptionsOnly
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[heavy] exceptionSupport=ExplicitlyThrownExceptionsOnly 적용");
+        }
 
         // perf minimal posture: 무거운 콘텐츠도 E2E 픽스처도 없이 SDK 만 얹은 빈 씬을 빌드한다.
         // "거의 빈 프로젝트"의 로드 하한과 그중 SDK 몫을 재는 용도다. 지난 빌드가 남긴 생성 콘텐츠가
-        // Resources 에 있으면 .data 에 실리므로 먼저 지운다.
+        // Resources 에 있으면 .data 에 실리므로 먼저 지운다. Sentry 는 사용자가 따로 설치·설정하는 패키지라
+        // 빈 프로젝트에는 없다고 보고, DSN 주입을 막고 남은 옵션 에셋을 지워 Sentry 초기화가 돌지 않게 한다.
         if (posture == "minimal")
         {
             AssetDatabase.DeleteAsset(HeavyRoot);
             AssetDatabase.DeleteAsset(HeavyGenRoot);
-            Debug.Log("[heavy] minimal posture: 생성 콘텐츠·픽스처 없이 빈 씬 + SDK 로 빌드");
+            AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
+            System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
+            Debug.Log("[heavy] minimal posture: 생성 콘텐츠·픽스처·Sentry 없이 빈 씬 + SDK 로 빌드");
             E2EBuildRunner.BuildWithSDK(minimal: true);
             return;
         }

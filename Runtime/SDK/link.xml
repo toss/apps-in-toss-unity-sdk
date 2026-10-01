@@ -23,10 +23,9 @@
 
     <!-- Preserve Newtonsoft.Json attribute types for deserialization -->
     <!-- Without these, [JsonProperty] attributes are stripped and deserialization fails -->
-    <assembly fullname="Newtonsoft.Json" preserve="all">
+    <assembly fullname="Newtonsoft.Json">
         <type fullname="Newtonsoft.Json.JsonPropertyAttribute" preserve="all"/>
         <type fullname="Newtonsoft.Json.JsonConverterAttribute" preserve="all"/>
-        <type fullname="Newtonsoft.Json.Converters.StringEnumConverter" preserve="all"/>
     </assembly>
 
     <!-- Preserve System.Runtime.Serialization for EnumMember attribute -->

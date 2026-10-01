@@ -97,6 +97,9 @@ namespace AppsInToss.Editor
             DrawStripUnusedMeshComponentsSetting();
 
             GUILayout.Space(10);
+            DrawUIToolkitModuleSetting();
+
+            GUILayout.Space(10);
             EditorGUILayout.LabelField("빌드 전 검사", EditorStyles.boldLabel);
 
             // 빌드 전 최적화 검사
@@ -543,6 +546,60 @@ namespace AppsInToss.Editor
                 config.stripUnusedMeshComponents = -1;
             }
 
+            EditorGUILayout.EndHorizontal();
+        }
+
+        // 검사는 비용이 있어 섹션이 처음 그려질 때와 "다시 검사" 클릭 때만 돌리고 결과를 캐시한다.
+        private AITUIToolkitModuleAdvisor.Result uiToolkitResult;
+
+        private void DrawUIToolkitModuleSetting()
+        {
+            EditorGUILayout.LabelField(AITUIToolkitModuleAdvisor.SectionName + " (빌드 크기/첫 화면)", EditorStyles.boldLabel);
+            GUILayout.Space(5);
+
+            if (uiToolkitResult == null)
+                uiToolkitResult = AITUIToolkitModuleAdvisor.Analyze();
+            var r = uiToolkitResult;
+
+            EditorGUILayout.LabelField("상태", r.ModuleEnabled ? "켜짐 (com.unity.modules.uielements)" : "꺼짐");
+
+            if (r.Failed)
+            {
+                EditorGUILayout.HelpBox("검사에 실패했습니다. 콘솔 로그를 확인하세요.", MessageType.Warning);
+            }
+            else if (r.Recommended)
+            {
+                EditorGUILayout.HelpBox(
+                    "런타임에서 UI Toolkit을 쓰는 흔적이 없습니다. 모듈을 끄면 빈 앱 기준 첫 화면이 약 0.15~0.55초 빨라지고 wasm이 약 0.5~1MB 줄었습니다.",
+                    MessageType.Info);
+            }
+            else if (r.ModuleEnabled)
+            {
+                EditorGUILayout.HelpBox("끄기를 권장하지 않습니다. 아래 사유를 확인하세요.", MessageType.None);
+            }
+
+            if (r.DependentPackages.Count > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "이 모듈에 의존하는 패키지가 있어 manifest에서 지워도 실제로는 제거되지 않습니다: " +
+                    string.Join(", ", r.DependentPackages),
+                    MessageType.Warning);
+            }
+            foreach (var usage in r.RuntimeUsages)
+                EditorGUILayout.HelpBox(usage, MessageType.Warning);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("다시 검사"))
+                uiToolkitResult = AITUIToolkitModuleAdvisor.Analyze();
+            if (r.ModuleEnabled)
+            {
+                if (GUILayout.Button("모듈 끄기"))
+                    AITUIToolkitModuleAdvisor.Disable();
+            }
+            else if (GUILayout.Button("모듈 켜기"))
+            {
+                AITUIToolkitModuleAdvisor.Enable();
+            }
             EditorGUILayout.EndHorizontal();
         }
 

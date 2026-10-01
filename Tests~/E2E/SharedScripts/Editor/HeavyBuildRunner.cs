@@ -82,6 +82,20 @@ public class HeavyBuildRunner
         Debug.Log("Heavy Perf Fixture Build");
         Debug.Log("========================================");
 
+        var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE");
+
+        // perf minimal posture: 무거운 콘텐츠도 E2E 픽스처도 없이 SDK 만 얹은 빈 씬을 빌드한다.
+        // "거의 빈 프로젝트"의 로드 하한과 그중 SDK 몫을 재는 용도다. 지난 빌드가 남긴 생성 콘텐츠가
+        // Resources 에 있으면 .data 에 실리므로 먼저 지운다.
+        if (posture == "minimal")
+        {
+            AssetDatabase.DeleteAsset(HeavyRoot);
+            AssetDatabase.DeleteAsset(HeavyGenRoot);
+            Debug.Log("[heavy] minimal posture: 생성 콘텐츠·픽스처 없이 빈 씬 + SDK 로 빌드");
+            E2EBuildRunner.BuildWithSDK(minimal: true);
+            return;
+        }
+
         try
         {
             GenerateHeavyContent();
@@ -102,7 +116,6 @@ public class HeavyBuildRunner
         // fullmesh 는 full 에 meshCompression=1 만 더한 것 — 같은 픽스처에서 full↔fullmesh A/B 로
         // Mesh 압축 레버 단독 효과를 격리 측정하기 위한 posture 다.
         // dispatch 의 posture 입력이 unity-build.yml → AIT_PERF_POSTURE 로 전파된 것.
-        var posture = System.Environment.GetEnvironmentVariable("AIT_PERF_POSTURE");
         if (posture == "full" || posture == "fullmesh")
         {
             var config = UnityUtil.GetEditorConf();

@@ -18,11 +18,22 @@ public class E2EBuildRunner
     /// (UIBuilder.cs 의 Resources.Load("Fonts/NotoSansKR-Regular") 상대 경로가 이 이름에 의존한다).</summary>
     private const string NotoSansKrFileName = "NotoSansKR-Regular.otf";
 
+    /// <summary>minimal 빌드에서만 켜는 WebGL 스크립팅 디파인. E2EBootstrapper 의 자동 부팅을 막아
+    /// 테스트 픽스처 코드가 스트리핑되게 한다.</summary>
+    internal const string MinimalDefine = "AIT_PERF_MINIMAL";
+
     [MenuItem("E2E/Build with SDK")]
     public static void BuildWithSDK()
     {
+        BuildWithSDK(minimal: false);
+    }
+
+    /// <param name="minimal">true 면 픽스처(부팅 폰트·벤치 씬 오브젝트·E2E 부트스트래퍼)를 빼고
+    /// 카메라만 있는 빈 씬에 SDK 만 얹어 빌드한다. 빈 프로젝트의 로드 하한을 재는 perf minimal posture 용.</param>
+    public static void BuildWithSDK(bool minimal)
+    {
         Debug.Log("========================================");
-        Debug.Log("E2E Build with Apps in Toss SDK");
+        Debug.Log(minimal ? "E2E Build with Apps in Toss SDK (minimal)" : "E2E Build with Apps in Toss SDK");
         Debug.Log("========================================");
 
         // 폰트 원본은 패키지 비임포트 폴더(Runtime/Fonts~/)에 있어 "패키지 Runtime/Resources/ 는
@@ -31,7 +42,14 @@ public class E2EBuildRunner
         // Resources.Load("Fonts/NotoSansKR-Regular") 경로를 유지하면서 (b) Assets/ 하위이므로
         // fontSubset 레버 사정권에 들어오게 한다. 다른 러너(HeavyBuildRunner/DeployProbeBuildRunner)도
         // 이 폰트를 별도 용도로 복사하지만 이 훅에 의존하지 않고 각자 원본에서 직접 해석한다.
-        EnsureFontsCopiedToResources();
+        if (minimal)
+        {
+            DeleteStagedFonts();
+        }
+        else
+        {
+            EnsureFontsCopiedToResources();
+        }
 
         // 포트 충돌 방지: Profiler 자동연결 비활성화
         // Unity WebGL 빌드 시 websockify가 포트를 사용하는데 (6000.x: 35020, 2021-2022: 54998),
@@ -47,6 +65,15 @@ public class E2EBuildRunner
         // webGLExceptionSupport가 커밋값 1에서 3으로 고착돼 ProjectSettings.asset이 계속 dirty였다).
         // E2E 하네스는 픽스처를 더럽히면 안 되므로 러너가 직접 원본을 들고 있다가 빌드 후 되돌린다.
         var preBuildPlayerSettings = PlayerSettingsSnapshot.Capture();
+        // 스크립팅 디파인은 스냅샷에 없으므로 따로 들고 있다가 되돌린다.
+        string originalWebGLDefines = GetWebGLDefines();
+        if (minimal)
+        {
+            SetWebGLDefines(string.IsNullOrEmpty(originalWebGLDefines)
+                ? MinimalDefine
+                : originalWebGLDefines + ";" + MinimalDefine);
+            Debug.Log($"✓ WebGL 스크립팅 디파인에 {MinimalDefine} 추가");
+        }
 
         // 1. 씬 생성 및 설정
         Debug.Log("[1/5] Creating and setting up benchmark scene...");
@@ -77,7 +104,10 @@ public class E2EBuildRunner
 #else
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 #endif
-        SetupBenchmarkScene();
+        if (!minimal)
+        {
+            SetupBenchmarkScene();
+        }
 
         // 씬 저장
         EditorSceneManager.SaveScene(scene, scenePath);
@@ -172,6 +202,10 @@ public class E2EBuildRunner
         // 결과에 영향이 없다. EditorApplication.Exit 이후에는 finally가 보장되지 않으므로
         // 분기 이전에 처리한다.
         preBuildPlayerSettings.Restore();
+        if (minimal)
+        {
+            SetWebGLDefines(originalWebGLDefines);
+        }
         AssetDatabase.SaveAssets();
         Debug.Log("✓ PlayerSettings restored to pre-build state");
 
@@ -517,6 +551,35 @@ public class E2EBuildRunner
         }
 
         Debug.Log("Benchmark scene setup complete (scripts will be added at runtime by E2EBootstrapper)");
+    }
+
+    /// <summary>이전 빌드가 스테이징한 부팅 폰트를 지운다. Resources 밑이라 남아 있으면 minimal 빌드의 .data 에 실린다.</summary>
+    private static void DeleteStagedFonts()
+    {
+        string path = "Assets/Resources/Fonts/" + NotoSansKrFileName;
+        if (File.Exists(path))
+        {
+            AssetDatabase.DeleteAsset(path);
+            Debug.Log($"✓ Staged font removed for minimal build: {path}");
+        }
+    }
+
+    private static string GetWebGLDefines()
+    {
+#if UNITY_6000_0_OR_NEWER
+        return PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.WebGL);
+#else
+        return PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL);
+#endif
+    }
+
+    private static void SetWebGLDefines(string defines)
+    {
+#if UNITY_6000_0_OR_NEWER
+        PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.WebGL, defines);
+#else
+        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, defines);
+#endif
     }
 
     private static Light FindLight()

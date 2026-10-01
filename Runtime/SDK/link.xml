@@ -23,7 +23,10 @@
 
     <!-- Preserve Newtonsoft.Json attribute types for deserialization -->
     <!-- Without these, [JsonProperty] attributes are stripped and deserialization fails -->
-    <assembly fullname="Newtonsoft.Json" preserve="all">
+    <!-- Do not preserve the whole assembly: preserve="all" kept XmlNodeConverter/DataTableConverter etc. -->
+    <!-- and dragged System.Xml, System.Data and System.Linq.Expressions into every build (~3MB+ wasm). -->
+    <!-- The rest of Newtonsoft is kept by static reachability and the package's own link.xml. -->
+    <assembly fullname="Newtonsoft.Json">
         <type fullname="Newtonsoft.Json.JsonPropertyAttribute" preserve="all"/>
         <type fullname="Newtonsoft.Json.JsonConverterAttribute" preserve="all"/>
         <type fullname="Newtonsoft.Json.Converters.StringEnumConverter" preserve="all"/>

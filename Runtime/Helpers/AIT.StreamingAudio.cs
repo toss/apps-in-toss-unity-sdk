@@ -111,6 +111,8 @@ namespace AppsInToss
             Destroy(gameObject);
             yield break;
 #endif
+            // 매니페스트 요청(UnityWebRequest 첫 사용)이 첫 프레임 앞에 끼지 않도록 한 프레임 미룬다.
+            yield return null;
             yield return LoadManifest();
             if (!ready || byName.Count == 0)
             {

@@ -290,12 +290,13 @@ async function measureLoad(page, url) {
   // 첫 화면 draw 대기 (= TTFF). 미검출 시 unityInstance ready로 폴백.
   const gotDraw = await page.waitForFunction(
     () => window['__TTFF__'] !== null,
+    undefined, // waitForFunction 의 두 번째 인자는 pageFunction 에 넘길 arg 다. timeout 은 세 번째(options)에 둔다.
     { timeout: 480000 }
   ).then(() => true).catch(() => false);
 
   if (!gotDraw) {
     // 폴백: Unity 인스턴스 준비라도 확인 (측정은 무효 처리하되 진단 기록)
-    await page.waitForFunction(() => window['unityInstance'] !== undefined, { timeout: 60000 })
+    await page.waitForFunction(() => window['unityInstance'] !== undefined, undefined, { timeout: 60000 })
       .then(() => { unityReady = true; })
       .catch(() => { unityReady = false; });
   }
@@ -325,7 +326,7 @@ async function measureLoad(page, url) {
   // 오버레이가 걷힐 때까지 기다린다(템플릿 상한은 인스턴스 준비 + 500ms). 오버레이가 없는 빌드는 null 로 남는다.
   let overlayHidden = null;
   if (gotDraw) {
-    await page.waitForFunction(() => window['__overlayHidden__'] !== null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => window['__overlayHidden__'] !== null, undefined, { timeout: 5000 }).catch(() => {});
     overlayHidden = await page.evaluate(() => window['__overlayHidden__']);
   }
   const firstVisible = (typeof metrics.ttff === 'number' && typeof overlayHidden === 'number')
@@ -339,10 +340,14 @@ async function measureLoad(page, url) {
  * 상한까지만 기다리고 그대로 잰다(그 경우 warm 값은 네트워크 재다운로드를 포함한다).
  */
 async function waitForCachePuts(page) {
+  // 기대 put 수: data + wasm. Chromium 에서는 wasm 이 HTTP 캐시로 빠져(__aitWasmViaHttpCache) 페이지 캐시에 put 되지 않으므로 1이다.
+  // timeout 은 반드시 세 번째 인자(options)로 넘긴다. 두 번째(arg)에 두면 상한 없이 영구 대기해
+  // put 이 기대 수에 못 미치는 빌드에서 재방문 측정이 120s 상한까지 멈춘다(실측 회귀).
   await page.waitForFunction(() => {
     const s = window['__aitCacheStats'];
-    return !!s && Array.isArray(s.puts) && s.puts.length >= 2;
-  }, { timeout: 15000 }).catch(() => {});
+    const need = window['__aitWasmViaHttpCache'] ? 1 : 2;
+    return !!s && Array.isArray(s.puts) && s.puts.length >= need;
+  }, undefined, { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(500);
 }
 

@@ -102,27 +102,99 @@
         }
     </style>
 
-    <!-- 소프트 키보드 대응: Unity 가 만드는 입력창은 position:fixed; bottom:0 이라 WKWebView 가 이를 드러내려고
-         문서를 스크롤하고, 그때 position:fixed 인 #unity-container 가 함께 밀려 상단 UI 가 화면 밖으로 나간다.
-         visualViewport.offsetTop 만큼 컨테이너의 top 을 되돌려 상단을 보이는 영역에 맞춘다.
-         높이는 건드리지 않는다. 캔버스 크기가 바뀌면 Unity 가 프레임버퍼를 다시 만들고 UI 전체를 리레이아웃하는데,
-         키보드 애니메이션 동안 프레임마다 그 비용이 들어 화면이 끊긴다. 대신 키보드에 가려지는 아래쪽 영역은
-         보이지 않는다(네이티브 adjustPan 과 같은 동작). 키보드가 내려가면 인라인 top 을 지워 CSS 기본값(top:0)으로 돌아간다. -->
+    <!-- 소프트 키보드 대응. Unity 의 입력창은 position:fixed; bottom:0 이라 WKWebView 가 이를 드러내려고 문서를 스크롤하고,
+         그때 position:fixed 인 #unity-container 가 함께 밀려 상단 UI 가 화면 밖으로 나간다. 모드는 빌드 시
+         Editor 설정값으로 치환된다(미치환·알 수 없는 값은 pan).
+         pan(기본): 컨테이너 top 을 visualViewport.offsetTop 으로 되돌리고, 사용자가 탭한 입력 위치가 키보드에 가리면
+           그만큼만 transform:translateY 로 올린다(네이티브 adjustPan). 높이는 바꾸지 않아 캔버스 리사이즈가 없다.
+         resize: 컨테이너 top·height 를 visualViewport 에 맞춘다. 캔버스가 줄어 Unity 가 프레임버퍼를 다시 만들고
+           UI 를 리레이아웃하므로 키보드 애니메이션 동안 프레임마다 비용이 든다.
+         none: top 보정만 한다. 아래쪽 입력창은 키보드에 가려질 수 있다.
+         키보드가 내려가면 인라인 top·height·transform 을 지워 CSS 기본값으로 돌아간다. -->
     <script>
         (function () {
             var vv = window.visualViewport;
             if (!vv) return;
+            var mode = '%AIT_KEYBOARD_MODE%';
+            if (mode !== 'resize' && mode !== 'none') mode = 'pan';
+            var KEYBOARD_MIN_HEIGHT = 100;   // innerHeight - vv.height 가 이 값을 넘으면 키보드가 떠 있다고 본다
+            var PAN_MARGIN = 56;             // 입력창 아래쪽 절반 + 여유(CSS px)
+            var POINTER_FRESH_MS = 1500;     // 탭 뒤 이 시간 안의 포커스만 탭 위치와 연결한다
+            var FOCUS_CLEAR_DELAY_MS = 150;  // 필드 전환 시 focusout→focusin 사이 깜빡임을 흡수한다
             var raf = 0;
-            function apply() {
-                raf = 0;
-                var c = document.getElementById('unity-container');
-                if (!c) return;
+            var ptrY = null, ptrAt = 0;      // 마지막 탭의 컨테이너 콘텐츠 좌표 Y
+            var focusY = null, clearTimer = 0;
+            var lastPan = -1;
+
+            function container() { return document.getElementById('unity-container'); }
+            function keyboardUp() { return window.innerHeight - vv.height > KEYBOARD_MIN_HEIGHT; }
+
+            function applyTop(c) {
                 var offset = Math.round(vv.offsetTop);
                 c.style.top = offset > 1 ? offset + 'px' : '';
+            }
+            function applyNone(c) { applyTop(c); }
+            function applyPan(c) {
+                applyTop(c);
+                c.style.transition = 'transform 180ms ease-out';
+                var pan = 0;
+                if (keyboardUp() && focusY !== null) {
+                    var kb = window.innerHeight - vv.height;
+                    pan = Math.min(kb, Math.max(0, Math.round(focusY + PAN_MARGIN - vv.height)));
+                }
+                c.style.transform = pan > 0 ? 'translateY(' + (-pan) + 'px)' : '';
+                if (pan !== lastPan) {
+                    lastPan = pan;
+                    if (window.__AIT_VP) console.log('[E2E-VP] pan focusY=' + focusY + ' vvH=' + Math.round(vv.height) + ' pan=' + pan);
+                }
+            }
+            function applyResize(c) {
+                if (vv.offsetTop > 1 || Math.abs(vv.height - window.innerHeight) > 1) {
+                    c.style.top = Math.round(vv.offsetTop) + 'px';
+                    c.style.height = Math.round(vv.height) + 'px';
+                } else {
+                    c.style.top = '';
+                    c.style.height = '';
+                }
+            }
+            function apply() {
+                raf = 0;
+                var c = container();
+                if (!c) return;
+                if (mode === 'resize') applyResize(c);
+                else if (mode === 'none') applyNone(c);
+                else applyPan(c);
             }
             function schedule() { if (!raf) raf = requestAnimationFrame(apply); }
             vv.addEventListener('resize', schedule);
             vv.addEventListener('scroll', schedule);
+
+            if (mode !== 'pan') return;
+            function recordPointer(e) {
+                var c = container();
+                if (!c || !c.contains(e.target)) return;
+                var t = e.touches && e.touches.length ? e.touches[0] : e;
+                if (typeof t.clientY !== 'number') return;
+                ptrY = t.clientY - c.getBoundingClientRect().top;
+                ptrAt = Date.now();
+            }
+            function isTextField(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }
+            window.addEventListener('pointerdown', recordPointer, true);
+            window.addEventListener('touchstart', recordPointer, true);
+            window.addEventListener('focusin', function (e) {
+                if (!isTextField(e.target)) return;
+                clearTimeout(clearTimer);
+                if (ptrY !== null && Date.now() - ptrAt <= POINTER_FRESH_MS) {
+                    focusY = ptrY;
+                    ptrY = null;
+                }
+                schedule();
+            }, true);
+            window.addEventListener('focusout', function (e) {
+                if (!isTextField(e.target)) return;
+                clearTimeout(clearTimer);
+                clearTimer = setTimeout(function () { focusY = null; lastPan = -1; schedule(); }, FOCUS_CLEAR_DELAY_MS);
+            }, true);
         })();
     </script>
 

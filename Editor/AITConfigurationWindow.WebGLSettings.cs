@@ -47,6 +47,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 소프트 키보드 대응
+            DrawKeyboardModeSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings();
             if (modifiedCount > 0)
@@ -209,6 +214,31 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawKeyboardModeSetting()
+        {
+            bool isModified = config.keyboardMode != AITKeyboardMode.Pan;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string[] options = { "Pan (가려지면 화면 이동)", "Resize (캔버스 리사이즈)", "None (위치 보정만)" };
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent("소프트 키보드 대응",
+                    "Pan: 탭한 입력창이 키보드에 가려질 때만 화면을 위로 옮깁니다(캔버스 크기 불변, 기본값). " +
+                    "Resize: 키보드 위 영역에 맞춰 캔버스를 줄입니다(키보드 애니메이션 중 끊길 수 있음). " +
+                    "None: 상단 위치 보정만 하며 아래쪽 입력창은 가려질 수 있습니다."),
+                (int)config.keyboardMode, options);
+            config.keyboardMode = (AITKeyboardMode)newIndex;
+
+            if (isModified && DrawResetButton())
+            {
+                config.keyboardMode = AITKeyboardMode.Pan;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
         private int CountModifiedWebGLSettings()
         {
             int count = 0;
@@ -225,6 +255,8 @@ namespace AppsInToss.Editor
             bool defaultPlayerPrefsPersistence = AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
             if (config.playerPrefsPersistence >= 0 && (config.playerPrefsPersistence == 1) != defaultPlayerPrefsPersistence) count++;
 
+            if (config.keyboardMode != AITKeyboardMode.Pan) count++;
+
             return count;
         }
 
@@ -236,6 +268,7 @@ namespace AppsInToss.Editor
             // 화면에 보이지 않는 값을 복원 버튼이 조용히 덮어쓰면 안 됨
             config.firstInteractiveLog = -1;
             config.playerPrefsPersistence = -1;
+            config.keyboardMode = AITKeyboardMode.Pan;
         }
 
     }

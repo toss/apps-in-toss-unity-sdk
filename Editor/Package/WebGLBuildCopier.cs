@@ -375,6 +375,7 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", AITJsStringEscaper.EscapeSingleQuoted(enableDebugConsole))
                 .Replace("%AIT_FIRST_INTERACTIVE_LOG%", AITJsStringEscaper.EscapeSingleQuoted(EffectiveFirstInteractiveLog(config) ? "true" : "false"))
                 .Replace("%AIT_PLAYERPREFS_PERSISTENCE%", AITJsStringEscaper.EscapeSingleQuoted(EffectivePlayerPrefsPersistence(config) ? "true" : "false"))
+                .Replace("%AIT_KEYBOARD_MODE%", AITJsStringEscaper.EscapeSingleQuoted(KeyboardModeToken(config)))
                 .Replace("%AIT_ICON_URL%", AITJsStringEscaper.EscapeSingleQuoted(config.iconUrl ?? ""))
                 .Replace("%AIT_DISPLAY_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.displayName ?? ""))
                 .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor ?? "#3182f6"))
@@ -684,6 +685,17 @@ namespace AppsInToss.Editor.Package
             return config.firstInteractiveLog >= 0
                 ? config.firstInteractiveLog == 1
                 : AITDefaultSettings.GetDefaultFirstInteractiveLog();
+        }
+
+        /// <summary>소프트 키보드 모드를 템플릿 토큰으로 바꾼다. 설정 로드 실패 시 pan.</summary>
+        internal static string KeyboardModeToken(AITEditorScriptObject config)
+        {
+            switch (config != null ? config.keyboardMode : AITKeyboardMode.Pan)
+            {
+                case AITKeyboardMode.Resize: return "resize";
+                case AITKeyboardMode.None: return "none";
+                default: return "pan";
+            }
         }
 
         /// <summary>

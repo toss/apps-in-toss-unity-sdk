@@ -94,7 +94,7 @@ public class AITPageCacheEmitterTests
     }
 
     [Test]
-    public void Enabled_ChromiumBypassesWasm_ViaEffectiveAllowlist()
+    public void Enabled_ChromiumBypassesWasm_OnlyWhenHttpOkFlagSet()
     {
         config.pageCache = 1;
         string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
@@ -102,7 +102,14 @@ public class AITPageCacheEmitterTests
         // Chromium(wasm 코드 캐시는 HTTP 캐시 응답에만 붙음)에서는 wasm 을 ALLOW_ABS(sweep/isCacheable/힌트 공유)에서 뺀다.
         StringAssert.Contains("var WASM_LIST = [\"Build/" + WasmFile + "\"]", result);
         StringAssert.Contains("IS_CHROMIUM = /Chrome\\/|Chromium\\/|Android/.test(_ua) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(_ua)", result);
-        StringAssert.Contains("if (IS_CHROMIUM && WASM_ABS[_abs]) { continue; }", result);
+        // 우회는 Chromium 이면서 localStorage 플래그(직접 스트리밍 확인)가 있을 때만. 플래그가 없으면 wasm 도 캐시한다.
+        StringAssert.Contains("var WASM_OK_KEY = 'ait-wasm-http-ok:' + CACHE_NAME;", result);
+        StringAssert.Contains("WASM_BYPASS = IS_CHROMIUM && window.localStorage.getItem(WASM_OK_KEY) === '1'", result);
+        StringAssert.Contains("window.__aitWasmViaHttpCache = WASM_BYPASS;", result);
+        StringAssert.Contains("window.__aitWasmHttpOkKey = WASM_OK_KEY;", result);
+        StringAssert.Contains("if (WASM_BYPASS && WASM_ABS[_abs]) { continue; }", result);
+        // 캐시/네이티브 서빙 응답은 플래그 판정에서 제외되도록 표시한다.
+        StringAssert.Contains("markNonNet(hit);", result);
     }
 
     [Test]

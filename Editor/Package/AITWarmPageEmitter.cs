@@ -195,6 +195,8 @@ namespace AppsInToss.Editor.Package
   var concurrency = qsInt('concurrency', 4,      1,    16);
 
   // 엔진 판정(이 페이지에서 한 곳): Chromium 계열(Blink, Android WebView 포함)이면 true.
+  // wasm 우회는 Chromium 이면서 'application/wasm 직접 스트리밍 확인' 플래그(index.html 이 네트워크 응답 기준으로
+  // 같은 오리진 localStorage 에 기록, 키는 'ait-wasm-http-ok:' + cacheName)가 있을 때만 적용한다(아래 wasmBypass).
   // V8 은 컴파일된 wasm 코드를 'URL 이 있는 HTTP 캐시 응답'에 대한 instantiateStreaming 에서만 영속 캐시하므로,
   // Chromium 에서는 wasm 을 CacheStorage 가 아니라 HTTP 캐시에 워밍한다(인터셉터도 같은 조건으로 wasm 을 우회).
   // WebKit 전용 엔진(iOS WKWebView/Safari)은 영속 wasm 코드 캐시가 없어 기존대로 CacheStorage 에 적재한다.
@@ -391,11 +393,15 @@ namespace AppsInToss.Editor.Package
     var existing = {};
     for (var i = 0; i < existingKeys.length; i++) { existing[existingKeys[i].url] = true; }
 
+    // wasm HTTP 캐시 워밍 여부: Chromium + 직접 스트리밍 확인 플래그(인터셉터 WASM_BYPASS 와 같은 키·기준).
+    var wasmBypass = false;
+    try { wasmBypass = IS_CHROMIUM && window.localStorage.getItem('ait-wasm-http-ok:' + cacheName) === '1'; } catch (e) {}
+
     // 자산 목록 절대화 + diff 계산.
     var assets = (manifest.assets || []);
     var targets = assets.map(function (a) {
       return { url: absUrl(a.path), wireBytes: a.wireBytes, rawBytes: a.rawBytes, path: a.path,
-               http: IS_CHROMIUM && a.role === 'wasm' };
+               http: wasmBypass && a.role === 'wasm' };
     });
     // manifestUrlSet: CacheStorage 에 남겨 둘(populated 힌트 대상) URL. Chromium 의 wasm 은 제외 —
     // 이전 버전이 넣어 둔 wasm 엔트리는 아래 stale 정리가 지우고, 힌트에도 싣지 않는다(인터셉터 ALLOW_ABS 와 같은 기준).

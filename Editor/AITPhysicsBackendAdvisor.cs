@@ -35,10 +35,10 @@ namespace AppsInToss.Editor
         private const string PhysicsAssemblyName = "UnityEngine.PhysicsModule";
         private const int MaxListedAssets = 5;
 
-        // 3D 물리 컴포넌트·에셋의 YAML 클래스 id(Rigidbody, Collider 계열, Joint 계열, CharacterController, ConstantForce, PhysicMaterial).
+        // 3D 물리 컴포넌트·에셋의 YAML 클래스 id(Rigidbody, Collider 계열, Joint 계열, CharacterController, ConstantForce, PhysicMaterial, ArticulationBody).
         private static readonly HashSet<int> PhysicsClassIds = new HashSet<int>
         {
-            54, 56, 57, 59, 64, 65, 75, 134, 135, 136, 138, 143, 144, 145, 146, 153, 154,
+            54, 56, 57, 59, 64, 65, 75, 134, 135, 136, 138, 143, 144, 145, 146, 153, 154, 171,
         };
 
         private static readonly HashSet<string> PhysicsAssetTypes = new HashSet<string>

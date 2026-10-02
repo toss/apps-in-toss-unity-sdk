@@ -532,6 +532,9 @@
                         if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
                         lastContentType = (r.headers && typeof r.headers.get === 'function') ? r.headers.get('content-type') : null;
                         try { judgeable = !(window.__aitNonNetworkResp && window.__aitNonNetworkResp.has(r)); } catch (e) { judgeable = false; }
+                        // no-store 응답은 HTTP 캐시에 남지 않아 우회하면 재방문마다 wasm 을 통째로 다시 받는다 → 플래그를 켜지 않는다.
+                        var httpCacheable = true;
+                        try { httpCacheable = String(r.headers.get('cache-control') || '').toLowerCase().indexOf('no-store') === -1; } catch (e) {}
                         if (!r.body) {
                             // body 스트림 미지원(구형 환경): 같은 응답 바이트로 직접 컴파일(재페치 없음).
                             markWasmStreamingFallback('no-streaming-api');
@@ -551,7 +554,7 @@
                         } catch (e) {}
                         if (directOK) {
                             return WebAssembly.instantiateStreaming(r, imports).then(function (result) {
-                                setWasmHttpOk(true);
+                                setWasmHttpOk(httpCacheable);
                                 return done(result);
                             });
                         }

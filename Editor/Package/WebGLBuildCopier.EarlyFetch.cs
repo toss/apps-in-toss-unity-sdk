@@ -356,9 +356,9 @@ namespace AppsInToss.Editor.Package
                     }}
                     if (cacheOK) {{ storeBuffer(url, buf, ct); }}
                     // 재합성 Response 는 URL 이 없어 index.html 이 직접 경로를 판정할 수 없다. 네트워크 응답의 Content-Type 이
-                    // application/wasm 이면 여기서 플래그를 켠다(이후 방문의 직접 경로 실패는 index.html 이 플래그를 지운다).
+                    // application/wasm 이고 no-store 가 아니면 여기서 플래그를 켠다(이후 방문의 직접 경로 실패는 index.html 이 플래그를 지운다).
                     try {{
-                        if (IS_CHROMIUM && url === WASM_ABS && ct.indexOf('application/wasm') !== -1) localStorage.setItem(WASM_OK_KEY, '1');
+                        if (IS_CHROMIUM && url === WASM_ABS && ct.indexOf('application/wasm') !== -1 && (r.headers.get('Cache-Control') || '').toLowerCase().indexOf('no-store') === -1) localStorage.setItem(WASM_OK_KEY, '1');
                     }} catch (e) {{}}
                     return markNonNet(new Response(buf, {{ status: 200, headers: {{ 'Content-Type': ct, 'Content-Length': String(buf.byteLength) }} }}));
                 }});

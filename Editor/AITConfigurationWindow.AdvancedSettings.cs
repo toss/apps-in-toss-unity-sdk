@@ -100,6 +100,9 @@ namespace AppsInToss.Editor
             DrawUIToolkitModuleSetting();
 
             GUILayout.Space(10);
+            DrawPhysicsBackendSetting();
+
+            GUILayout.Space(10);
             EditorGUILayout.LabelField("빌드 전 검사", EditorStyles.boldLabel);
 
             // 빌드 전 최적화 검사
@@ -599,6 +602,63 @@ namespace AppsInToss.Editor
             else if (GUILayout.Button("모듈 켜기"))
             {
                 AITUIToolkitModuleAdvisor.Enable();
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private AITPhysicsBackendAdvisor.Result physicsBackendResult;
+
+        private void DrawPhysicsBackendSetting()
+        {
+            EditorGUILayout.LabelField(AITPhysicsBackendAdvisor.SectionName + " (빌드 크기)", EditorStyles.boldLabel);
+            GUILayout.Space(5);
+
+            if (physicsBackendResult == null)
+                physicsBackendResult = AITPhysicsBackendAdvisor.Analyze();
+            var r = physicsBackendResult;
+
+            if (!r.Applicable)
+            {
+                EditorGUILayout.HelpBox("Unity 6.3 이상에서만 쓰는 설정입니다. 이 버전에서는 해당하지 않습니다.", MessageType.None);
+                return;
+            }
+
+            EditorGUILayout.LabelField("상태", r.PhysXEnabled ? "켜짐 (PhysX)" : "꺼짐 (none)");
+
+            if (r.Failed)
+            {
+                EditorGUILayout.HelpBox("검사에 실패했습니다. 콘솔 로그를 확인하세요.", MessageType.Warning);
+            }
+            else if (r.Recommended)
+            {
+                EditorGUILayout.HelpBox(
+                    "런타임에서 3D 물리를 쓰는 흔적이 없습니다. Unity 6.3 이상의 물리 백엔드(PhysX)를 끄면 wasm이 약 0.8MB(brotli) 줄어듭니다. " +
+                    "설정 파일을 직접 고치므로 에디터를 다시 시작해야 적용됩니다.",
+                    MessageType.Info);
+            }
+            else if (r.PhysXEnabled)
+            {
+                EditorGUILayout.HelpBox("끄기를 권장하지 않습니다. 아래 사유를 확인하세요.", MessageType.None);
+            }
+
+            foreach (var usage in r.RuntimeUsages)
+                EditorGUILayout.HelpBox(usage, MessageType.Warning);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("다시 검사"))
+                physicsBackendResult = AITPhysicsBackendAdvisor.Analyze();
+            if (r.PhysXEnabled)
+            {
+                if (GUILayout.Button("PhysX 끄기"))
+                {
+                    AITPhysicsBackendAdvisor.Disable();
+                    physicsBackendResult = AITPhysicsBackendAdvisor.Analyze();
+                }
+            }
+            else if (GUILayout.Button("PhysX 켜기"))
+            {
+                AITPhysicsBackendAdvisor.Enable();
+                physicsBackendResult = AITPhysicsBackendAdvisor.Analyze();
             }
             EditorGUILayout.EndHorizontal();
         }

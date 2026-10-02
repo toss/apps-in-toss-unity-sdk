@@ -94,6 +94,18 @@ public class AITPageCacheEmitterTests
     }
 
     [Test]
+    public void Enabled_ChromiumBypassesWasm_ViaEffectiveAllowlist()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        // Chromium(wasm 코드 캐시는 HTTP 캐시 응답에만 붙음)에서는 wasm 을 ALLOW_ABS(sweep/isCacheable/힌트 공유)에서 뺀다.
+        StringAssert.Contains("var WASM_LIST = [\"Build/" + WasmFile + "\"]", result);
+        StringAssert.Contains("IS_CHROMIUM = /Chrome\\/|Chromium\\/|Android/.test(_ua) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(_ua)", result);
+        StringAssert.Contains("if (IS_CHROMIUM && WASM_ABS[_abs]) { continue; }", result);
+    }
+
+    [Test]
     public void Enabled_AllowlistExcludesLoader()
     {
         config.pageCache = 1;

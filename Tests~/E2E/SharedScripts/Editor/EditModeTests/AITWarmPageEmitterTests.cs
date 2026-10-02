@@ -296,6 +296,19 @@ public class AITWarmPageEmitterTests
             "인터셉터가 warm page 와 같은 힌트 키 접두사를 써야 한다");
     }
 
+    [Test]
+    public void WritePage_Chromium_WarmsWasmIntoHttpCache_NotCacheStorage()
+    {
+        WritePage();
+        string html = ReadPage();
+
+        StringAssert.Contains("IS_CHROMIUM = /Chrome\\/|Chromium\\/|Android/.test(ua0) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua0)", html);
+        StringAssert.Contains("http: IS_CHROMIUM && a.role === 'wasm'", html);
+        StringAssert.Contains("function warmHttpCache(url)", html);
+        // wasm 은 CacheStorage 힌트/보존 집합(manifestUrlSet)에서 빠져야 한다.
+        StringAssert.Contains("if (!t.http) { manifestUrlSet[t.url] = true; }", html);
+    }
+
     // ===== 케이스 10: 마커 잔존 없음 + %[A-Z0-9_]+% 없음 =====
 
     [Test]

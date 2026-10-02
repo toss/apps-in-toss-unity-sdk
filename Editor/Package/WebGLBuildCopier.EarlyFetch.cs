@@ -63,7 +63,7 @@ namespace AppsInToss.Editor.Package
             }
 
             string cacheName = BuildDataCacheName(dataFile, cacheDataSize, cacheWasmSize, bundleVersion);
-            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName, kickUrlsJson);
+            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName, kickUrlsJson, string.IsNullOrEmpty(wasmFile) ? null : $"Build/{wasmFile}");
         }
 
         /// <summary>
@@ -174,6 +174,8 @@ namespace AppsInToss.Editor.Package
             }}
             return originalFetch.apply(this, arguments);
         }};
+        // 우리 래퍼 표식(index.html 의 wasm 경로가 vConsole 류 몽키패치와 구분하기 위함).
+        try {{ window.fetch.__aitWrapper = true; }} catch (e) {{}}
     }})();
     </script>";
         }
@@ -207,13 +209,16 @@ namespace AppsInToss.Editor.Package
         ///    시점에 선시작하고, 로더의 fetch가 pending promise에 합류한다 → 로더 다운로드+파싱+초기화 갭만큼
         ///    크리티컬 다운로드가 앞당겨진다(modern 6000.x 경로와 동일 발상, 캐시 HIT/reload 는 선시작 없음).
         /// </summary>
-        internal static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName, string kickUrlsJson)
+        internal static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName, string kickUrlsJson, string wasmUrl = null)
         {
+            // Chromium 계열 wasm 처리용: wasm 상대 경로(없으면 빈 문자열). 런타임에서 절대 URL 로 비교한다.
+            string wasmUrlJs = "'" + (wasmUrl ?? "").Replace("\\", "\\\\").Replace("'", "\\'") + "'";
             return $@"<script>
     (function() {{
         var urls = {urlsJson};
         if (!urls || !urls.length) return;
         var kickUrls = {kickUrlsJson};
+        var WASM_URL = {wasmUrlJs};
         var CACHE_NAME = '{cacheName}';
         var SKIP_KEY = '__ait_skip_data_cache__';
         var MAX_TRIES = 3;
@@ -222,6 +227,21 @@ namespace AppsInToss.Editor.Package
         for (var i = 0; i < urls.length; i++) {{
             knownSet[new URL(urls[i], location.href).href] = urls[i];
         }}
+
+        // Chromium 계열(Blink, Android WebView 포함)에서 wasm 은 버퍼링/Cache Storage 를 거치지 않고
+        // 'URL 이 살아 있는 네이티브 fetch Response' 그대로 로더(index.html instantiateWasm)에 넘긴다.
+        // V8 은 컴파일된 wasm 코드를 HTTP 캐시 응답에 대한 instantiateStreaming 에서만 영속 캐시하는데,
+        // 버퍼링 후 new Response(buf) 로 재합성하거나 Cache Storage 에서 서빙하면 URL/HTTP 캐시 출처를 잃는다.
+        // WebKit 전용 엔진(iOS)은 영속 wasm 코드 캐시가 없어 기존 경로(버퍼링+Cache Storage)를 유지한다.
+        // 엔진 판정은 여기 한 곳에서만 한다.
+        var IS_CHROMIUM = false;
+        try {{
+            var ua0 = navigator.userAgent || '';
+            IS_CHROMIUM = /Chrome\/|Chromium\/|Android/.test(ua0) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua0);
+        }} catch (e) {{}}
+        var WASM_ABS = '';
+        try {{ if (WASM_URL) WASM_ABS = new URL(WASM_URL, location.href).href; }} catch (e) {{}}
+        function isPlainWasm(url) {{ return IS_CHROMIUM && !!WASM_ABS && url === WASM_ABS; }}
 
         // Cache Storage 가용성(보안 컨텍스트 필요: https 또는 localhost — E2E/프로덕션 모두 충족).
         var hasCache = false;
@@ -355,7 +375,10 @@ namespace AppsInToss.Editor.Package
         if (!isReload) {{
             for (var ki = 0; ki < kickUrls.length; ki++) (function(url) {{
                 var p;
-                if (cacheOK && !skipCacheOnce && isStored(url)) {{
+                if (isPlainWasm(url)) {{
+                    // Chromium wasm: 단일 네이티브 fetch(HTTP 캐시 경유) — 로더가 이 Response 를 그대로 받는다(이중 다운로드 없음).
+                    p = originalFetch(url, {{ method: 'GET' }});
+                }} else if (cacheOK && !skipCacheOnce && isStored(url)) {{
                     p = self.caches.open(CACHE_NAME).then(function(c) {{
                         return c.match(url, {{ ignoreSearch: true }});
                     }}).then(function(hit) {{
@@ -388,6 +411,9 @@ namespace AppsInToss.Editor.Package
             }}
             var self2 = this, args = arguments;
 
+            // Chromium wasm(선시작 안 된 경우 포함): 버퍼링/Cache Storage 없이 네이티브 fetch.
+            if (isPlainWasm(url)) return originalFetch.apply(self2, args);
+
             // 저메모리/무캐시: 버퍼링 없이 원본 스트리밍 fetch(기존 동작, 제품 워치독 방어).
             if (!cacheOK) return originalFetch.apply(self2, args);
 
@@ -408,6 +434,8 @@ namespace AppsInToss.Editor.Package
             }}
             return bufferedFetch(url, MAX_TRIES);
         }};
+        // 우리 래퍼 표식(index.html 의 wasm 경로가 vConsole 류 몽키패치와 구분하기 위함).
+        try {{ window.fetch.__aitWrapper = true; }} catch (e) {{}}
     }})();
     </script>";
         }

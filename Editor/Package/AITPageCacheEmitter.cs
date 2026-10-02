@@ -178,6 +178,9 @@ namespace AppsInToss.Editor.Package
 
             // JSON 배열 리터럴 (JS 측에서 new URL(...).href 로 절대화하여 allowlist 비교).
             string allowlistJson = "[" + string.Join(",", allowlist.ConvertAll(JsString)) + "]";
+
+            // wasm 상대 경로(없으면 빈 배열): Chromium 계열에서는 wasm 을 실효 allowlist 에서 뺀다(BakedTailJs 의 ALLOW_ABS 계산 참고).
+            string wasmListJson = string.IsNullOrEmpty(wasmFile) ? "[]" : "[" + JsString("Build/" + wasmFile) + "]";
             string cacheNameJs = JsString(cacheName);
 
             // 네이티브 에셋 소스 레버 (tri-state -1=자동→기본값true, 0=비활성, 1=활성).
@@ -200,6 +203,7 @@ namespace AppsInToss.Editor.Package
             return ScriptOpenJs
                  + "\n            var CACHE_NAME = (window.__AIT_CACHE_NAME) || " + cacheNameJs + ";"
                  + "\n            var ALLOWLIST = " + allowlistJson + ";"
+                 + "\n            var WASM_LIST = " + wasmListJson + ";"
                  + "\n            var NATIVE_SOURCE = " + nativeEnabledJs + ";"
                  + BakedTailJs
                  + IdbBackendJs
@@ -268,9 +272,30 @@ namespace AppsInToss.Editor.Package
             // ALLOWLIST 절대 URL 집합(부팅 sweep 과 isCacheable 이 공유). loader.js 등 ALLOWLIST 에
             // 없는 Build/* 경로는(예: early-fetch 가 HTTP 캐시 워밍 목적으로 bare fetch 하는 loader.js)
             // 캐시 대상이 아니므로 이 집합으로 걸러낸다(캐시 버킷에 put 되어 원 목적을 해치지 않도록).
+            //
+            // wasm 은 Chromium 계열(Blink, Android WebView 포함)에서 실효 allowlist 밖으로 둔다. V8 은 컴파일된
+            // wasm 코드를 'URL 이 있는 HTTP 캐시 응답'에 대한 instantiateStreaming 에서만 영속 캐시(code cache)하므로,
+            // CacheStorage 에서 서빙하면 매 재방문이 풀 컴파일이 된다. ALLOW_ABS 를 sweep/isCacheable/힌트가 공유하므로
+            // 여기서 한 번 빼면 wasm 은 서빙·put 되지 않고 이전 버전이 넣어 둔 wasm 엔트리도 부팅 sweep 이 지운다.
+            // WebKit 전용 엔진(iOS WKWebView/Safari)은 영속 wasm 코드 캐시가 없고 CacheStorage 히트가 CDN 캐시 헤더
+            // 의존을 피해 주므로 기존대로 캐시한다. 엔진 판정은 이 한 곳에서만 한다.
+            var IS_CHROMIUM = false;
+            try {
+                var _ua = navigator.userAgent || '';
+                IS_CHROMIUM = /Chrome\/|Chromium\/|Android/.test(_ua) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(_ua);
+            } catch (e) {}
+            var WASM_ABS = {};
+            for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
+                try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
+            }
+            window.__aitWasmViaHttpCache = IS_CHROMIUM;
             var ALLOW_ABS = {};
             for (var _ai = 0; _ai < ALLOWLIST.length; _ai++) {
-                try { ALLOW_ABS[new URL(ALLOWLIST[_ai], location.href).href] = true; } catch (e) {}
+                try {
+                    var _abs = new URL(ALLOWLIST[_ai], location.href).href;
+                    if (IS_CHROMIUM && WASM_ABS[_abs]) { continue; }
+                    ALLOW_ABS[_abs] = true;
+                } catch (e) {}
             }
 
             // 인터셉트 조건: 동일 오리진 && /Build/ 경로 && ALLOWLIST 멤버(현재 빌드의 data/framework/wasm).
@@ -607,7 +632,9 @@ namespace AppsInToss.Editor.Package
                 }
                 // 레버 OFF 또는 리졸버 미주입 → 기존 cache-first(어떤 네트워크/Early-Fetch 경로보다 우선).
                 return cacheFirst(resource, init, url);
-            };";
+            };
+            // 우리 래퍼 표식: index.html 의 wasm 경로가 '남의 fetch 몽키패치(vConsole 등)' 판정에서 제외한다.
+            try { window.fetch.__aitWrapper = true; } catch (e) {}";
 
         /// <summary>
         /// 부팅 무효화(allowlist sweep) + 검증용 dump 헬퍼 + 최상위 catch + IIFE/&lt;script&gt; 종료.

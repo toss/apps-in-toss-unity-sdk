@@ -194,6 +194,37 @@ namespace AppsInToss.Editor.Package
   var timeout     = qsInt('timeout',     120000, 1000, 600000);
   var concurrency = qsInt('concurrency', 4,      1,    16);
 
+  // 엔진 판정(이 페이지에서 한 곳): Chromium 계열(Blink, Android WebView 포함)이면 true.
+  // V8 은 컴파일된 wasm 코드를 'URL 이 있는 HTTP 캐시 응답'에 대한 instantiateStreaming 에서만 영속 캐시하므로,
+  // Chromium 에서는 wasm 을 CacheStorage 가 아니라 HTTP 캐시에 워밍한다(인터셉터도 같은 조건으로 wasm 을 우회).
+  // WebKit 전용 엔진(iOS WKWebView/Safari)은 영속 wasm 코드 캐시가 없어 기존대로 CacheStorage 에 적재한다.
+  var IS_CHROMIUM = false;
+  try {
+    var ua0 = navigator.userAgent || '';
+    IS_CHROMIUM = /Chrome\/|Chromium\/|Android/.test(ua0) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua0);
+  } catch (e) {}
+
+  // HTTP 캐시 워밍: 기본 캐시 모드 fetch 로 body 를 끝까지 소비만 한다(CacheStorage 에 put 하지 않음).
+  // 반환값: 소비한 바이트 수(스트림 미지원이면 arrayBuffer 길이).
+  function warmHttpCache(url) {
+    return fetch(url).then(function (resp) {
+      if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
+      if (!resp.body || !resp.body.getReader) {
+        return resp.arrayBuffer().then(function (b) { return b.byteLength; });
+      }
+      var reader = resp.body.getReader();
+      var total = 0;
+      function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) { return total; }
+          total += r.value.length;
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+
   // 절대 URL 생성: 인터셉터·매니페스트와 동일한 캐시 키 규약.
   function absUrl(path) {
     return new URL(path, location.href).href;
@@ -271,6 +302,19 @@ namespace AppsInToss.Editor.Package
           return;
         }
         var asset = todo.splice(0, 1)[0];
+        if (asset.http) {
+          warmHttpCache(asset.url).then(function (b) {
+            stored++;
+            if (b > 0) { bytes += b; }
+            onProgress({ stored: stored, skipped: skipped, failed: failed, bytes: bytes });
+            next();
+          }).catch(function () {
+            failed++;
+            onProgress({ stored: stored, skipped: skipped, failed: failed, bytes: bytes });
+            next();
+          });
+          return;
+        }
         fetch(asset.url, { cache: 'no-store' }).then(function (resp) {
           if (!resp.ok) {
             failed++;
@@ -350,12 +394,17 @@ namespace AppsInToss.Editor.Package
     // 자산 목록 절대화 + diff 계산.
     var assets = (manifest.assets || []);
     var targets = assets.map(function (a) {
-      return { url: absUrl(a.path), wireBytes: a.wireBytes, rawBytes: a.rawBytes, path: a.path };
+      return { url: absUrl(a.path), wireBytes: a.wireBytes, rawBytes: a.rawBytes, path: a.path,
+               http: IS_CHROMIUM && a.role === 'wasm' };
     });
+    // manifestUrlSet: CacheStorage 에 남겨 둘(populated 힌트 대상) URL. Chromium 의 wasm 은 제외 —
+    // 이전 버전이 넣어 둔 wasm 엔트리는 아래 stale 정리가 지우고, 힌트에도 싣지 않는다(인터셉터 ALLOW_ABS 와 같은 기준).
     var manifestUrlSet = {};
-    targets.forEach(function (t) { manifestUrlSet[t.url] = true; });
+    targets.forEach(function (t) { if (!t.http) { manifestUrlSet[t.url] = true; } });
 
-    var todo    = targets.filter(function (t) { return !existing[t.url]; });
+    // diff: CacheStorage 대상은 기캐시 URL 을 건너뛰고, HTTP 캐시 워밍 대상(wasm)은 항상 시도한다
+    // (기본 캐시 모드 fetch 라 이미 HTTP 캐시에 있으면 네트워크 비용이 거의 없다).
+    var todo    = targets.filter(function (t) { return t.http || !existing[t.url]; });
     var skipped = targets.length - todo.length;
     var total   = targets.length;
 

@@ -513,11 +513,25 @@
                 // AIT 자체 래퍼(page cache / early-fetch)는 네이티브 Response 를 돌려주므로 표식(__aitWrapper)으로 제외한다.
                 try { fetchLooksWrapped = fetch.toString().indexOf('[native code]') === -1 && !fetch.__aitWrapper; } catch (e) {}
                 var lastContentType = null;
+                // 'application/wasm 직접 스트리밍 확인' 플래그(localStorage, 키는 페이지 캐시/early-fetch 가 window.__aitWasmHttpOkKey 로 노출).
+                // 플래그가 켜지면 다음 방문부터 페이지 캐시가 Chromium 에서 wasm 을 우회한다(HTTP 캐시 + V8 code cache).
+                // 판정은 네트워크에서 직접 온 응답에만 쓴다: 캐시/네이티브 서빙·버퍼링 재합성 응답
+                // (window.__aitNonNetworkResp 에 표시됨)은 현재 호스팅의 헤더를 반영하지 않으므로 건드리지 않는다.
+                var okKey = (typeof window.__aitWasmHttpOkKey === 'string') ? window.__aitWasmHttpOkKey : '';
+                var judgeable = false;
+                function setWasmHttpOk(on) {
+                    if (!okKey || !judgeable) return;
+                    try {
+                        if (on) window.localStorage.setItem(okKey, '1');
+                        else window.localStorage.removeItem(okKey);
+                    } catch (e) {}
+                }
 
                 fetch(codeUrl, { credentials: 'same-origin' })
                     .then(function (r) {
                         if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);
                         lastContentType = (r.headers && typeof r.headers.get === 'function') ? r.headers.get('content-type') : null;
+                        try { judgeable = !(window.__aitNonNetworkResp && window.__aitNonNetworkResp.has(r)); } catch (e) { judgeable = false; }
                         if (!r.body) {
                             // body 스트림 미지원(구형 환경): 같은 응답 바이트로 직접 컴파일(재페치 없음).
                             markWasmStreamingFallback('no-streaming-api');
@@ -536,7 +550,15 @@
                                 && lastContentType.indexOf('application/wasm') !== -1;
                         } catch (e) {}
                         if (directOK) {
-                            return WebAssembly.instantiateStreaming(r, imports).then(done);
+                            return WebAssembly.instantiateStreaming(r, imports).then(function (result) {
+                                setWasmHttpOk(true);
+                                return done(result);
+                            });
+                        }
+                        // Content-Type 이 application/wasm 이 아니면 직접 경로가 이 호스팅에서 못 돈다 → 플래그 해제.
+                        // (fetch 몽키패치처럼 Content-Type 과 무관한 사유는 판정하지 않는다.)
+                        if (!fetchLooksWrapped && (!lastContentType || lastContentType.indexOf('application/wasm') === -1)) {
+                            setWasmHttpOk(false);
                         }
                         // 네이티브 Response로 재포장 — fetch 래퍼 오염과 MIME 문제를 동시에 무력화(폴백 경로).
                         var resp = new Response(r.body, {
@@ -557,6 +579,8 @@
                                 ? 'content-type'
                                 : 'brand-check-failed');
                         markWasmStreamingFallback(reason);
+                        // 직접 경로가 실패했으면(재포장 경로 실패 포함) 플래그를 지워 다음 방문부터 CacheStorage 로 되돌린다.
+                        setWasmHttpOk(false);
                         return fetch(codeUrl, { credentials: 'same-origin' })
                             .then(function (r) {
                                 if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + codeUrl);

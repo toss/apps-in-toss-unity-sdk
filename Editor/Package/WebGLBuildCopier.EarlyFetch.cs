@@ -241,7 +241,17 @@ namespace AppsInToss.Editor.Package
         }} catch (e) {{}}
         var WASM_ABS = '';
         try {{ if (WASM_URL) WASM_ABS = new URL(WASM_URL, location.href).href; }} catch (e) {{}}
-        function isPlainWasm(url) {{ return IS_CHROMIUM && !!WASM_ABS && url === WASM_ABS; }}
+        // wasm 우회는 'application/wasm 직접 스트리밍 확인' 플래그(index.html 이 네트워크 응답 기준으로 기록)가 있을 때만 켠다.
+        // 없으면(첫 방문·호스팅이 Content-Type 을 안 맞춤) 기존처럼 버퍼링+Cache Storage 로 처리한다.
+        var WASM_OK_KEY = 'ait-wasm-http-ok:' + CACHE_NAME;
+        var WASM_BYPASS = false;
+        try {{ WASM_BYPASS = IS_CHROMIUM && !!WASM_ABS && localStorage.getItem(WASM_OK_KEY) === '1'; }} catch (e) {{}}
+        window.__aitWasmHttpOkKey = WASM_OK_KEY;
+        // 네트워크 직출이 아닌 Response(캐시 HIT, 버퍼링 재합성)는 index.html 의 플래그 판정에서 제외하도록 표시한다.
+        var NON_NET = null;
+        try {{ NON_NET = window.__aitNonNetworkResp || (window.__aitNonNetworkResp = new WeakSet()); }} catch (e) {{}}
+        function markNonNet(r) {{ try {{ if (NON_NET && r && typeof r === 'object') NON_NET.add(r); }} catch (e) {{}} return r; }}
+        function isPlainWasm(url) {{ return WASM_BYPASS && url === WASM_ABS; }}
 
         // Cache Storage 가용성(보안 컨텍스트 필요: https 또는 localhost — E2E/프로덕션 모두 충족).
         var hasCache = false;
@@ -345,7 +355,12 @@ namespace AppsInToss.Editor.Package
                         throw new Error('short read ' + buf.byteLength + '/' + expected);
                     }}
                     if (cacheOK) {{ storeBuffer(url, buf, ct); }}
-                    return new Response(buf, {{ status: 200, headers: {{ 'Content-Type': ct, 'Content-Length': String(buf.byteLength) }} }});
+                    // 재합성 Response 는 URL 이 없어 index.html 이 직접 경로를 판정할 수 없다. 네트워크 응답의 Content-Type 이
+                    // application/wasm 이면 여기서 플래그를 켠다(이후 방문의 직접 경로 실패는 index.html 이 플래그를 지운다).
+                    try {{
+                        if (IS_CHROMIUM && url === WASM_ABS && ct.indexOf('application/wasm') !== -1) localStorage.setItem(WASM_OK_KEY, '1');
+                    }} catch (e) {{}}
+                    return markNonNet(new Response(buf, {{ status: 200, headers: {{ 'Content-Type': ct, 'Content-Length': String(buf.byteLength) }} }}));
                 }});
             }}).catch(function(e) {{
                 if (left > 1) {{
@@ -382,7 +397,7 @@ namespace AppsInToss.Editor.Package
                     p = self.caches.open(CACHE_NAME).then(function(c) {{
                         return c.match(url, {{ ignoreSearch: true }});
                     }}).then(function(hit) {{
-                        return (hit && hit.ok) ? hit : bufferedFetch(url, MAX_TRIES);
+                        return (hit && hit.ok) ? markNonNet(hit) : bufferedFetch(url, MAX_TRIES);
                     }});
                 }} else if (cacheOK) {{
                     p = bufferedFetch(url, MAX_TRIES);
@@ -424,7 +439,7 @@ namespace AppsInToss.Editor.Package
                 }}).then(function(cached) {{
                     if (cached && cached.ok) {{
                         try {{ console.log('[AIT] cache: HIT ' + url); }} catch (e) {{}}
-                        return cached;
+                        return markNonNet(cached);
                     }}
                     try {{ console.log('[AIT] cache: MISS ' + url); }} catch (e) {{}}
                     return bufferedFetch(url, MAX_TRIES);

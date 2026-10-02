@@ -30,6 +30,10 @@ public class AITEarlyFetchScriptTests
 
         StringAssert.Contains("var WASM_URL = 'Build/bbbb.wasm.br';", js);
         StringAssert.Contains("function isPlainWasm(url)", js);
+        // 우회는 직접 스트리밍 확인 플래그가 있을 때만.
+        StringAssert.Contains("var WASM_OK_KEY = 'ait-wasm-http-ok:' + CACHE_NAME;", js);
+        StringAssert.Contains("localStorage.getItem(WASM_OK_KEY) === '1'", js);
+        StringAssert.Contains("function isPlainWasm(url) { return WASM_BYPASS && url === WASM_ABS; }", js);
         StringAssert.Contains("if (isPlainWasm(url)) return originalFetch.apply(self2, args);", js);
         // 선시작도 plain fetch 한 번(로더가 pending 에 합류 → 이중 다운로드 없음).
         StringAssert.Contains("if (isPlainWasm(url)) {", js);

@@ -65,6 +65,13 @@ namespace AppsInToss.Editor.Package
         internal const string PopulatedHintKeyPrefix = "ait-pc-populated:";
 
         /// <summary>
+        /// "이 오리진에서 wasm 이 application/wasm 으로 직접 스트리밍되는 것이 확인됨" 플래그의 localStorage 키 접두사
+        /// (뒤에 캐시명이 붙고 값은 '1'). index.html 의 instantiateWasm 이 네트워크 응답 기준으로 쓰고/지우며,
+        /// 인터셉터·early-fetch 레거시·warm page 가 설치 시점에 읽어 Chromium 의 wasm 페이지 캐시 우회 여부를 정한다.
+        /// </summary>
+        internal const string WasmHttpOkKeyPrefix = "ait-wasm-http-ok:";
+
+        /// <summary>
         /// appName(앱 식별자)에서 캐시 버킷 이름을 파생합니다.
         /// 영문 소문자/숫자/하이픈으로 정규화하며, 비ASCII 문자는 짧은 해시로 대체합니다.
         /// identifier 가 비어 있으면 null 을 반환합니다(호출자가 폴백 처리).
@@ -273,7 +280,10 @@ namespace AppsInToss.Editor.Package
             // 없는 Build/* 경로는(예: early-fetch 가 HTTP 캐시 워밍 목적으로 bare fetch 하는 loader.js)
             // 캐시 대상이 아니므로 이 집합으로 걸러낸다(캐시 버킷에 put 되어 원 목적을 해치지 않도록).
             //
-            // wasm 은 Chromium 계열(Blink, Android WebView 포함)에서 실효 allowlist 밖으로 둔다. V8 은 컴파일된
+            // wasm 은 Chromium 계열(Blink, Android WebView 포함)이면서 이 오리진에서 application/wasm 직접 스트리밍이
+            // 확인된 경우(localStorage 플래그, index.html 이 네트워크 응답 기준으로 기록)에만 실효 allowlist 밖으로 둔다.
+            // 플래그가 없으면 이전과 동일하게 CacheStorage 에 캐시한다(호스팅이 Content-Type 을 안 맞추면 직접 경로가
+            // 못 돌아 우회가 순손해이므로). V8 은 컴파일된
             // wasm 코드를 'URL 이 있는 HTTP 캐시 응답'에 대한 instantiateStreaming 에서만 영속 캐시(code cache)하므로,
             // CacheStorage 에서 서빙하면 매 재방문이 풀 컴파일이 된다. ALLOW_ABS 를 sweep/isCacheable/힌트가 공유하므로
             // 여기서 한 번 빼면 wasm 은 서빙·put 되지 않고 이전 버전이 넣어 둔 wasm 엔트리도 부팅 sweep 이 지운다.
@@ -288,12 +298,24 @@ namespace AppsInToss.Editor.Package
             for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
                 try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
             }
-            window.__aitWasmViaHttpCache = IS_CHROMIUM;
+            // 플래그 키는 index.html 이 같은 키로 쓰고 지우도록 전역으로 노출한다(캐시명 파생은 이 한 곳).
+            var WASM_OK_KEY = 'ait-wasm-http-ok:' + CACHE_NAME;
+            var WASM_BYPASS = false;
+            try { WASM_BYPASS = IS_CHROMIUM && window.localStorage.getItem(WASM_OK_KEY) === '1'; } catch (e) {}
+            window.__aitWasmViaHttpCache = WASM_BYPASS;
+            window.__aitWasmHttpOkKey = WASM_OK_KEY;
+            // 네트워크에서 직접 온 것이 아닌 Response(캐시/네이티브 리졸버 서빙)를 표시한다. index.html 은 이런 응답의
+            // 헤더로 플래그를 판정하지 않는다(저장된 헤더는 현재 호스팅의 Content-Type 을 반영하지 않는다).
+            var NON_NET = null;
+            try {
+                NON_NET = window.__aitNonNetworkResp || (window.__aitNonNetworkResp = new WeakSet());
+            } catch (e) {}
+            function markNonNet(r) { try { if (NON_NET && r && typeof r === 'object') { NON_NET.add(r); } } catch (e) {} return r; }
             var ALLOW_ABS = {};
             for (var _ai = 0; _ai < ALLOWLIST.length; _ai++) {
                 try {
                     var _abs = new URL(ALLOWLIST[_ai], location.href).href;
-                    if (IS_CHROMIUM && WASM_ABS[_abs]) { continue; }
+                    if (WASM_BYPASS && WASM_ABS[_abs]) { continue; }
                     ALLOW_ABS[_abs] = true;
                 } catch (e) {}
             }
@@ -545,6 +567,7 @@ namespace AppsInToss.Editor.Package
                                 markPopulated(url); // 힌트 없이 채워진 엔트리 → 다음 부팅부터 선시작 없음.
                             }
                             window.__aitCacheStats.hits.push(url);
+                            markNonNet(hit);
                             return hit; // 캐시 히트 → 네트워크 0, transferSize 0 으로 단락.
                         }
                         window.__aitCacheStats.misses.push(url);
@@ -619,6 +642,7 @@ namespace AppsInToss.Editor.Package
                                 }
                             } catch (e) {}
                             window.__aitCacheStats.hits.push('native:' + url);
+                            markNonNet(nativeResp);
                             return nativeResp; // 네이티브 응답은 cache.put 하지 않음(스토어 이중화 방지).
                         }
                         // null/타임아웃 → cache-first 폴백.

@@ -303,7 +303,8 @@ public class AITWarmPageEmitterTests
         string html = ReadPage();
 
         StringAssert.Contains("IS_CHROMIUM = /Chrome\\/|Chromium\\/|Android/.test(ua0) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua0)", html);
-        StringAssert.Contains("http: IS_CHROMIUM && a.role === 'wasm'", html);
+        StringAssert.Contains("wasmBypass = IS_CHROMIUM && window.localStorage.getItem('ait-wasm-http-ok:' + cacheName) === '1'", html);
+        StringAssert.Contains("http: wasmBypass && a.role === 'wasm'", html);
         StringAssert.Contains("function warmHttpCache(url)", html);
         // wasm 은 CacheStorage 힌트/보존 집합(manifestUrlSet)에서 빠져야 한다.
         StringAssert.Contains("if (!t.http) { manifestUrlSet[t.url] = true; }", html);

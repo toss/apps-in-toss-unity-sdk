@@ -475,9 +475,16 @@
         //  · dev console(vConsole 등)이 window.fetch를 감싸면 반환 Response가 네이티브가 아닌
         //    bound/proxy 객체가 되어 V8 스트리밍 브랜드 체크를 통과하지 못한다(2026-07 실측:
         //    vConsole 활성 시 fetch가 "bound Response"를 반환 → 매 콜드 부트 폴백·재다운로드).
-        // → 응답 body를 항상 네이티브 new Response(application/wasm)로 재포장해 두 조건을
-        //   동시에 충족시킨다. 재포장은 MIME 문제와 fetch 래퍼 오염을 한 번에 무력화하며,
-        //   단일 다운로드 상태로 스트리밍 컴파일을 복원한다(재페치 폴백은 이제 발생하지 않음).
+        // → 응답이 이미 안전하면(fetch 가 몽키패치되지 않았고, r 이 네이티브 Response 이며, URL 이 있고,
+        //   Content-Type 에 application/wasm 포함) 그 Response 를 instantiateStreaming 에 그대로 넘긴다.
+        //   이유: Chrome/V8(Android WebView 포함)은 컴파일된 wasm 코드를 'URL 이 있는 HTTP 캐시 응답'에 대한
+        //   instantiateStreaming/compileStreaming 에서만 영속 캐시(code cache)한다. new Response(r.body)
+        //   로 재포장하면 URL 이 사라져 재방문마다 풀 컴파일이 된다(실측: 재포장 시 code cache 엔트리 0,
+        //   직접 전달 시 엔트리 생성 + warm TTFF 약 -460ms). 같은 이유로 Chromium 에서는 wasm 이
+        //   페이지 캐시(CacheStorage)와 early-fetch 의 버퍼링을 우회해 HTTP 캐시를 거치게 했다.
+        //   early-fetch 가 넘기는 선시작 Response 도 fetch() 가 만든 것이라 URL 을 유지한다.
+        // → 위 조건 중 하나라도 어긋나면 기존대로 응답 body 를 네이티브 new Response(application/wasm)로
+        //   재포장해 두 조건을 동시에 충족시킨다(MIME 문제와 fetch 래퍼 오염 무력화, 단일 다운로드 유지).
         // .unityweb(JS 디컴프레서) 빌드는 로더가 wasm을 선다운로드하므로 개입하지 않는다.
         (function () {
             var codeUrl = config.codeUrl || '';
@@ -503,7 +510,8 @@
                 // fetch가 vConsole 등으로 몽키패치됐는지 사전 감지 — 네이티브 함수는
                 // toString()에 '[native code]'가 포함된다(흔히 쓰는 몽키패치 탐지 기법).
                 var fetchLooksWrapped = false;
-                try { fetchLooksWrapped = fetch.toString().indexOf('[native code]') === -1; } catch (e) {}
+                // AIT 자체 래퍼(page cache / early-fetch)는 네이티브 Response 를 돌려주므로 표식(__aitWrapper)으로 제외한다.
+                try { fetchLooksWrapped = fetch.toString().indexOf('[native code]') === -1 && !fetch.__aitWrapper; } catch (e) {}
                 var lastContentType = null;
 
                 fetch(codeUrl, { credentials: 'same-origin' })
@@ -518,7 +526,19 @@
                                 .then(function (bytes) { return WebAssembly.instantiate(bytes, imports); })
                                 .then(done);
                         }
-                        // 네이티브 Response로 재포장 — fetch 래퍼 오염과 MIME 문제를 동시에 무력화.
+                        // 안전하면 Response 를 그대로 전달(URL 보존 → V8 wasm code cache 가능). 판정은 위 주석 참고.
+                        var directOK = false;
+                        try {
+                            directOK = !fetchLooksWrapped
+                                && r instanceof Response
+                                && !!r.url
+                                && !!lastContentType
+                                && lastContentType.indexOf('application/wasm') !== -1;
+                        } catch (e) {}
+                        if (directOK) {
+                            return WebAssembly.instantiateStreaming(r, imports).then(done);
+                        }
+                        // 네이티브 Response로 재포장 — fetch 래퍼 오염과 MIME 문제를 동시에 무력화(폴백 경로).
                         var resp = new Response(r.body, {
                             status: 200,
                             headers: { 'Content-Type': 'application/wasm' }

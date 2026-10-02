@@ -23,6 +23,19 @@ public class AITEarlyFetchScriptTests
     private static string Legacy() =>
         WebGLBuildCopier.GenerateEarlyFetchScriptLegacyCaching(UrlsJson, CacheName, KickUrlsJson);
 
+    [Test]
+    public void Legacy_Chromium_WasmUsesPlainFetch_NotBufferedOrCacheStorage()
+    {
+        string js = WebGLBuildCopier.GenerateEarlyFetchScriptLegacyCaching(UrlsJson, CacheName, KickUrlsJson, "Build/bbbb.wasm.br");
+
+        StringAssert.Contains("var WASM_URL = 'Build/bbbb.wasm.br';", js);
+        StringAssert.Contains("function isPlainWasm(url)", js);
+        StringAssert.Contains("if (isPlainWasm(url)) return originalFetch.apply(self2, args);", js);
+        // 선시작도 plain fetch 한 번(로더가 pending 에 합류 → 이중 다운로드 없음).
+        StringAssert.Contains("if (isPlainWasm(url)) {", js);
+        StringAssert.Contains("window.fetch.__aitWrapper = true", js);
+    }
+
     // ---------------- legacy (2021/2022) ----------------
 
     [Test]

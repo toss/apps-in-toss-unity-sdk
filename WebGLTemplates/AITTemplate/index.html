@@ -121,10 +121,11 @@
             var PAN_MARGIN = 56;             // 입력창 아래쪽 절반 + 여유(CSS px)
             var POINTER_FRESH_MS = 1500;     // 탭 뒤 이 시간 안의 포커스만 탭 위치와 연결한다
             var FOCUS_CLEAR_DELAY_MS = 150;  // 필드 전환 시 focusout→focusin 사이 깜빡임을 흡수한다
+            var FIELD_SWITCH_CHECK_MS = 400; // 키보드가 뜬 채 탭한 뒤 키보드가 유지되는지 보는 시간(Unity 숨김 지연 200ms + 여유)
             var raf = 0;
             var ptrY = null, ptrAt = 0;      // 마지막 탭의 컨테이너 콘텐츠 좌표 Y
             var focusY = null, clearTimer = 0;
-            var lastPan = -1;
+            var lastPan = -1, wasUp = false;
 
             function container() { return document.getElementById('unity-container'); }
             function keyboardUp() { return window.innerHeight - vv.height > KEYBOARD_MIN_HEIGHT; }
@@ -138,7 +139,12 @@
                 applyTop(c);
                 c.style.transition = 'transform 180ms ease-out';
                 var pan = 0;
-                if (keyboardUp() && focusY !== null) {
+                // 입력창 밖을 탭하면 Unity 가 숨은 input 을 DOM 에서 지우는데, WebKit 은 이때 focusout 을 보내지 않는다.
+                // 키보드가 내려가는 순간 포커스 위치를 지워, 다음 포커스가 이전 위치로 화면을 올리지 않게 한다.
+                var up = keyboardUp();
+                if (wasUp && !up) focusY = null;
+                wasUp = up;
+                if (up && focusY !== null) {
                     var kb = window.innerHeight - vv.height;
                     pan = Math.min(kb, Math.max(0, Math.round(focusY + PAN_MARGIN - vv.height)));
                 }
@@ -175,8 +181,18 @@
                 if (!c || !c.contains(e.target)) return;
                 var t = e.touches && e.touches.length ? e.touches[0] : e;
                 if (typeof t.clientY !== 'number') return;
-                ptrY = t.clientY - c.getBoundingClientRect().top;
+                var y = t.clientY - c.getBoundingClientRect().top;
+                ptrY = y;
                 ptrAt = Date.now();
+                // 키보드가 떠 있는 채로 다른 입력창을 탭하면 Unity 는 기존 숨은 input 을 재사용해 focusin 이 오지 않는다.
+                // 입력창이 아닌 곳을 탭하면 Unity 가 키보드를 닫으므로(숨김 지연 200ms), 그 뒤에도 같은 input 이
+                // 포커스를 유지하고 있으면 이번 탭을 새 입력창 위치로 본다.
+                var el = document.activeElement;
+                if (focusY !== null && keyboardUp() && isTextField(el)) {
+                    setTimeout(function () {
+                        if (document.activeElement === el && keyboardUp()) { focusY = y; schedule(); }
+                    }, FIELD_SWITCH_CHECK_MS);
+                }
             }
             function isTextField(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }
             window.addEventListener('pointerdown', recordPointer, true);

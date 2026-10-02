@@ -117,6 +117,19 @@ public class AITKeyboardViewportTemplateWiringTests
     }
 
     [Test]
+    public void IndexHtml_PanMode_HandlesUnityReusedInputAndSilentRemoval()
+    {
+        string script = ExtractKeyboardViewportScript();
+        string pan = ExtractFunction(script, "applyPan");
+
+        // 키보드가 뜬 채 다른 입력창을 탭하면 Unity 는 같은 input 을 재사용해 focusin 이 없다
+        Assert.IsTrue(script.Contains("FIELD_SWITCH_CHECK_MS"), "키보드가 뜬 채 입력창을 바꿀 때 탭 위치를 다시 잡는 처리(FIELD_SWITCH_CHECK_MS)가 없습니다.");
+        Assert.IsTrue(Regex.IsMatch(script, @"document\.activeElement\s*===\s*el\s*&&\s*keyboardUp\(\)"), "전환 확인이 같은 input 의 포커스 유지와 키보드 유지를 함께 보지 않습니다.");
+        // Unity 가 input 을 DOM 에서 지울 때 WebKit 은 focusout 을 보내지 않는다
+        Assert.IsTrue(Regex.IsMatch(pan, @"if\s*\(\s*wasUp\s*&&\s*!up\s*\)\s*focusY\s*=\s*null"), "키보드가 내려갈 때 탭 위치를 지우지 않습니다.");
+    }
+
+    [Test]
     public void IndexHtml_KeyboardMode_PlaceholderFallsBackToPan()
     {
         string script = ExtractKeyboardViewportScript();

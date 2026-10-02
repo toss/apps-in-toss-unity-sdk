@@ -3,6 +3,14 @@ using UnityEditor;
 
 namespace AppsInToss
 {
+    /// <summary>소프트 키보드 대응 방식. 0(Pan)이 기본값이라 필드가 없던 기존 에셋도 Pan 으로 읽힌다.</summary>
+    public enum AITKeyboardMode
+    {
+        Pan = 0,
+        Resize = 1,
+        None = 2,
+    }
+
     /// <summary>
     /// 빌드 프로필 설정
     /// Dev Server (개발용, 빌드 속도 우선)와 Production (배포용, 최적화 우선)으로 구분
@@ -303,6 +311,10 @@ namespace AppsInToss
         [Header("스토리지 설정")]
         [Tooltip("PlayerPrefs 영속화 (앱인토스 Storage): -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int playerPrefsPersistence = -1;
+
+        [Header("키보드 설정")]
+        [Tooltip("소프트 키보드 대응: Pan(기본) = 탭한 입력창이 가리면 화면만 위로 이동, Resize = 캔버스 리사이즈, None = 상단 위치 보정만")]
+        public AITKeyboardMode keyboardMode = AITKeyboardMode.Pan;
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();

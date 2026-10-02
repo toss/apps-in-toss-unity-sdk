@@ -35,6 +35,26 @@ if manifest.get("dependencies", {}).pop("io.sentry.unity", None) is not None:
         json.dump(manifest, f, indent=2)
     print("[perf] minimal posture: io.sentry.unity 를 매니페스트에서 제거")
 PY
+  # Unity 6000.3+ 는 물리 백엔드가 PhysX 면 물리를 안 써도 PhysX 모듈(wasm ~0.8MB)을 강제로 싣는다.
+  # 백엔드 id 는 에디터가 뜨기 전에 에셋에 있어야 반영되므로 여기서 none(0xdecafbad)으로 미리 바꾼다.
+  # 물리를 안 쓰는 앱에 권하는 설정(AITPhysicsBackendAdvisor)을 적용한 상태를 재는 것이다.
+  IFS=. read -r UNITY_MAJOR UNITY_MINOR _ <<< "$UNITY_VERSION_PATTERN"
+  if (( UNITY_MAJOR > 6000 || (UNITY_MAJOR == 6000 && UNITY_MINOR >= 3) )); then
+    python3 - "$PROJECT_PATH/ProjectSettings/DynamicsManager.asset" <<'PY'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    text = f.read()
+line = "  m_CurrentBackendId: 3737844653"
+if re.search(r"^[ \t]*m_CurrentBackendId:", text, re.M):
+    text = re.sub(r"^[ \t]*m_CurrentBackendId:.*$", line, text, count=1, flags=re.M)
+else:
+    text = text.rstrip("\n") + "\n" + line + "\n"
+with open(path, "w") as f:
+    f.write(text)
+print("[perf] minimal posture: 물리 백엔드를 none 으로 설정")
+PY
+  fi
 fi
 
 # self-hosted 러너 잔존 로그 파일 정리

@@ -349,9 +349,21 @@ async function waitForCachePuts(page) {
   const done = await page.waitForFunction(() => {
     const s = window['__aitCacheStats'];
     const need = window['__aitWasmViaHttpCache'] ? 1 : 2;
-    return !!s && Array.isArray(s.puts) && s.puts.length >= need;
+    if (!s || !Array.isArray(s.puts)) return false;
+    // put 실패(QuotaExceededError 등)는 그 URL 에 대해 종결 상태다 — 기대 수를 못 채워도 75초를 더 기다리지 않는다.
+    const failed = Array.isArray(s.errors) ? s.errors.filter((e) => String(e).indexOf('put ') === 0).length : 0;
+    return s.puts.length + failed >= need;
   }, undefined, { timeout: CACHE_PUT_WAIT_MS }).then(() => true).catch(() => false);
-  if (!done) console.warn(`  페이지 캐시 put 이 ${CACHE_PUT_WAIT_MS}ms 안에 끝나지 않음 — 재방문 값에 재다운로드가 섞일 수 있다`);
+  // 진단용 요약: 상한 안에 끝났어도 put 실패가 섞였으면 남긴다(그 URL 은 warm 에서 재다운로드된다).
+  const summary = await page.evaluate(() => {
+    const s = window['__aitCacheStats'];
+    if (!s) return null;
+    const n = (a) => (Array.isArray(a) ? a.length : -1);
+    return { hits: n(s.hits), misses: n(s.misses), puts: n(s.puts), putUrls: s.puts, errors: s.errors, viaHttpCache: !!window['__aitWasmViaHttpCache'] };
+  }).catch(() => null);
+  const putErrors = summary && Array.isArray(summary.errors) ? summary.errors.filter((e) => String(e).indexOf('put ') === 0) : [];
+  if (!done) console.warn(`  페이지 캐시 put 이 ${CACHE_PUT_WAIT_MS}ms 안에 끝나지 않음 — 재방문 값에 재다운로드가 섞일 수 있다 stats=${JSON.stringify(summary)}`);
+  else if (putErrors.length) console.warn(`  페이지 캐시 put 실패 — 재방문 값에 재다운로드가 섞일 수 있다 stats=${JSON.stringify(summary)}`);
   await page.waitForTimeout(500);
 }
 

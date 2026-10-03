@@ -174,19 +174,27 @@ namespace AppsInToss.Editor
             Track(Client.Remove(ModuleName), "제거");
         }
 
+        /// <summary>대화상자 없이 모듈 제거를 요청한다. 완료되면 Package Manager가 도메인 리로드를 일으킬 수 있다.</summary>
+        internal static void RemoveSilently()
+        {
+            Track(Client.Remove(ModuleName), "제거", () => AITAutoOptimizer.OptOut(c => c.uiToolkitAutoApplied = 0));
+        }
+
         internal static void Enable()
         {
             if (!EditorUtility.DisplayDialog(
                     "UI Toolkit 모듈 켜기",
                     "내장 모듈 com.unity.modules.uielements를 Packages/manifest.json에 다시 추가합니다.\n\n" +
-                    "빌드에 UI Toolkit 관련 엔진 코드가 다시 포함됩니다.",
+                    "빌드에 UI Toolkit 관련 엔진 코드가 다시 포함됩니다. 에디터 로드 시 자동으로 제거하는 기능도 함께 꺼집니다.",
                     "켜기", "취소"))
                 return;
 
+            // 사용자가 직접 켠 것을 자동 적용이 다시 제거하지 않도록 옵트아웃한다.
+            AITAutoOptimizer.OptOut(c => c.uiToolkitAutoRemove = 0);
             Track(Client.Add(ModuleName), "추가");
         }
 
-        private static void Track(Request request, string verb)
+        private static void Track(Request request, string verb, Action onFailure = null)
         {
             AITLog.Info($"[AIT-UIToolkit] {ModuleName} {verb} 요청을 보냈습니다. 도메인 리로드가 일어날 수 있습니다.");
             void Poll()
@@ -194,6 +202,8 @@ namespace AppsInToss.Editor
                 if (!request.IsCompleted)
                     return;
                 EditorApplication.update -= Poll;
+                if (request.Status == StatusCode.Failure)
+                    onFailure?.Invoke();
                 if (request.Status == StatusCode.Failure)
                     AITLog.Warning($"[AIT-UIToolkit] {ModuleName} {verb} 실패: {request.Error?.message}", sentryCapture: false);
             }

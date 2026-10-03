@@ -591,6 +591,12 @@ namespace AppsInToss.Editor
             foreach (var usage in r.RuntimeUsages)
                 EditorGUILayout.HelpBox(usage, MessageType.Warning);
 
+            bool uiAuto = EditorGUILayout.Toggle(
+                new GUIContent("에디터 로드 시 자동 제거", "켜 두면 사용 흔적이 없을 때 에디터를 열 때 모듈을 자동으로 제거합니다(기본 켜짐). 끄면 값이 0이 됩니다."),
+                config.uiToolkitAutoRemove != 0);
+            if (uiAuto != (config.uiToolkitAutoRemove != 0))
+                config.uiToolkitAutoRemove = uiAuto ? -1 : 0;
+
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("다시 검사"))
                 uiToolkitResult = AITUIToolkitModuleAdvisor.Analyze();
@@ -643,6 +649,12 @@ namespace AppsInToss.Editor
 
             foreach (var usage in r.RuntimeUsages)
                 EditorGUILayout.HelpBox(usage, MessageType.Warning);
+
+            bool physAuto = EditorGUILayout.Toggle(
+                new GUIContent("에디터 로드 시 자동 끄기", "켜 두면 3D 물리 사용 흔적이 없을 때 에디터를 열 때 PhysX를 자동으로 끕니다(기본 켜짐, 재시작 후 반영). 끄면 값이 0이 됩니다."),
+                config.physicsBackendAutoDisable != 0);
+            if (physAuto != (config.physicsBackendAutoDisable != 0))
+                config.physicsBackendAutoDisable = physAuto ? -1 : 0;
 
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("다시 검사"))

@@ -282,6 +282,25 @@ namespace AppsInToss
         /// </summary>
         public int brotliRecompressMode = -1;
 
+        [Header("에디터 자동 최적화")]
+        [Tooltip("에디터 로드 시 3D 물리를 쓰지 않는 프로젝트의 물리 백엔드(PhysX, Unity 6000.3+)를 자동으로 끕니다. " +
+                 "-1 = 자동 (켜짐), 1 = 켜짐, 0 = 비활성(자동으로 끄지 않음). " +
+                 "배치 모드에서는 동작하지 않으며, 3D 물리 사용 흔적이 있으면 적용하지 않습니다. 에디터 재시작 후 반영됩니다. " +
+                 "되돌리려면 고급 설정의 'PhysX 켜기'를 누르세요(이 값이 0으로 바뀌어 다시 끄지 않습니다).")]
+        public int physicsBackendAutoDisable = -1;
+
+        [Tooltip("에디터 로드 시 UI Toolkit을 쓰지 않는 프로젝트의 내장 모듈(com.unity.modules.uielements)을 자동으로 제거합니다. " +
+                 "-1 = 자동 (켜짐), 1 = 켜짐, 0 = 비활성(자동으로 제거하지 않음). " +
+                 "배치 모드에서는 동작하지 않으며, UI Toolkit 사용 흔적이나 의존 패키지가 있으면 적용하지 않습니다. " +
+                 "되돌리려면 고급 설정의 '모듈 켜기'를 누르세요(이 값이 0으로 바뀌어 다시 제거하지 않습니다).")]
+        public int uiToolkitAutoRemove = -1;
+
+        /// <summary>(숨김) 물리 백엔드를 자동으로 끈 적이 있으면 1. 이후 PhysX가 다시 켜져 있으면 사용자가 직접 켠 것으로 보고 physicsBackendAutoDisable을 0으로 둔다.</summary>
+        [HideInInspector] public int physicsBackendAutoApplied = 0;
+
+        /// <summary>(숨김) UI Toolkit 모듈을 자동으로 제거한 적이 있으면 1. 이후 모듈이 다시 켜져 있으면 사용자가 직접 켠 것으로 보고 uiToolkitAutoRemove를 0으로 둔다.</summary>
+        [HideInInspector] public int uiToolkitAutoApplied = 0;
+
         [Header("로딩 최적화 — 페이지 캐시(CacheStorage 재방문 서빙)")]
         [Tooltip("재방문 시 Build/* 자산을 CacheStorage 에서 직접 서빙합니다(ServiceWorker 불필요). " +
                  "첫 방문(콜드)에는 효과가 없고, 미지원/비보안 환경에서는 자동으로 원래 로드로 무해 통과합니다. " +

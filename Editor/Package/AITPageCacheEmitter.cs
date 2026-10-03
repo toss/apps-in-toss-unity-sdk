@@ -275,6 +275,11 @@ namespace AppsInToss.Editor.Package
 
             // 통계 훅(perf CI/검증용, 운영 무영향).
             window.__aitCacheStats = { hits: [], misses: [], puts: [], errors: [] };
+            // 레거시(2021/2022) early-fetch 가 같은 바이트를 별도 캐시에 한 번 더 저장하지 않도록 노출하는 판정 훅.
+            // 이 URL 은 아래 cacheFirst 가 put 하므로(통계 puts 에도 기록됨) 호출자는 중복 저장을 건너뛴다.
+            window.__aitPageCacheCovers = function (url) {
+                try { return isCacheable(url); } catch (e) { return false; }
+            };
 
             // ALLOWLIST 절대 URL 집합(부팅 sweep 과 isCacheable 이 공유). loader.js 등 ALLOWLIST 에
             // 없는 Build/* 경로는(예: early-fetch 가 HTTP 캐시 워밍 목적으로 bare fetch 하는 loader.js)

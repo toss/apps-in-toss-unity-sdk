@@ -354,7 +354,15 @@ namespace AppsInToss.Editor.Package
                     if (expected >= 0 && buf.byteLength !== expected) {{
                         throw new Error('short read ' + buf.byteLength + '/' + expected);
                     }}
-                    if (cacheOK) {{ storeBuffer(url, buf, ct); }}
+                    if (cacheOK) {{
+                        // 페이지 캐시가 이 URL 을 이미 put 한다(originalFetch 가 그 래퍼). 같은 디코드 바이트를 이 캐시에 한 번 더
+                        // 저장하면 저장소 사용량이 두 배가 되어, 메모리 기반 저장소(시크릿/자동화 컨텍스트, 상한 ~100MB)에서
+                        // QuotaExceededError 로 data put 이 실패한다(2021.3 heavy 실측: wasm 46MB x2 + data 30MB).
+                        var pcCovered = false;
+                        try {{ pcCovered = typeof window.__aitPageCacheCovers === 'function' && window.__aitPageCacheCovers(url) === true; }} catch (e) {{}}
+                        if (pcCovered) {{ try {{ console.log('[AIT] cache: delegated to page cache ' + url); }} catch (e) {{}} }}
+                        else {{ storeBuffer(url, buf, ct); }}
+                    }}
                     // 재합성 Response 는 URL 이 없어 index.html 이 직접 경로를 판정할 수 없다. 네트워크 응답의 Content-Type 이
                     // application/wasm 이고 no-store 가 아니면 여기서 플래그를 켠다(이후 방문의 직접 경로 실패는 index.html 이 플래그를 지운다).
                     try {{

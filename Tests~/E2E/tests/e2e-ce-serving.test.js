@@ -247,7 +247,7 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
     const legacyActive = cacheLogs.some((l) => l.includes('cache: legacy active'));
     if (legacyActive) {
       const deadline = Date.now() + 15000;
-      while (Date.now() < deadline && !cacheLogs.some((l) => l.includes('cache: stored'))) {
+      while (Date.now() < deadline && !cacheLogs.some((l) => /cache: (stored|delegated)/.test(l))) {
         await page.waitForTimeout(500);
       }
     }
@@ -287,8 +287,8 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
 
     // 5. 레거시 인터셉터가 개입했다면 저장까지 성공해야 한다 (해제된 bytes가 캐시에 안착)
     if (legacyActive) {
-      const storedLogs = cacheLogs.filter((l) => l.includes('cache: stored'));
-      expect(storedLogs.length, '레거시 버퍼링 인터셉터 개입 시 cache: stored 1건 이상 필요').toBeGreaterThan(0);
+      const storedLogs = cacheLogs.filter((l) => /cache: (stored|delegated)/.test(l));
+      expect(storedLogs.length, '레거시 버퍼링 인터셉터 개입 시 cache: stored(또는 페이지 캐시 위임 delegated) 1건 이상 필요').toBeGreaterThan(0);
     }
 
     console.log(`✅ CE 서빙 검증 완료 — 요청 ${buildRequestCounts.size}종, legacy=${legacyActive}, wasmStreamingFallback=${wasmStreamingFallback}`);

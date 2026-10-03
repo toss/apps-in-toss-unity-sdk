@@ -61,6 +61,17 @@ public class AITPageCacheEmitterTests
     }
 
     [Test]
+    public void PageCache_ExposesCoversHook_ForLegacyEarlyFetch()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        // 레거시 early-fetch 가 같은 URL 을 별도 캐시에 이중 저장하지 않도록 판정 훅을 노출한다.
+        StringAssert.Contains("window.__aitPageCacheCovers = function (url)", result);
+        StringAssert.Contains("return isCacheable(url);", result);
+    }
+
+    [Test]
     public void PageCache_ExplicitEnabled_EmitsScript()
     {
         config.pageCache = 1; // 명시적 활성

@@ -206,6 +206,65 @@ namespace AppsInToss.Editor
         }
 #endif
 
+        private const string LaunchBackendKey = "AIT_PhysicsBackendAtLaunch";
+
+        /// <summary>
+        /// 이번 에디터 세션이 처음 로드될 때의 백엔드 id를 기록한다(SessionState는 에디터 재시작 때만 지워진다).
+        /// 도메인 리로드마다 불려도 첫 값만 남긴다.
+        /// </summary>
+        internal static void RecordLaunchBackend()
+        {
+            try
+            {
+                if (SessionState.GetString(LaunchBackendKey, "") != "")
+                    return;
+                string text = File.Exists(AssetFilePath) ? File.ReadAllText(AssetFilePath) : "";
+                SessionState.SetString(LaunchBackendKey, ReadBackendId(text).ToString());
+            }
+            catch (Exception)
+            {
+                // 기록 실패는 안내 문구에만 영향이 있어 무시한다.
+            }
+        }
+
+        /// <summary>파일에는 none인데 지금 실행 중인 에디터는 PhysX로 떠 있으면 true(재시작 대기).</summary>
+        internal static bool IsRestartPending()
+        {
+            string launched = SessionState.GetString(LaunchBackendKey, "");
+            if (launched != PhysXBackendId.ToString())
+                return false;
+            string text = File.Exists(AssetFilePath) ? File.ReadAllText(AssetFilePath) : "";
+            return !IsPhysXEnabled(text);
+        }
+
+        /// <summary>대화상자 없이 설정 파일만 다시 쓴다. 성공하면 true. 효과는 에디터 재시작 뒤에 나타난다.</summary>
+        internal static bool ApplyBackendSilently(long targetId)
+        {
+#if UNITY_6000_3_OR_NEWER
+            try
+            {
+                string path = AssetFilePath;
+                if (!File.Exists(path))
+                {
+                    AITLog.Warning($"[AIT-Physics] {path} 파일이 없어 변경하지 못했습니다.", sentryCapture: false);
+                    return false;
+                }
+
+                string original = File.ReadAllText(path);
+                File.WriteAllText(path, RewriteBackendId(original, targetId));
+                AITLog.Info($"[AIT-Physics] m_CurrentBackendId를 {targetId}로 바꿨습니다. 에디터를 다시 시작해야 적용됩니다.");
+                return true;
+            }
+            catch (Exception e)
+            {
+                AITLog.Warning($"[AIT-Physics] 설정 파일 수정 실패: {e.Message}", sentryCapture: false);
+                return false;
+            }
+#else
+            return false;
+#endif
+        }
+
         internal static void Disable()
         {
             Apply(NoneBackendId,
@@ -222,7 +281,7 @@ namespace AppsInToss.Editor
             Apply(PhysXBackendId,
                 "PhysX 켜기",
                 "ProjectSettings/DynamicsManager.asset의 물리 백엔드(m_CurrentBackendId)를 PhysX로 되돌립니다.\n\n" +
-                "빌드에 PhysX 엔진 코드가 다시 포함됩니다.",
+                "빌드에 PhysX 엔진 코드가 다시 포함됩니다. 에디터 로드 시 자동으로 끄는 기능도 함께 꺼집니다.",
                 "켜기");
         }
 
@@ -232,24 +291,12 @@ namespace AppsInToss.Editor
             if (!EditorUtility.DisplayDialog(title, message, okLabel, "취소"))
                 return;
 
-            try
-            {
-                string path = AssetFilePath;
-                if (!File.Exists(path))
-                {
-                    AITLog.Warning($"[AIT-Physics] {path} 파일이 없어 변경하지 못했습니다.", sentryCapture: false);
-                    return;
-                }
-
-                string original = File.ReadAllText(path);
-                File.WriteAllText(path, RewriteBackendId(original, targetId));
-                AITLog.Info($"[AIT-Physics] m_CurrentBackendId를 {targetId}로 바꿨습니다. 에디터를 다시 시작해야 적용됩니다.");
-            }
-            catch (Exception e)
-            {
-                AITLog.Warning($"[AIT-Physics] 설정 파일 수정 실패: {e.Message}", sentryCapture: false);
+            if (!ApplyBackendSilently(targetId))
                 return;
-            }
+
+            // 사용자가 직접 켠 것을 자동 적용이 다시 끄지 않도록 옵트아웃한다.
+            if (targetId == PhysXBackendId)
+                AITAutoOptimizer.OptOut(c => c.physicsBackendAutoDisable = 0);
 
             if (EditorUtility.DisplayDialog(
                     "에디터 재시작 필요",
@@ -283,6 +330,14 @@ namespace AppsInToss.Editor
             {
                 if (report == null || report.summary.platform != BuildTarget.WebGL)
                     return;
+
+                if (AITPhysicsBackendAdvisor.IsRestartPending())
+                {
+                    AITLog.Info(
+                        "[AIT-Physics] 물리 백엔드(PhysX)를 끄도록 설정 파일을 바꿨지만 이 에디터는 아직 PhysX로 실행 중이라 " +
+                        "이번 빌드에는 PhysX가 포함됩니다. 에디터를 다시 시작하면 적용됩니다.");
+                    return;
+                }
 
                 if (!AITPhysicsBackendAdvisor.Analyze().Recommended)
                     return;

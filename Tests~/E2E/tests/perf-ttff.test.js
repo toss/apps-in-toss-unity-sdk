@@ -343,13 +343,20 @@ async function waitForCachePuts(page) {
   // 기대 put 수: data + wasm. Chromium 에서는 wasm 이 HTTP 캐시로 빠져(__aitWasmViaHttpCache) 페이지 캐시에 put 되지 않으므로 1이다.
   // timeout 은 반드시 세 번째 인자(options)로 넘긴다. 두 번째(arg)에 두면 상한 없이 영구 대기해
   // put 이 기대 수에 못 미치는 빌드에서 재방문 측정이 120s 상한까지 멈춘다(실측 회귀).
-  await page.waitForFunction(() => {
+  // 상한은 느린 러너에서도 put 이 끝날 만큼 넉넉해야 한다. put 은 디코드된 본문(wasm ~37MB, data ~30MB)을 렌더러 메인 스레드가
+  // 읽어 쓰는 작업이라 CPU 스로틀 아래서는 TTFF 뒤로 수 초~수십 초 밀린다(6000.0 은 wasm 이 커서 15s 상한을 넘겨 재방문마다
+  // 통째로 다시 받았다). 상한 안에 못 끝나면 warm 값이 네트워크 재다운로드를 포함하므로 경고를 남긴다.
+  const done = await page.waitForFunction(() => {
     const s = window['__aitCacheStats'];
     const need = window['__aitWasmViaHttpCache'] ? 1 : 2;
     return !!s && Array.isArray(s.puts) && s.puts.length >= need;
-  }, undefined, { timeout: 15000 }).catch(() => {});
+  }, undefined, { timeout: CACHE_PUT_WAIT_MS }).then(() => true).catch(() => false);
+  if (!done) console.warn(`  페이지 캐시 put 이 ${CACHE_PUT_WAIT_MS}ms 안에 끝나지 않음 — 재방문 값에 재다운로드가 섞일 수 있다`);
   await page.waitForTimeout(500);
 }
+
+/** 재방문 측정 전에 페이지 캐시 put 완료를 기다리는 상한. WARM_DEADLINE_MS 안에서 재방문 로드 자체가 들어갈 여유를 남긴다. */
+const CACHE_PUT_WAIT_MS = 75000;
 
 /** 재방문 측정 전체와 컨텍스트 정리의 벽시계 상한. 렌더러가 멈춘 러너에서 테스트 timeout 을 다 먹지 않게 한다. */
 const WARM_DEADLINE_MS = 120000;

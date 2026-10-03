@@ -108,6 +108,14 @@ public class E2EBuildRunner
         {
             SetupBenchmarkScene();
         }
+        else
+        {
+            // probe: 환경 반사/스카이박스를 끄면 기본 반사 Cubemap(.data 의 ~89%)이 빠지는지 확인.
+            RenderSettings.skybox = null;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Custom;
+            Debug.Log("[probe] minimal: skybox=null, ambient=Flat, reflection=Custom(null)");
+        }
 
         // 씬 저장
         EditorSceneManager.SaveScene(scene, scenePath);

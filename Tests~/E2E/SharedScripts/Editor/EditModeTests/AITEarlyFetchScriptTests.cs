@@ -52,6 +52,11 @@ public class AITEarlyFetchScriptTests
         StringAssert.Contains("cache: delegated to page cache", js);
         // 훅이 없거나 false 면 기존 저장 경로를 유지한다.
         StringAssert.Contains("else { storeBuffer(url, buf, ct); }", js);
+        // 재방문은 페이지 캐시 히트를 버퍼링 없이 스트림 그대로 서빙한다(kickoff 와 fetch 오버라이드 양쪽).
+        StringAssert.Contains("function warmLookup(url)", js);
+        StringAssert.Contains("window.__aitPageCacheLookup(url)", js);
+        StringAssert.Contains("pcl = warmLookup(url)", js);
+        StringAssert.Contains("var pcl2 = warmLookup(url);", js);
     }
 
     [Test]

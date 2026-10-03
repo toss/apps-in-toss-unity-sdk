@@ -547,6 +547,20 @@ namespace AppsInToss.Editor.Package
                 } catch (e) {}
             }
 
+            // 재방문(warm) 조회 훅: 레거시 early-fetch 가 페이지 캐시 히트를 버퍼링 없이 스트림 그대로 받게 한다.
+            // 힌트가 없거나 캐시 대상이 아니면 동기적으로 null(= 호출자가 바로 네트워크 경로), 있으면 Promise<Response|null>.
+            window.__aitPageCacheLookup = function (url) {
+                try {
+                    if (!isCacheable(url) || !isHinted(url)) { return null; }
+                    return getCache().then(function (cache) { return cache.match(url); }).then(function (hit) {
+                        if (!hit) { return null; }
+                        window.__aitCacheStats.hits.push(url);
+                        markNonNet(hit);
+                        return hit;
+                    }).catch(function () { return null; });
+                } catch (e) { return null; }
+            };
+
             // cache-first 체인: CacheStorage/IndexedDB 히트 → 단락, 미스 → priorFetch 후 비차단 put.
             // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
             function cacheFirst(resource, init, url) {

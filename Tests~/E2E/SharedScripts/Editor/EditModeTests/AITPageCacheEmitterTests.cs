@@ -69,6 +69,9 @@ public class AITPageCacheEmitterTests
         // 레거시 early-fetch 가 같은 URL 을 별도 캐시에 이중 저장하지 않도록 판정 훅을 노출한다.
         StringAssert.Contains("window.__aitPageCacheCovers = function (url)", result);
         StringAssert.Contains("return isCacheable(url);", result);
+        // 재방문 조회 훅: 힌트 없으면 동기 null, 있으면 CacheStorage match 후 hits 기록.
+        StringAssert.Contains("window.__aitPageCacheLookup = function (url)", result);
+        StringAssert.Contains("if (!isCacheable(url) || !isHinted(url)) { return null; }", result);
     }
 
     [Test]

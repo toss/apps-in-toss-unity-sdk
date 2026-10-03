@@ -57,12 +57,12 @@ public class AITTextureStreamJpegTranscoderTests
     }
 
     [Test]
-    public void IsEnabled_Auto_FollowsSdkDefaultOff()
+    public void IsEnabled_Auto_FollowsSdkDefaultOn()
     {
         _config.textureStreamJpeg = -1;
-        Assert.IsFalse(AITDefaultSettings.GetDefaultTextureStreamJpeg(),
-            "lossy 레버는 시각 검증 게이트 전 auto 기본 OFF 여야 한다 — 켜려면 이 테스트와 문서를 함께 갱신할 것");
-        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsEnabled(_config));
+        Assert.IsTrue(AITDefaultSettings.GetDefaultTextureStreamJpeg(),
+            "auto 기본은 ON(불투명 텍스처 한정) — 끄려면 textureStreamJpeg=0");
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.IsEnabled(_config));
     }
 
     [Test]

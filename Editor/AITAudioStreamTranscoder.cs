@@ -232,7 +232,7 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static void ScanYamlForLoopingClips(string yaml, HashSet<string> sink)
         {
-            if (string.IsNullOrEmpty(yaml) || sink == null || yaml.IndexOf("AudioSource", StringComparison.Ordinal) < 0)
+            if (string.IsNullOrEmpty(yaml) || sink == null || yaml.IndexOf("m_audioClip", StringComparison.Ordinal) < 0)
             {
                 return;
             }

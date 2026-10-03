@@ -394,13 +394,21 @@ namespace AppsInToss.Editor.Package
         //  · isReload 제외: 이전 문서 keep-alive 소켓 해체와 경합(ERR_CONNECTION_CLOSED 위험) + HTTP 캐시 이미 warm.
         //  · 저메모리(cacheOK=false)는 버퍼링 없이 bare 스트리밍 fetch로 선시작(OOM 방어 유지).
         //  · 실패는 엔트리 삭제 후 null → 오버라이드가 originalFetch로 폴백(bufferedFetch 자체가 재시도+폴백 내장).
+        // 페이지 캐시가 이미 채운 URL 의 재방문 조회(동기 null = 힌트 없음/비대상). 워치독 복구 reload 는 우회한다.
+        function warmLookup(url) {{
+            if (skipCacheOnce || typeof window.__aitPageCacheLookup !== 'function') return null;
+            try {{ return window.__aitPageCacheLookup(url) || null; }} catch (e) {{ return null; }}
+        }}
         var pendingEarly = {{}};
         if (!isReload) {{
             for (var ki = 0; ki < kickUrls.length; ki++) (function(url) {{
-                var p;
+                var p, pcl;
                 if (isPlainWasm(url)) {{
                     // Chromium wasm: 단일 네이티브 fetch(HTTP 캐시 경유) — 로더가 이 Response 를 그대로 받는다(이중 다운로드 없음).
                     p = originalFetch(url, {{ method: 'GET' }});
+                }} else if (cacheOK && (pcl = warmLookup(url))) {{
+                    // 페이지 캐시 히트는 버퍼링 없이 스트림 그대로 서빙(재방문 지연 방지). 미스면 버퍼링 다운로드.
+                    p = pcl.then(function(hit) {{ return (hit && hit.ok) ? hit : bufferedFetch(url, MAX_TRIES); }});
                 }} else if (cacheOK && !skipCacheOnce && isStored(url)) {{
                     p = self.caches.open(CACHE_NAME).then(function(c) {{
                         return c.match(url, {{ ignoreSearch: true }});
@@ -439,6 +447,11 @@ namespace AppsInToss.Editor.Package
 
             // 저메모리/무캐시: 버퍼링 없이 원본 스트리밍 fetch(기존 동작, 제품 워치독 방어).
             if (!cacheOK) return originalFetch.apply(self2, args);
+
+            var pcl2 = warmLookup(url);
+            if (pcl2) {{
+                return pcl2.then(function(hit) {{ return (hit && hit.ok) ? hit : bufferedFetch(url, MAX_TRIES); }});
+            }}
 
             // 캐시 우선(skip 플래그면 우회). HIT → 네트워크 없이 서빙(warm reload 순단 원천 차단).
             if (!skipCacheOnce && isStored(url)) {{

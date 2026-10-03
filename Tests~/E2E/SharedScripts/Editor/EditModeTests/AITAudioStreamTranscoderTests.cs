@@ -3,7 +3,7 @@
 // Level 0: IsEnabled / EstimateKbps / ShouldTranscode / ShouldAdopt / Resolve* (순수 함수)
 //
 // 핵심 불변식:
-//   1) 레버는 명시 활성(==1)에서만 동작 — auto(-1)는 청취 검증 전까지 비활성(기본 OFF).
+//   1) auto(-1)는 기본 ON, 0 으로 끈다. 루프 클립(AudioSource.loop)은 auto 에서 제외(ScanYamlForLoopingClips).
 //   2) ShouldTranscode 하한 방어: minSourceKbps 가 target 이하로 잘못 설정돼도
 //      target+32 미만 소스는 재인코딩하지 않는다 (세대손실만 남는 재인코딩 차단).
 //   3) 채택 게이트: 산출물이 원본 대비 25% 이상 작을 때만 교체 (미달 시 원본 유지).
@@ -43,12 +43,47 @@ public class AITAudioStreamTranscoderTests
     }
 
     [Test]
-    public void IsEnabled_Auto_FollowsSdkDefaultOff()
+    public void IsEnabled_Auto_FollowsSdkDefaultOn()
     {
         _config.audioStreamTranscode = -1;
-        Assert.IsFalse(AITDefaultSettings.GetDefaultAudioStreamTranscode(),
-            "auto 기본은 청취 검증 전까지 OFF 여야 한다 — 켜려면 이 테스트와 문서를 함께 갱신할 것");
-        Assert.IsFalse(AITAudioStreamTranscoder.IsEnabled(_config));
+        Assert.IsTrue(AITDefaultSettings.GetDefaultAudioStreamTranscode(),
+            "auto 기본은 ON 이어야 한다(루프 클립은 별도 게이트로 제외) — 끄려면 audioStreamTranscode=0");
+        Assert.IsTrue(AITAudioStreamTranscoder.IsEnabled(_config));
+    }
+
+    private const string LoopScene =
+        "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n" +
+        "--- !u!82 &100\nAudioSource:\n  m_ObjectHideFlags: 0\n  m_audioClip: {fileID: 8300000, guid: aaaa1111, type: 3}\n  Loop: 1\n  Mute: 0\n" +
+        "--- !u!82 &200\nAudioSource:\n  m_audioClip: {fileID: 8300000, guid: bbbb2222, type: 3}\n  Loop: 0\n" +
+        "--- !u!114 &300\nMonoBehaviour:\n  m_audioClip: {fileID: 8300000, guid: cccc3333, type: 3}\n  Loop: 1\n";
+
+    [Test]
+    public void ScanYamlForLoopingClips_OnlyLoopingAudioSourceClips()
+    {
+        var sink = new System.Collections.Generic.HashSet<string>();
+        AITAudioStreamTranscoder.ScanYamlForLoopingClips(LoopScene, sink);
+        CollectionAssert.AreEquivalent(new[] { "aaaa1111" }, sink,
+            "Loop: 1 인 AudioSource 의 클립만 포함해야 한다(Loop: 0 AudioSource, 다른 컴포넌트는 제외).");
+    }
+
+    [Test]
+    public void ScanYamlForLoopingClips_PrefabLoopOverride_IncludesOverriddenClips()
+    {
+        string yaml = "%YAML 1.1\n--- !u!1001 &1\nPrefabInstance:\n  m_Modification:\n    m_Modifications:\n" +
+            "    - target: {fileID: 1, guid: p, type: 3}\n      propertyPath: Loop\n      value: 1\n      objectReference: {fileID: 0}\n" +
+            "    - target: {fileID: 1, guid: p, type: 3}\n      propertyPath: m_audioClip\n      value: \n      objectReference: {fileID: 8300000, guid: dddd4444, type: 3}\n";
+        var sink = new System.Collections.Generic.HashSet<string>();
+        AITAudioStreamTranscoder.ScanYamlForLoopingClips(yaml, sink);
+        CollectionAssert.AreEquivalent(new[] { "dddd4444" }, sink);
+    }
+
+    [Test]
+    public void ScanYamlForLoopingClips_NullOrNoAudioSource_IsNoOp()
+    {
+        var sink = new System.Collections.Generic.HashSet<string>();
+        AITAudioStreamTranscoder.ScanYamlForLoopingClips(null, sink);
+        AITAudioStreamTranscoder.ScanYamlForLoopingClips("%YAML 1.1\n--- !u!1 &1\nGameObject:\n", sink);
+        Assert.AreEqual(0, sink.Count);
     }
 
     [Test]

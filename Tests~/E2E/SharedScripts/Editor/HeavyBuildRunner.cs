@@ -135,21 +135,23 @@ public class HeavyBuildRunner
             return;
         }
 
-        // perf full/fullmesh posture: 기본 자동 모드에선 꺼져 있는 opt-in 레버를 명시 활성화한다
-        // (fontSubset 은 언어 선택 게이트, audioStreamTranscode/textureStreamJpeg 는 opt-in 기본 OFF).
+        // perf full/fullmesh posture: 레버를 명시 활성화한다. 기본(default) posture 는 이제 자동(-1) 경로로
+        // 이 레버들(fontSubset 기본 ko+Latin 세트, audioStreamTranscode/textureStreamJpeg, meshCompression=Low,
+        // brotli q11)을 모두 실행하므로, full/fullmesh 는 자동 경로 대비 명시값(fontSubsetLanguages=ko,
+        // meshCompression=1 → Medium)의 차이를 보는 posture 다.
         // fullmesh 는 full 에 meshCompression=1 만 더한 것 — 같은 픽스처에서 full↔fullmesh A/B 로
-        // Mesh 압축 레버 단독 효과를 격리 측정하기 위한 posture 다.
+        // Mesh 압축 Medium 레벨의 효과를 격리 측정하기 위한 posture 다.
         // dispatch 의 posture 입력이 unity-build.yml → AIT_PERF_POSTURE 로 전파된 것.
         if (posture == "full" || posture == "fullmesh")
         {
             var config = UnityUtil.GetEditorConf();
-            config.fontSubsetLanguages = "ko";   // 자동 모드 언어 선택 게이트 통과 → 부팅 subset 발화
-            config.audioStreamTranscode = 1;     // opt-in
-            config.textureStreamJpeg = 1;        // opt-in
+            config.fontSubsetLanguages = "ko";   // 명시 언어 선택(기본 세트와 동일 범위지만 선택 경로 실행)
+            config.audioStreamTranscode = 1;     // 명시 활성(루프 게이트 없음)
+            config.textureStreamJpeg = 1;        // 명시 활성
             string levers = "fontSubsetLanguages=ko, audioStreamTranscode=1, textureStreamJpeg=1";
             if (posture == "fullmesh")
             {
-                config.meshCompression = 1;      // opt-in (Mesh 압축 레버 A/B 측정용)
+                config.meshCompression = 1;      // 명시 활성 = Medium (자동 Low 와 A/B 측정용)
                 levers += ", meshCompression=1";
             }
             EditorUtility.SetDirty(config);

@@ -68,7 +68,7 @@ public class AITMeshCompressionProcessorEffectiveEnabledTests
     }
 
     // 자동(-1)은 신규 손실 레버 opt-in 컨벤션(audioStreamTranscode/textureStreamJpeg 와 동일 posture)에
-    // 따라 GetDefaultMeshCompression()(=현재 false)을 그대로 따라야 한다.
+    // 따라 GetDefaultMeshCompression()(=true, Low 레벨)을 그대로 따라야 한다.
     [Test]
     public void EffectiveEnabled_Auto_MatchesGetDefaultMeshCompression()
     {
@@ -86,13 +86,24 @@ public class AITMeshCompressionProcessorEffectiveEnabledTests
         }
     }
 
-    // 시각 검증 게이트 미통과 상태를 명시적으로 고정 — 이 값이 실수로 true 로 뒤집히면
-    // (구버전 AITConfig.asset 등에서) 사용자 의도 없이 lossy 양자화가 조용히 켜진다.
+    // 자동 ON(Low) / 명시 활성(Medium) 레벨 구분을 고정한다.
     [Test]
-    public void GetDefaultMeshCompression_IsCurrentlyOff()
+    public void GetDefaultMeshCompression_IsOn_AutoUsesLow_ExplicitUsesMedium()
     {
-        Assert.IsFalse(AITDefaultSettings.GetDefaultMeshCompression(),
-            "Mesh 압축은 시각 검증 게이트를 통과하기 전까지 auto=OFF 여야 함(명시 활성(1)에서만 동작).");
+        Assert.IsTrue(AITDefaultSettings.GetDefaultMeshCompression(),
+            "Mesh 압축은 auto=ON(Low) 이어야 함 — 끄려면 meshCompression=0.");
+        var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+        try
+        {
+            config.meshCompression = -1;
+            Assert.AreEqual(UnityEditor.ModelImporterMeshCompression.Low, AITMeshCompressionProcessor.ResolveTargetCompression(config));
+            config.meshCompression = 1;
+            Assert.AreEqual(UnityEditor.ModelImporterMeshCompression.Medium, AITMeshCompressionProcessor.ResolveTargetCompression(config));
+        }
+        finally
+        {
+            Object.DestroyImmediate(config);
+        }
     }
 }
 

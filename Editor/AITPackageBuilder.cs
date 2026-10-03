@@ -122,7 +122,7 @@ namespace AppsInToss.Editor
                 return (null, configValidation);
 
             Debug.Log("[AIT] Step 2/3: Unity WebGL 빌드 복사 중...");
-            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, buildProjectPath, out string inlinePrefetchJson, profile);
+            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, buildProjectPath, out string inlinePrefetchJson, profile, fastBuild);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
                 return (null, copyResult);
 
@@ -252,7 +252,7 @@ namespace AppsInToss.Editor
             onProgress?.Invoke(AITConvertCore.BuildPhase.CopyingFiles, 0.15f, "WebGL 빌드 파일 복사 중...");
             Debug.Log("[AIT] [병렬] WebGL 빌드를 ait-build/public으로 복사 중...");
 
-            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, earlyCtx.BuildProjectPath, out string inlinePrefetchJson, profile);
+            var copyResult = Package.WebGLBuildCopier.CopyWebGLToPublic(webglPath, earlyCtx.BuildProjectPath, out string inlinePrefetchJson, profile, fastBuild);
             if (copyResult != AITConvertCore.AITExportError.SUCCEED)
             {
                 earlyCtx.CancelAndDisposePnpm();

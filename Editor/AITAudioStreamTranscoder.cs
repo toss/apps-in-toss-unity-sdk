@@ -20,10 +20,10 @@
 //     (on-demand npm 설치) 의 기존 패턴 재사용. 도구 미가용 시 원본 사본 유지(기능
 //     저하 없음 — 번들 크기만 종전과 동일).
 //
-// ⚠ 기본값 정책: cascaded lossy(320→160kbps 등)는 세대손실이 누적되고 루핑 BGM 의
-//   LAME delay/padding 갭 리스크가 있어, 청취 검증 전까지 auto(-1)에서는 비활성이다
-//   (AITDefaultSettings.GetDefaultAudioStreamTranscode() == false). 명시 활성(==1)
-//   에서만 동작한다 — 다른 레버의 auto(opt-out) 철학과 다른 의도적 예외.
+// ⚠ 기본값 정책: auto(-1)는 ON(AITDefaultSettings.GetDefaultAudioStreamTranscode() == true),
+//   audioStreamTranscode=0 으로 끈다. cascaded lossy(320→160kbps 등)는 세대손실이 누적되고
+//   루핑 BGM 은 LAME delay/padding 갭 리스크가 있어, auto 에서는 빌드 씬·프리팹의 AudioSource 가
+//   loop=true 로 참조하는 클립을 건너뛴다(CollectLoopingClipGuids). 명시 활성(==1)은 게이트 없음.
 
 using System;
 using System.Collections.Generic;
@@ -73,6 +73,9 @@ namespace AppsInToss.Editor
 
             /// <summary>클립 실 길이(초). AudioClip.length 캡처값.</summary>
             public float Seconds;
+
+            /// <summary>원본 AudioClip 에셋 GUID(루프 클립 게이트용). 비어 있으면 게이트 미적용.</summary>
+            public string Guid;
         }
 
         /// <summary>파일 1건의 러너 결과. error 가 비어 있으면 성공.</summary>
@@ -97,7 +100,7 @@ namespace AppsInToss.Editor
 
         // ─────────────────────────── 판정 (순수 함수, Level 0 테스트 대상) ───────────────────────────
 
-        /// <summary>tri-state 해석. 명시 활성(==1)만 동작 — auto 는 청취 검증 전까지 비활성(헤더 주석 참조).</summary>
+        /// <summary>tri-state 해석. auto(-1)는 ON(루프 클립은 TranscodeInPlace 가 별도로 제외), 0 이면 끔.</summary>
         internal static bool IsEnabled(AITEditorScriptObject config)
         {
             if (config == null)
@@ -163,6 +166,163 @@ namespace AppsInToss.Editor
             return v > 0 ? v : 256;
         }
 
+        // ─────────────────────────── 루프 클립 탐지 ───────────────────────────
+
+        /// <summary>
+        /// 빌드 씬(활성) + 프로젝트 프리팹(Resources 포함)의 AudioSource 중 loop=true 가 참조하는 AudioClip GUID 집합.
+        /// 텍스트 YAML 만 읽는 값싼 스캔이며(에셋 로드 없음), 바이너리 직렬화 파일이 하나라도 있으면
+        /// incomplete=true 로 알려 호출부가 보수적으로 건너뛰게 한다. 스크립트가 런타임에 켜는 loop 는 탐지 불가.
+        /// </summary>
+        internal static HashSet<string> CollectLoopingClipGuids(out bool incomplete)
+        {
+            var guids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            incomplete = false;
+            try
+            {
+                string projectRoot = Directory.GetParent(UnityEngine.Application.dataPath).FullName;
+                var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var scene in UnityEditor.EditorBuildSettings.scenes)
+                {
+                    if (scene != null && scene.enabled && !string.IsNullOrEmpty(scene.path))
+                    {
+                        paths.Add(scene.path);
+                    }
+                }
+
+                foreach (var g in UnityEditor.AssetDatabase.FindAssets("t:Prefab", new[] { "Assets" }))
+                {
+                    string p = UnityEditor.AssetDatabase.GUIDToAssetPath(g);
+                    if (!string.IsNullOrEmpty(p))
+                    {
+                        paths.Add(p);
+                    }
+                }
+
+                foreach (var p in paths)
+                {
+                    string full = Path.Combine(projectRoot, p);
+                    if (!File.Exists(full))
+                    {
+                        continue;
+                    }
+
+                    string text = File.ReadAllText(full);
+                    if (!text.StartsWith("%YAML", StringComparison.Ordinal))
+                    {
+                        incomplete = true; // 바이너리 직렬화 — 내용을 읽을 수 없음.
+                        continue;
+                    }
+
+                    ScanYamlForLoopingClips(text, guids);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-AudioTranscode] 루프 클립 탐지 예외 → 보수적으로 건너뜀: {e.Message}");
+                incomplete = true;
+            }
+
+            return guids;
+        }
+
+        /// <summary>
+        /// 텍스트 YAML(.unity/.prefab) 한 개에서 Loop: 1 인 AudioSource(!u!82) 블록의 m_audioClip GUID 를 수집한다.
+        /// 프리팹 인스턴스 오버라이드(propertyPath: Loop, value: 1)가 있으면 같은 파일의
+        /// m_audioClip 오버라이드 참조도 보수적으로 루프 클립으로 취급한다. 순수 함수(테스트 대상).
+        /// </summary>
+        internal static void ScanYamlForLoopingClips(string yaml, HashSet<string> sink)
+        {
+            if (string.IsNullOrEmpty(yaml) || sink == null || yaml.IndexOf("AudioSource", StringComparison.Ordinal) < 0)
+            {
+                return;
+            }
+
+            const string ClipKey = "m_audioClip:";
+            const string GuidKey = "guid:";
+            var lines = yaml.Split('\n');
+            bool inAudioSource = false;
+            bool blockLoop = false;
+            string blockGuid = null;
+            bool overrideLoop = false;
+            var overrideGuids = new List<string>();
+            bool pendingClipOverride = false;
+            bool pendingLoopOverride = false;
+
+            void FlushBlock()
+            {
+                if (inAudioSource && blockLoop && !string.IsNullOrEmpty(blockGuid))
+                {
+                    sink.Add(blockGuid);
+                }
+                inAudioSource = false;
+                blockLoop = false;
+                blockGuid = null;
+            }
+
+            foreach (var raw in lines)
+            {
+                string line = raw.TrimEnd('\r');
+                if (line.StartsWith("--- !u!", StringComparison.Ordinal))
+                {
+                    FlushBlock();
+                    inAudioSource = line.StartsWith("--- !u!82 ", StringComparison.Ordinal);
+                    continue;
+                }
+
+                string t = line.Trim();
+                if (inAudioSource)
+                {
+                    if (t.StartsWith(ClipKey, StringComparison.Ordinal))
+                    {
+                        int gi = t.IndexOf(GuidKey, StringComparison.Ordinal);
+                        if (gi >= 0)
+                        {
+                            int start = gi + GuidKey.Length;
+                            int end = t.IndexOfAny(new[] { ',', '}' }, start);
+                            blockGuid = (end > start ? t.Substring(start, end - start) : t.Substring(start)).Trim();
+                        }
+                    }
+                    else if (t == "Loop: 1")
+                    {
+                        blockLoop = true;
+                    }
+                    continue;
+                }
+
+                // 프리팹 인스턴스 오버라이드(m_Modifications): propertyPath 다음 줄들에 value/objectReference.
+                if (t.StartsWith("propertyPath:", StringComparison.Ordinal))
+                {
+                    pendingLoopOverride = t == "propertyPath: Loop";
+                    pendingClipOverride = t == "propertyPath: m_audioClip";
+                }
+                else if (pendingLoopOverride && t == "value: 1")
+                {
+                    overrideLoop = true;
+                    pendingLoopOverride = false;
+                }
+                else if (pendingClipOverride && t.StartsWith("objectReference:", StringComparison.Ordinal))
+                {
+                    int gi = t.IndexOf(GuidKey, StringComparison.Ordinal);
+                    if (gi >= 0)
+                    {
+                        int start = gi + GuidKey.Length;
+                        int end = t.IndexOfAny(new[] { ',', '}' }, start);
+                        overrideGuids.Add((end > start ? t.Substring(start, end - start) : t.Substring(start)).Trim());
+                    }
+                    pendingClipOverride = false;
+                }
+            }
+
+            FlushBlock();
+            if (overrideLoop)
+            {
+                foreach (var g in overrideGuids)
+                {
+                    sink.Add(g);
+                }
+            }
+        }
+
         // ─────────────────────────── 실행 ───────────────────────────
 
         /// <summary>
@@ -192,6 +352,28 @@ namespace AppsInToss.Editor
                 {
                     targets.Add(c);
                 }
+            }
+
+            // 자동 모드 안전 게이트: loop=true AudioSource 가 쓰는 클립은 제외(LAME delay/padding 이음새 갭 방지).
+            // 명시 활성(==1)은 사용자 의도를 그대로 따른다.
+            if (targets.Count > 0 && config.audioStreamTranscode < 0)
+            {
+                var loopGuids = CollectLoopingClipGuids(out bool scanIncomplete);
+                if (scanIncomplete)
+                {
+                    Debug.LogWarning("[AIT-AudioTranscode] 바이너리 직렬화 씬/프리팹이 있어 루프 클립을 확정할 수 없습니다 → 안전을 위해 재인코딩을 건너뜁니다 (audioStreamTranscode=1 로 강제 가능).");
+                    return 0;
+                }
+
+                targets.RemoveAll(c =>
+                {
+                    bool looping = !string.IsNullOrEmpty(c.Guid) && loopGuids.Contains(c.Guid);
+                    if (looping)
+                    {
+                        Debug.Log($"[AIT-AudioTranscode]   루프 재생 클립이라 재인코딩 제외: {Path.GetFileName(c.AbsPath)}");
+                    }
+                    return looping;
+                });
             }
 
             if (targets.Count == 0)

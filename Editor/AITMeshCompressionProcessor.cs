@@ -6,7 +6,7 @@
 // -----------------------------------------------------------------------
 //
 // 빌드 직전, 대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 일시적으로
-//   ModelImporterMeshCompression.Medium 으로 올려 정점 데이터(position/normal/uv/tangent)를
+//   ModelImporterMeshCompression.Low(자동) / Medium(명시 활성) 으로 올려 정점 데이터(position/normal/uv/tangent)를
 //   양자화한 뒤, .data 에 더 작은 메시가 구워지도록 한다. 빌드 종료(성공/실패 무관) 후
 //   원본 설정/바이트로 원상 복원한다.
 //
@@ -34,10 +34,11 @@
 //
 // ⚠ 손실: 정점 데이터(position/normal/uv/tangent)를 고정 소수점으로 양자화하는 lossy 변경이다.
 //   저폴리·소형 메시는 대개 육안 차이가 없지만, 대형 지형/정밀 지오메트리는 아티팩트가 보일 수
-//   있어 켠 뒤 시각 검증이 필요하다 — 신규 손실 레버 opt-in 컨벤션(auto=OFF)을 따른다.
+//   있다. 그래서 자동(-1)은 Low 레벨로만 동작하고(명시 활성 1 은 기존대로 Medium),
+//   Off 인 모델만 올리므로 이미 설정된 자산은 그대로 둔다. meshCompression=0 으로 끈다.
 //
 // ⚠ 비용: reimport(모델) / 재직렬화(Mesh .asset) 는 대상 수·정점 수에 비례해 무겁다. apply +
-//   복원으로 2회 발생하므로 명시적 opt-in 으로 기본 비활성이다.
+//   복원으로 2회 발생한다(임계값 256KB 미만 메시는 제외).
 
 using System;
 using System.Collections.Generic;
@@ -64,8 +65,17 @@ namespace AppsInToss.Editor
         /// <summary>개당 원본 파일 크기 임계값(바이트). 미만은 제외(작은 소품 메시 보호). 기본 256KB.</summary>
         private const long MinSourceBytes = 256 * 1024L;
 
-        /// <summary>양쪽 경로 공통 목표 압축 레벨.</summary>
+        /// <summary>명시 활성(meshCompression==1)의 목표 압축 레벨. 양쪽 경로(모델/직렬화 Mesh) 공통.</summary>
         private const ModelImporterMeshCompression TargetCompression = ModelImporterMeshCompression.Medium;
+
+        /// <summary>자동(-1) 모드의 목표 압축 레벨. 양자화 아티팩트 위험이 낮은 Low 로 보수적으로 시작한다.</summary>
+        private const ModelImporterMeshCompression AutoTargetCompression = ModelImporterMeshCompression.Low;
+
+        /// <summary>목표 압축 레벨 해석: 명시 활성(1)은 Medium(기존 동작), 자동(-1)은 Low.</summary>
+        internal static ModelImporterMeshCompression ResolveTargetCompression(AITEditorScriptObject config)
+        {
+            return config != null && config.meshCompression == 1 ? TargetCompression : AutoTargetCompression;
+        }
 
         /// <summary>한 번의 압축 적용 결과 핸들. finally 에서 정확한 복원에 사용.</summary>
         public sealed class MeshCompressionHandle
@@ -105,6 +115,7 @@ namespace AppsInToss.Editor
 
             try
             {
+                var targetCompression = ResolveTargetCompression(config);
                 var candidates = DetectInScopePaths();
                 if (candidates.Count == 0)
                 {
@@ -142,7 +153,7 @@ namespace AppsInToss.Editor
                         var modelImporter = AssetImporter.GetAtPath(path) as ModelImporter;
                         if (modelImporter != null)
                         {
-                            // (a) 모델 임포트 자산: Off 인 것만 Medium 으로 상향(이미 설정된 값은 사용자 의도 존중).
+                            // (a) 모델 임포트 자산: Off 인 것만 목표 레벨(자동 Low / 명시 Medium)로 상향(이미 설정된 값은 사용자 의도 존중).
                             if (modelImporter.meshCompression != ModelImporterMeshCompression.Off)
                             {
                                 continue;
@@ -153,7 +164,7 @@ namespace AppsInToss.Editor
                                 continue;
                             }
 
-                            modelImporter.meshCompression = TargetCompression;
+                            modelImporter.meshCompression = targetCompression;
                             modelImporter.SaveAndReimport();
                             modelCount++;
                             totalBytes += size;
@@ -172,7 +183,7 @@ namespace AppsInToss.Editor
                                 continue;
                             }
 
-                            MeshUtility.SetMeshCompression(mesh, TargetCompression);
+                            MeshUtility.SetMeshCompression(mesh, targetCompression);
                             EditorUtility.SetDirty(mesh);
                             assetCount++;
                             totalBytes += size;
@@ -205,7 +216,7 @@ namespace AppsInToss.Editor
 
                 double mb = totalBytes / (1024.0 * 1024.0);
                 Debug.Log($"[AIT-MeshCompression] ✓ 메시 {modelCount + assetCount}개 압축(모델 {modelCount}, 에셋 {assetCount}), " +
-                    $"원본 합계 {mb:F1}MB{(config.meshCompression < 0 ? " (자동)" : "")}.");
+                    $"원본 합계 {mb:F1}MB, 레벨 {targetCompression}{(config.meshCompression < 0 ? " (자동 — meshCompression=0 으로 끌 수 있음)" : "")}.");
                 return handle;
             }
             catch (Exception e)
@@ -466,8 +477,7 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// Mesh 압축 실효 활성 여부를 반환한다(tri-state 해석).
-        /// null → false, meshCompression >= 0 → ==1, &lt;0 → GetDefaultMeshCompression()(=신규 손실
-        /// 레버 opt-in 컨벤션에 따라 항상 false — audioStreamTranscode/textureStreamJpeg 와 동일 posture).
+        /// null → false, meshCompression >= 0 → ==1, &lt;0 → GetDefaultMeshCompression()(=true, Low 레벨로 동작).
         /// </summary>
         internal static bool EffectiveEnabled(AITEditorScriptObject config)
         {

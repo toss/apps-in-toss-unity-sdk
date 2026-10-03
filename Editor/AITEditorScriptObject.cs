@@ -261,17 +261,26 @@ namespace AppsInToss
         public bool nameFilesAsHashes = true;
 
         /// <summary>
-        /// (스파이크·숨김) 빌드 산출물의 brotli(.br) 파일을 q11 로 in-place 재인코딩할지 여부.
+        /// (숨김) 빌드 산출물의 brotli(.br) 파일을 q11 로 in-place 재인코딩할지 여부.
         /// Unity 내장 brotli 는 저품질(대략 q5 수준)이라, 빌드 후 .br 을 디코드→q11 재인코딩(동일 파일명)하면
         /// data/wasm 이 유의미하게 더 작아진다(입력 바이트가 줄어 브라우저 디코드도 소폭 빨라진다). 유일한 비용은
-        /// 인코딩 시간(대형 앱 기준 수 분, 싱글스레드)이라 기본 false 로 두고 opt-in 한다.
-        /// UI(AITConfigurationWindow)에는 노출하지 않는 숨김 스파이크 설정이며(dataCaching 과 동일 취급),
+        /// 인코딩 시간(대형 앱 기준 수 분, 싱글스레드)이다.
+        /// 이 bool 은 직렬화 호환을 위해 그대로 두며(이름·타입 변경 시 기존 에셋 값이 유실됨), true 면 강제 활성(레거시 의미)이다.
+        /// 자동/비활성 선택은 <see cref="brotliRecompressMode"/> 가 맡는다.
+        /// UI(AITConfigurationWindow)에는 노출하지 않는 숨김 설정이며(dataCaching 과 동일 취급),
         /// ResetWebGLOptimizationDefaults(기본값 복원) 대상에서도 제외한다 — 화면에 보이지 않는 값을
         /// 복원 버튼이 조용히 덮어쓰면 안 되기 때문이다.
         /// AIT_BROTLI_RECOMPRESS 환경 변수로 오버라이드 가능(1/true=활성, 0/false=비활성 — AIT_COMPRESSION_FORMAT 과 동일 패턴).
         /// .unityweb(decompressionFallback 산출물, brotli 메타데이터에 Unity 감지 마커 포함)은 재인코딩 대상에서 제외된다.
         /// </summary>
         public bool brotliRecompress = false;
+
+        /// <summary>
+        /// (숨김) brotli q11 재인코딩 tri-state. -1 = 자동(빠른 빌드 Deploy (Test) 가 아닐 때 활성 — 정식 빌드는 ON),
+        /// 0 = 비활성(끄려면 0), 1 = 활성. 기존 에셋에는 필드가 없어 -1 로 역직렬화된다.
+        /// <see cref="brotliRecompress"/>==true(레거시)는 이 값과 무관하게 활성이다. AIT_BROTLI_RECOMPRESS 환경 변수가 최우선.
+        /// </summary>
+        public int brotliRecompressMode = -1;
 
         [Header("로딩 최적화 — 페이지 캐시(CacheStorage 재방문 서빙)")]
         [Tooltip("재방문 시 Build/* 자산을 CacheStorage 에서 직접 서빙합니다(ServiceWorker 불필요). " +
@@ -409,11 +418,11 @@ namespace AppsInToss
         [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 오디오가 대상입니다. 예) Assets/Sounds/BGM,Assets/Music")]
         public string audioStreamingDirs = "";
 
-        [Tooltip("-1 = 자동(현재 비활성 — 청취 검증 전), 0 = 비활성, 1 = 활성. " +
+        [Tooltip("-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성(루프 클립 게이트 없이 전부). " +
                  "외부화된 스트리밍 오디오 '사본'(MP3)을 저비트레이트 MP3 로 재인코딩해 .ait 번들 크기를 줄입니다(실측 320→160kbps 기준 ~50% 절감). " +
                  "프로젝트 원본은 건드리지 않으며(외부화 사본만 교체) 런타임 복원 경로도 그대로입니다. " +
-                 "⚠ 소스가 이미 lossy(MP3)라 세대손실이 누적되고, 루핑 BGM 은 인코더 delay/padding 으로 루프 이음새에 미세 갭이 생길 수 있어 " +
-                 "청취 검증 전까지는 명시 활성(1)에서만 동작합니다.")]
+                 "자동 모드는 빌드 씬·프리팹의 AudioSource 가 loop=true 로 참조하는 클립을 건너뜁니다(인코더 delay/padding 으로 루프 이음새에 갭이 생길 수 있음). " +
+                 "⚠ 소스가 이미 lossy(MP3)라 세대손실이 누적됩니다. 스크립트에서 런타임에 loop 를 켜는 클립은 탐지되지 않으니 그런 경우 0 으로 끄세요.")]
         public int audioStreamTranscode = -1;
 
         [Tooltip("재인코딩 목표 비트레이트(kbps, CBR). 기본 160 — BGM 기준 지각 손실이 작은 하한대. 96~320 범위로 클램프됩니다.")]
@@ -492,20 +501,19 @@ namespace AppsInToss
 
         [Tooltip("제외할 폴더(쉼표 구분, Assets/ 기준). 사용자 escape hatch.")]
         public string textureClampExcludeDirs = "";
-        [Header("콘텐츠 최적화 — Mesh 압축 (lossy, 시각 검증 전 기본 OFF)")]
-        [Tooltip("-1 = 자동(현재 비활성), 0 = 비활성, 1 = 활성. " +
-                 "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 Medium 으로 올려 " +
-                 "정점 데이터(position/normal/uv/tangent)를 양자화하여 .data 크기를 줄입니다. " +
+        [Header("콘텐츠 최적화 — Mesh 압축 (lossy, 기본 ON — Low)")]
+        [Tooltip("-1 = 자동(활성 — Low 레벨), 0 = 비활성(끄려면 0), 1 = 활성(Medium 레벨). " +
+                 "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 올려 " +
+                 "정점 데이터(position/normal/uv/tangent)를 양자화하여 .data 크기를 줄입니다. 자동은 Low, 1 은 Medium 입니다. " +
                  "모델 임포트 자산은 meshCompression 이 Off 인 것만 상향하고(이미 설정된 값은 존중), " +
                  "직렬화 Mesh .asset 은 MeshUtility.SetMeshCompression 으로 직접 적용합니다. " +
-                 "⚠ 손실 — 정점 데이터 양자화(대형 지형/정밀 지오메트리는 아티팩트 위험)라 켠 뒤 시각 검증이 필요하며, " +
-                 "시각 검증 전까지는 명시 활성(1)에서만 동작합니다(audioStreamTranscode/textureStreamJpeg 와 동일 posture). " +
+                 "⚠ 손실 — 정점 데이터 양자화(대형 지형/정밀 지오메트리는 아티팩트 위험)라 문제가 보이면 0 으로 끄세요. " +
                  "빌드 후 원본 압축 설정/바이트로 복원합니다.")]
         public int meshCompression = -1;
         [Header("콘텐츠 최적화 — 폰트 CJK subset")]
         [Tooltip("크고(≥1MB) 빌드에 포함될 가능성이 있는 .ttf/.otf 를 자동 탐지해, 프로젝트에 실제 등장하는 " +
                  "문자체계의 유니코드 블록 전체를 보존하도록 subset 합니다(.data 폰트 데이터 급감, CJK 풀 폰트 5~15MB → ~0.1MB). " +
-                 "빌드 후 원본 폰트로 복원합니다. zero-config: -1=자동(권장), 0=비활성, 1=자동(명시). " +
+                 "빌드 후 원본 폰트로 복원합니다. zero-config: -1=자동(권장, 기본 ON), 0=비활성(끄려면 0), 1=자동(명시). " +
                  "수동 제어가 필요하면 fontSubsetTargetPaths/fontSubsetUnicodeRanges 로 override 합니다.\n\n" +
                  "⚠ 동적 텍스트 리스크: subset 은 보존 범위 밖 글자를 제거합니다(lossy). 스캐너가 프로젝트에 " +
                  "'실제 등장하는' 문자체계는 블록 전체를 보존하지만, 서버/외부에서 '전혀 다른 언어'의 텍스트를 " +
@@ -536,7 +544,8 @@ namespace AppsInToss
         [Tooltip("(additive) 서버발 동적 텍스트(닉네임·채팅 등)에 등장할 수 있는 언어를 선택(쉼표 구분 태그, AITFontSubsetLanguages 참조). " +
                  "선택한 언어의 유니코드 범위가 보존 범위에 합집합(union)됩니다. 예) \"ja,zh-Hans\". " +
                  "자동 모드(fontSubset=-1)에서 이 필드·fontSubsetUnicodeRanges·fontSubsetExtraRanges·fontSubsetTargetPaths·" +
-                 "fontSubsetExcludeTargetPaths 가 모두 비어 있으면 동적 텍스트 언어가 인지되지 않은 것으로 보아 subset 자체를 건너뜁니다.")]
+                 "fontSubsetExcludeTargetPaths 가 모두 비어 있으면 기본 세트(한국어 + 기본 라틴 + 프로젝트 텍스트 스캔 결과)로 subset 합니다. " +
+                 "다른 언어가 필요하면 여기에 추가하고, subset 을 끄려면 fontSubset=0 으로 설정하세요.")]
         public string fontSubsetLanguages = "";
 
         [Tooltip("-1 = 자동(비활성 — 품질 게이트 미통과 opt-in 패턴, audioStreamTranscode 와 동일 posture), " +
@@ -582,10 +591,11 @@ namespace AppsInToss
                  "다운스케일이 다시 쓴 PNG(실측 −32%)와 원본 소스 PNG(실측 −7~16%)를 함께 누릅니다. -1 = 자동(활성), 0 = 비활성, 1 = 활성.")]
         public int textureStreamRecompress = -1;
 
-        [Tooltip("(lossy, 시각 검증 전 기본 OFF) 알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환해 CDN 무압축 총량을 실감축합니다(실측 −77%). " +
+        [Tooltip("(lossy, 기본 ON) 알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환해 CDN 무압축 총량을 실감축합니다(실측 −77%). " +
                  "프로젝트 원본은 건드리지 않으며(스트림 사본만 교체) 런타임 LoadImage 는 PNG/JPG 를 매직 바이트로 자동 감지합니다. " +
-                 "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환이라 시각 검증 전까지는 명시 활성(1)에서만 동작합니다. " +
-                 "-1 = 자동(현재 비활성), 0 = 비활성, 1 = 활성.")]
+                 "알파가 있는 텍스처는 자동에서도 변환하지 않습니다. " +
+                 "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환입니다. 문제가 보이면 0 으로 끄세요. " +
+                 "-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성.")]
         public int textureStreamJpeg = -1;
 
         [Tooltip("JPEG 전환 품질(50~100 클램프, 기본 90). 실측상 q85 의 추가 이득은 q90 대비 ~1.5%p 에 불과해 품질 보수적인 90 이 기본입니다.")]
@@ -1105,14 +1115,13 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 스트리밍 오디오 트랜스코딩(외부화 MP3 사본 → 저비트레이트 MP3) 활성화 여부.
-        /// 다른 lossy 레버(crunch/ASTC/재인코딩)와 달리 소스가 이미 lossy 인 MP3 에 대한
-        /// cascaded lossy 라 세대손실이 누적되고, 루핑 BGM 은 LAME delay/padding 으로
-        /// 루프 이음새 갭 위험이 있다. A/B 청취 검증(2026-07 적대 검증 게이트)을 통과하기
-        /// 전까지 auto 는 OFF — 명시 활성(audioStreamTranscode==1)에서만 동작한다.
+        /// 소스가 이미 lossy 인 MP3 에 대한 cascaded lossy 이고 루핑 BGM 은 LAME delay/padding 으로
+        /// 루프 이음새 갭 위험이 있어, 자동(-1)은 ON 이되 루프 재생(AudioSource.loop)에 쓰이는
+        /// 클립은 AITAudioStreamTranscoder 가 건너뛴다. audioStreamTranscode=0 으로 끈다.
         /// </summary>
         public static bool GetDefaultAudioStreamTranscode()
         {
-            return false;
+            return true;
         }
 
         /// <summary>
@@ -1205,24 +1214,21 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 스트림 PNG → JPEG 전환 활성 여부.
-        /// 불투명(RGB) 스트림 사본 한정이지만 DCT 아티팩트가 생기는 lossy 전환이라
-        /// (GetDefaultAudioStreamTranscode 와 동일 posture) 시각 검증 게이트를 통과하기
-        /// 전까지 auto 는 OFF — 명시 활성(textureStreamJpeg==1)에서만 동작한다.
+        /// 불투명(RGB) 스트림 사본 한정으로 자동 ON(알파 있는 텍스처는 변환기에서 계속 제외).
+        /// DCT 아티팩트가 보이면 textureStreamJpeg=0 으로 끈다.
         /// </summary>
         public static bool GetDefaultTextureStreamJpeg()
         {
-            return false;
+            return true;
         }
 
         /// <summary>
-        /// 기본 Mesh 압축(정점 데이터 양자화) 활성 여부.
-        /// audioStreamTranscode/textureStreamJpeg 와 동일 posture(품질 게이트 미통과 opt-in 패턴)로,
-        /// 자동(-1)은 항상 비활성 — meshCompression == 1(명시 활성)에서만 동작한다. 대형 지형/정밀
-        /// 지오메트리에서 양자화 아티팩트가 보일 수 있어 시각 검증 게이트를 통과하기 전까지 auto 는 OFF.
+        /// 기본 Mesh 압축(정점 데이터 양자화) 활성 여부. 자동(-1)은 ON 이며 Low 레벨로만 동작한다
+        /// (명시 활성 1 은 Medium). Off 인 모델만 올리고 0 으로 끌 수 있다.
         /// </summary>
         public static bool GetDefaultMeshCompression()
         {
-            return false;
+            return true;
         }
 
         /// <summary>

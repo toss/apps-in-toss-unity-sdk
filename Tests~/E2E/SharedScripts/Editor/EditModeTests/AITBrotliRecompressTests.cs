@@ -200,10 +200,10 @@ public class AITBrotliRecompressTests
     }
 
     [Test]
-    public void EffectiveBrotliRecompress_FlagOff_IsNoOpGate()
+    public void EffectiveBrotliRecompress_AutoOnExceptFastBuild_EnvAndModeOverride()
     {
-        // (4) 플래그 OFF(기본값) + 환경변수 미설정이면 게이트가 false → 훅이 호출되지 않아 완전 no-op.
-        //     환경변수 오버라이드가 양방향으로 동작하는지도 함께 검증한다.
+        // (4) 자동(-1, 기본)은 정식 빌드에서 ON, 빠른 빌드(Deploy (Test))에서 OFF.
+        //     brotliRecompressMode=0 이 끄는 방법이며, 환경변수 오버라이드가 양방향으로 동작해야 한다.
         const string EnvKey = "AIT_BROTLI_RECOMPRESS";
         string saved = Environment.GetEnvironmentVariable(EnvKey);
         var offConfig = ScriptableObject.CreateInstance<AITEditorScriptObject>();
@@ -211,14 +211,29 @@ public class AITBrotliRecompressTests
         try
         {
             onConfig.brotliRecompress = true;
+            offConfig.brotliRecompressMode = 0;
 
-            // 환경변수 없음: 설정값 그대로.
+            // 환경변수 없음.
             Environment.SetEnvironmentVariable(EnvKey, null);
+            var autoConfig = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                Assert.AreEqual(-1, autoConfig.brotliRecompressMode, "선언 기본값은 -1(자동)이어야 한다.");
+                Assert.IsFalse(autoConfig.brotliRecompress, "레거시 bool 선언 기본값은 false 여야 한다.");
+                Assert.IsTrue(WebGLBuildCopier.EffectiveBrotliRecompress(autoConfig, fastBuild: false),
+                    "자동 + 정식 빌드 → 활성.");
+                Assert.IsFalse(WebGLBuildCopier.EffectiveBrotliRecompress(autoConfig, fastBuild: true),
+                    "자동 + 빠른 빌드 → 비활성.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(autoConfig);
+            }
+
             Assert.IsFalse(WebGLBuildCopier.EffectiveBrotliRecompress(offConfig),
-                "기본(false) + 환경변수 없음 → 게이트 false(완전 no-op).");
-            Assert.IsFalse(offConfig.brotliRecompress, "선언 기본값은 false 여야 한다.");
-            Assert.IsTrue(WebGLBuildCopier.EffectiveBrotliRecompress(onConfig),
-                "brotliRecompress=true → 게이트 true.");
+                "brotliRecompressMode=0 → 정식 빌드에서도 비활성(opt-out).");
+            Assert.IsTrue(WebGLBuildCopier.EffectiveBrotliRecompress(onConfig, fastBuild: true),
+                "레거시 brotliRecompress=true → 빠른 빌드에서도 활성.");
 
             // 환경변수 '1'/'true' → 강제 활성(설정 false 여도 override).
             Environment.SetEnvironmentVariable(EnvKey, "1");
@@ -240,6 +255,9 @@ public class AITBrotliRecompressTests
             Environment.SetEnvironmentVariable(EnvKey, null);
             Assert.IsFalse(WebGLBuildCopier.EffectiveBrotliRecompress(null),
                 "config=null → 안전하게 false.");
+            Environment.SetEnvironmentVariable(EnvKey, "1");
+            Assert.IsTrue(WebGLBuildCopier.EffectiveBrotliRecompress(offConfig, fastBuild: true),
+                "환경변수 1 은 mode=0·빠른 빌드보다 우선.");
         }
         finally
         {

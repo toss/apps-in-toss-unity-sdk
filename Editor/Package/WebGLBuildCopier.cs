@@ -43,7 +43,7 @@ namespace AppsInToss.Editor.Package
         /// 동일한 최종 상태를 보장합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
-        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, out string inlinePrefetchJson, AITBuildProfile profile = null)
+        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, out string inlinePrefetchJson, AITBuildProfile profile = null, bool fastBuild = false)
         {
             // prefetch 인라인 카탈로그는 성공 경로(WriteManifest 산출)에서만 채워짐. 그 외 경로는 null 유지.
             inlinePrefetchJson = null;
@@ -160,7 +160,7 @@ namespace AppsInToss.Editor.Package
             long cacheDataSize = FileSizeSafe(Path.Combine(buildSrc, dataFile));
             long cacheWasmSize = string.IsNullOrEmpty(wasmFile) ? 0L : FileSizeSafe(Path.Combine(buildSrc, wasmFile));
 
-            // ── (스파이크, 기본 OFF) brotli .br q11 in-place 재인코딩 ──
+            // ── brotli .br q11 in-place 재인코딩 (자동: 빠른 빌드가 아니면 ON) ──
             // Unity 내장 brotli(~q5)를 외부 q11 로 다시 눌러 data/wasm 을 더 줄인다(동일 파일명 유지).
             // 반드시 이 지점 — 필수 파일 검증 직후, 그리고 buildSrc→buildDest 복사·totalBytes 로그·
             // early-fetch kickUrls·플레이스홀더 치환·AITWarmManifestEmitter/ValidatePlaceholderSubstitution
@@ -168,7 +168,7 @@ namespace AppsInToss.Editor.Package
             // 그 크기 읽기들이 실제 바이트와 일치한다(캐시명은 위 스냅숏을 쓰므로 예외).
             // 훅이 뒤로 가면 totalBytes 로그·warm manifest 가 재인코딩 전 크기로 계산돼 실 바이트와 어긋난다.
             // 대상은 buildSrc 최상위 .br 파일만이며 .unityweb(감지 마커)은 AITBrotliCompressor 가 제외한다.
-            if (EffectiveBrotliRecompress(config))
+            if (EffectiveBrotliRecompress(config, fastBuild))
             {
                 Debug.Log("[AIT] brotli q11 재인코딩 활성 — buildSrc 의 .br 파일을 in-place 재인코딩합니다.");
                 AITBrotliCompressor.RecompressBrFilesInPlace(buildSrc);
@@ -804,11 +804,12 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// brotli q11 재인코딩(스파이크) 실효 활성 여부. 기본은 config.brotliRecompress(선언 기본 false).
-        /// AIT_BROTLI_RECOMPRESS 환경 변수가 설정되면 오버라이드한다(1/true=활성, 0/false=비활성) —
-        /// AIT_COMPRESSION_FORMAT 오버라이드와 동일 패턴. 값이 이상하면 경고 후 설정값으로 폴백.
+        /// brotli q11 재인코딩 실효 활성 여부. 우선순위: AIT_BROTLI_RECOMPRESS 환경 변수 &gt;
+        /// config.brotliRecompressMode(0 끔 / 1 켬) &gt; 레거시 config.brotliRecompress==true &gt; 자동(-1 → 빠른 빌드가 아니면 ON).
+        /// 환경 변수 값은 1/true=활성, 0/false=비활성(AIT_COMPRESSION_FORMAT 오버라이드와 동일 패턴),
+        /// 이상하면 경고 후 설정값으로 폴백. config==null 이면 안전하게 false.
         /// </summary>
-        internal static bool EffectiveBrotliRecompress(AITEditorScriptObject config)
+        internal static bool EffectiveBrotliRecompress(AITEditorScriptObject config, bool fastBuild = false)
         {
             string env = System.Environment.GetEnvironmentVariable("AIT_BROTLI_RECOMPRESS");
             if (!string.IsNullOrEmpty(env))
@@ -819,7 +820,10 @@ namespace AppsInToss.Editor.Package
                 Debug.LogWarning($"[AIT] AIT_BROTLI_RECOMPRESS 환경 변수 값이 올바르지 않습니다: '{env}' (1/0/true/false 필요) — 설정값 사용");
             }
 
-            return config != null && config.brotliRecompress;
+            if (config == null) return false;
+            if (config.brotliRecompressMode >= 0) return config.brotliRecompressMode == 1;
+            if (config.brotliRecompress) return true;
+            return !fastBuild;
         }
 
     }

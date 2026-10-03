@@ -10,8 +10,8 @@
 //   oxipng 대상에서 자연 제외된다.
 //
 // lossy: JPEG DCT 는 픽셀을 바꾼다(사진류 near-transparent, 플랫 아트는 ringing 위험) —
-//   시각 검증 게이트 전까지 auto 는 OFF(GetDefaultTextureStreamJpeg() == false),
-//   명시 활성(textureStreamJpeg==1)에서만 동작한다. audioStreamTranscode 와 동일 posture.
+//   auto(-1)는 ON(GetDefaultTextureStreamJpeg() == true) — 위 '완전 불투명' 게이트가 안전장치이고,
+//   textureStreamJpeg=0 으로 끈다.
 //
 // 채택 게이트: ShouldKeep(≥25%) — lossy 전환은 큰 이득이 있을 때만 정당화된다
 //   (불투명 사진류 실측 −68~86%로 통상 크게 상회, 경계 파일만 원본 유지).
@@ -46,7 +46,7 @@ namespace AppsInToss.Editor
 
         // ─────────────────────────── 판정 (순수 함수, Level 0 테스트 대상) ───────────────────────────
 
-        /// <summary>tri-state 해석. lossy 라 auto(-1)는 시각 검증 게이트 전 OFF — 명시 활성(1)만 동작.</summary>
+        /// <summary>tri-state 해석. auto(-1)는 ON(불투명 텍스처 한정은 호출 경로의 알파 판정이 보장), 0 이면 끔.</summary>
         internal static bool IsEnabled(AITEditorScriptObject config)
         {
             if (config == null)

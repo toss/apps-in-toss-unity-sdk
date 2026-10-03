@@ -143,7 +143,7 @@ namespace AppsInToss.Editor
                     new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체의 큰 오디오가 대상. 예) Assets/Sounds/BGM,Assets/Music"),
                     config.audioStreamingDirs);
 
-                // 하위 레버: 외부화 사본 저비트레이트 재인코딩 (청취 검증 전까지 auto=OFF, 명시 활성 전용)
+                // 하위 레버: 외부화 사본 저비트레이트 재인코딩 (auto=ON, 루프 클립 제외 — 끄려면 비활성화)
                 bool transcodeDefault = AITDefaultSettings.GetDefaultAudioStreamTranscode();
                 string transcodeAuto = transcodeDefault ? "활성화" : "비활성화";
                 string[] transcodeOptions = { $"자동 ({transcodeAuto})", "비활성화", "활성화" };
@@ -151,7 +151,7 @@ namespace AppsInToss.Editor
                 int newTranscodeIndex = EditorGUILayout.Popup(
                     new GUIContent("스트림 재인코딩 (lossy)",
                         "외부화된 스트리밍 MP3 사본을 저비트레이트 MP3로 재인코딩해 .ait 번들 크기를 줄입니다(원본 비접촉, 런타임 불변). " +
-                        "소스가 이미 lossy라 세대손실이 누적되고 루핑 BGM 이음새 갭 위험이 있어, 청취 검증 전까지 명시 활성에서만 동작합니다."),
+                        "자동은 활성이며, loop 로 재생되는 AudioSource 클립은 이음새 갭 방지를 위해 건너뜁니다. 소스가 이미 lossy라 세대손실이 누적되니 문제가 있으면 비활성화로 끄세요."),
                     transcodeIndex,
                     transcodeOptions);
                 config.audioStreamTranscode = newTranscodeIndex == 0 ? -1 : newTranscodeIndex - 1;
@@ -672,8 +672,8 @@ namespace AppsInToss.Editor
                         config.fontSubsetExcludeTargetPaths))
                 {
                     EditorGUILayout.HelpBox(
-                        "현재 설정에서는 서브셋이 실행되지 않습니다. 동적 텍스트 언어를 선택하거나, " +
-                        "명시 활성 또는 수동 설정으로 전환하세요.",
+                        "언어를 선택하지 않아 기본 세트(한국어 + 기본 라틴 + 프로젝트 텍스트 스캔 결과)로 서브셋합니다. " +
+                        "다른 언어가 필요하면 위에서 선택하고, 끄려면 비활성화로 전환하세요.",
                         MessageType.Info);
                 }
             }
@@ -1122,7 +1122,7 @@ namespace AppsInToss.Editor
                 rcIndex, new[] { new GUIContent($"자동 ({rcAutoLabel})"), new GUIContent("비활성"), new GUIContent("활성") });
             config.textureStreamRecompress = rcNew == 0 ? -1 : rcNew - 1;
 
-            // 불투명 스트림 PNG → JPEG 전환(lossy, 시각 검증 전 기본 OFF)
+            // 불투명 스트림 PNG → JPEG 전환(lossy, 기본 ON — 불투명 텍스처 한정)
             bool jtDefault = AITDefaultSettings.GetDefaultTextureStreamJpeg();
             string jtAutoLabel = jtDefault ? "활성" : "비활성";
             int jtIndex = config.textureStreamJpeg < 0 ? 0 : config.textureStreamJpeg + 1;
@@ -1130,11 +1130,11 @@ namespace AppsInToss.Editor
                 new GUIContent("스트림 JPEG 전환 (lossy)",
                     "알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환합니다(불투명 사진류 실측 −77%). " +
                     "프로젝트 원본은 불변(스트림 사본만 교체), 런타임 LoadImage 는 PNG/JPG 를 매직 바이트로 자동 감지. " +
-                    "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환이라 시각 검증 전까지 자동 모드는 비활성입니다."),
+                    "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환입니다. 자동은 활성(알파 있는 텍스처는 제외)이며, 문제가 보이면 비활성으로 끄세요."),
                 jtIndex, new[] { new GUIContent($"자동 ({jtAutoLabel})"), new GUIContent("비활성"), new GUIContent("활성") });
             config.textureStreamJpeg = jtNew == 0 ? -1 : jtNew - 1;
 
-            if (config.textureStreamJpeg == 1)
+            if (config.textureStreamJpeg >= 0 ? config.textureStreamJpeg == 1 : jtDefault)
             {
                 EditorGUI.indentLevel++;
                 config.textureStreamJpegQuality = EditorGUILayout.IntSlider(
@@ -1464,8 +1464,8 @@ namespace AppsInToss.Editor
             int currentIndex = config.meshCompression < 0 ? 0 : config.meshCompression + 1;
             int newIndex = EditorGUILayout.Popup(
                 new GUIContent(label,
-                    "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 Medium 으로 올려 " +
-                    "정점 데이터(position/normal/uv/tangent)를 양자화합니다. lossy. 빌드 후 원본 압축 설정으로 복원합니다."),
+                    "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 올려 " +
+                    "정점 데이터(position/normal/uv/tangent)를 양자화합니다(자동 = Low, 활성화 = Medium). lossy. 끄려면 비활성화. 빌드 후 원본 압축 설정으로 복원합니다."),
                 currentIndex,
                 options
             );
@@ -1480,7 +1480,7 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.HelpBox(
                 "⚠ 손실: 정점 데이터를 양자화합니다. 대형 지형/정밀 지오메트리에서 아티팩트가 보일 수 있으므로 " +
-                "켠 뒤 빌드 결과를 반드시 시각 확인하세요. 시각 검증 전까지는 자동 모드가 비활성입니다.\n" +
+                "자동 모드는 Low 레벨로 기본 활성이며, 문제가 보이면 비활성화로 끄세요(활성화 = Medium).\n" +
                 "빌드 완료 후 원본 압축 설정이 자동으로 복원됩니다(비파괴).",
                 MessageType.Warning
             );

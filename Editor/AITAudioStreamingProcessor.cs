@@ -171,6 +171,7 @@ namespace AppsInToss.Editor
                         AbsPath = streamFull,
                         Bytes = size,
                         Seconds = realLen,
+                        Guid = g,
                     });
 
                     // 2) 소스 백업 + 무음 치환 + reimport (.data 에서 제거)

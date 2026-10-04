@@ -253,6 +253,7 @@ namespace AppsInToss
                 if (real != null)
                 {
                     real.name = entry.name; // 이름 보존(이후 동일 클립 식별)
+                    Debug.Log($"[AIT-StreamingAudio] 재수화 {entry.name} loadType={real.loadType} len={real.length:0.0}s");
                     loaded[entry.name] = real;
                     if (firstRequester != null && firstRequester.clip != null
                         && firstRequester.clip.name == entry.name && IsStubLength(firstRequester.clip.length))

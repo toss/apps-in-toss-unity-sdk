@@ -172,6 +172,61 @@ public class AITFontSubsetAutoTests
         Assert.AreEqual("U+1F600", AITFontUnicodeBlocks.FormatCodepoint(0x1F600));
     }
 
+    [Test]
+    public void CollectNonAscii_Decodes_CSharpCharLiteral_Escape()
+    {
+        var sink = new HashSet<int>();
+        AITFontUsedCharScanner.CollectNonAscii(@"var c = '\u25B6'; t.text = ""\u25BC"";", sink);
+
+        Assert.IsTrue(sink.Contains(0x25B6), "char 리터럴의 \\u 이스케이프(▶)");
+        Assert.IsTrue(sink.Contains(0x25BC), "문자열의 \\u 이스케이프(▼)");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_VariableLengthHexEscape()
+    {
+        var sink = new HashSet<int>();
+        // C# \x 는 1~4 hex 가변: \x25BC → U+25BC
+        AITFontUsedCharScanner.CollectNonAscii(@"s = ""\x25BC"";", sink);
+
+        Assert.IsTrue(sink.Contains(0x25BC), "\\x 가변 길이 hex 디코드");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_CharCast_And_ConvertFromUtf32()
+    {
+        var sink = new HashSet<int>();
+        AITFontUsedCharScanner.CollectNonAscii("a = (char)0x25BC; b = (char) 9654; c = char.ConvertFromUtf32(0x1F600);", sink);
+
+        Assert.IsTrue(sink.Contains(0x25BC), "(char)0x25BC");
+        Assert.IsTrue(sink.Contains(9654), "(char) 9654 = U+25B6");
+        Assert.IsTrue(sink.Contains(0x1F600), "ConvertFromUtf32(0x1F600)");
+    }
+
+    [Test]
+    public void CollectNonAscii_Decodes_NumericEntities()
+    {
+        var sink = new HashSet<int>();
+        AITFontUsedCharScanner.CollectNonAscii("<b>&#x25BC;</b> &#9654; &#65; &amp;", sink);
+
+        Assert.IsTrue(sink.Contains(0x25BC), "&#x25BC;");
+        Assert.IsTrue(sink.Contains(0x25B6), "&#9654;");
+        Assert.IsFalse(sink.Contains(65), "ASCII 엔티티는 수집하지 않음");
+    }
+
+    [Test]
+    public void BuildPreservedRanges_Baseline_IncludesSymbolBlocks()
+    {
+        var cps = Expand(AITFontUsedCharScanner.BuildPreservedRanges(new int[0], new int[0], out _));
+
+        Assert.IsTrue(cps.Contains(0x25BC), "▼ 는 기본 보존");
+        Assert.IsTrue(cps.Contains(0x25B6), "▶ 는 기본 보존");
+        Assert.IsTrue(cps.Contains(0x2192), "→ 화살표");
+        Assert.IsTrue(cps.Contains(0x2605), "★ 기타 기호");
+        Assert.IsTrue(cps.Contains(0x2713), "✓ 딩뱃");
+        Assert.IsTrue(cps.Contains(0x2460), "① 원문자");
+    }
+
     // =====================================================
     // 베이스라인 항시 포함
     // =====================================================

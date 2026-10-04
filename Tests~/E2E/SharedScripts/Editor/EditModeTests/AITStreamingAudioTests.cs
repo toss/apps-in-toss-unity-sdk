@@ -115,6 +115,19 @@ public class AITStreamingAudioTests
         Assert.AreEqual(expected, AITAudioStreamingProcessor.ShouldKeepCompressed(setting, seconds));
     }
 
+    // DecideLoadMode — 압축 대상은 stream 을 꺼야 엔진이 압축 재생(mode 512)을 고른다(stream 이 compressed 보다 우선).
+    // stream=false 일 때는 항상 compressed=true 여야 PCM 전개 회귀가 없다.
+    [TestCase(true, false, true)]
+    [TestCase(false, true, false)]
+    public void DecideLoadMode_CompressedEntryDisablesStream(bool entryCompressed, bool expectStream, bool expectCompressed)
+    {
+        AITStreamingAudio.DecideLoadMode(entryCompressed, out bool stream, out bool compressed);
+        Assert.AreEqual(expectStream, stream);
+        Assert.AreEqual(expectCompressed, compressed);
+        Assert.IsTrue(stream || compressed, "stream=false 이면 compressed=true 여야 한다");
+        Assert.IsFalse(stream && compressed, "stream 과 compressed 는 동시에 켜지 않는다");
+    }
+
     [Test]
     public void CompressedPlayback_DefaultIsAuto()
     {

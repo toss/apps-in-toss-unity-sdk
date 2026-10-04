@@ -12,6 +12,11 @@ public class HeavyAudioProbe : MonoBehaviour
 
     private AudioSource source;
 
+    // AudioSource.time 단조성 점검: 압축 재생 경로의 estimatePlaybackPosition(media element currentTime)이 되감기거나 멈추면 안 된다.
+    private float lastTime = -1f;
+    private int timeSamples;
+    private int timeRewinds;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Attach()
     {
@@ -41,8 +46,17 @@ public class HeavyAudioProbe : MonoBehaviour
             yield return new WaitForSecondsRealtime(m - elapsed);
             elapsed = m;
             var c = source != null ? source.clip : null;
+            float now = source != null ? source.time : -1f;
+            // 루프 BGM 이라 클립 길이를 넘기면 0 근처로 돌아온다. 그 래핑은 되감기로 세지 않는다.
+            if (lastTime >= 0f && now + 0.05f < lastTime && !(c != null && c.length > 0f && lastTime > c.length - 1f))
+            {
+                timeRewinds++;
+            }
+            lastTime = now;
+            timeSamples++;
             Debug.Log($"[HeavyAudioProbe] t={m:0}s playing={(source != null && source.isPlaying)} " +
-                (c != null ? $"clip={c.name} len={c.length:0.0}s loadState={c.loadState} loadType={c.loadType}" : "clip=null"));
+                (c != null ? $"clip={c.name} len={c.length:0.0}s loadState={c.loadState} loadType={c.loadType} " : "clip=null ") +
+                $"time={now:0.00}s timeRewinds={timeRewinds}/{timeSamples} lengthOk={(c != null && c.length > 0f)}");
         }
     }
 }

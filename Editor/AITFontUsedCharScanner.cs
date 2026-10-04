@@ -32,6 +32,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -60,7 +61,19 @@ namespace AppsInToss.Editor
         /// (호환 자모 U+3130-318F 는 ㅋㅋ/ㅠㅠ/ㅇㅇ 같은 낱자모 전용 동적 텍스트 보호를 위해 추가됨).
         /// </summary>
         public const string BaselineRanges =
-            "U+0020-007E,U+00A0-00FF,U+AC00-D7A3,U+1100-11FF,U+3130-318F,U+3000-303F,U+FF00-FFEF";
+            "U+0020-007E,U+00A0-00FF,U+AC00-D7A3,U+1100-11FF,U+3130-318F,U+3000-303F,U+FF00-FFEF,"
+            + SymbolBaselineRanges;
+
+        /// <summary>
+        /// 코드에서 동적으로 조립되는 기호(▼▶ ★ ✓ → ① 등)를 스캔이 놓쳐도 살리기 위한 기호 블록.
+        /// 폰트에 실제로 있는 글리프만 비용이 든다(없는 코드포인트는 서브셋 결과에 영향 없음).
+        /// 일반 구두점·위/아래첨자·통화·글자형·수 형태·화살표·수학·기술 기호·원문자·박스/블록·도형·
+        /// 기타 기호·딩뱃·괄호 CJK 문자/월·CJK 호환.
+        /// </summary>
+        public const string SymbolBaselineRanges =
+            "U+2000-206F,U+2070-209F,U+20A0-20CF,U+2100-214F,U+2150-218F,U+2190-21FF,U+2200-22FF,"
+            + "U+2300-23FF,U+2460-24FF,U+2500-257F,U+2580-259F,U+25A0-25FF,U+2600-26FF,U+2700-27BF,"
+            + "U+3200-32FF,U+3300-33FF";
 
         /// <summary>
         /// 스캔으로 감지한 코드포인트 + 블록 완성 + Han 패드 + 베이스라인을 합쳐
@@ -261,6 +274,8 @@ namespace AppsInToss.Editor
                 return;
             }
 
+            CollectNumericCodepointReferences(s, sink);
+
             int pendingHighSurrogate = -1; // \uXXXX 상위 서로게이트가 하위 짝을 기다리는 중.
 
             for (int i = 0; i < s.Length; i++)
@@ -281,6 +296,16 @@ namespace AppsInToss.Editor
                     int cp = TryReadUnicodeEscape(s, i, out int consumed);
                     if (cp >= 0)
                     {
+                        // C# 의 \x 는 1~4 hex(가변 길이)다. 2 hex(YAML/JSON 해석)와 별개로 탐욕 해석도 함께 수집한다.
+                        if (s[i + 1] == 'x')
+                        {
+                            int greedy = TryReadGreedyHexEscape(s, i);
+                            if (greedy >= 0x80)
+                            {
+                                sink.Add(greedy);
+                            }
+                        }
+
                         if (cp >= 0xD800 && cp <= 0xDBFF)
                         {
                             // \uXXXX 상위 서로게이트 — 다음 하위 서로게이트와 합쳐 astral 코드포인트로.
@@ -323,6 +348,86 @@ namespace AppsInToss.Editor
                     sink.Add(c);
                 }
             }
+        }
+
+        private static readonly Regex CharCastRegex =
+            new Regex(@"\(\s*char\s*\)\s*(0[xX][0-9A-Fa-f]{1,6}|[0-9]{1,7})", RegexOptions.Compiled);
+
+        private static readonly Regex ConvertFromUtf32Regex =
+            new Regex(@"ConvertFromUtf32\s*\(\s*(0[xX][0-9A-Fa-f]{1,6}|[0-9]{1,7})", RegexOptions.Compiled);
+
+        private static readonly Regex NumericEntityRegex =
+            new Regex(@"&#([xX][0-9A-Fa-f]{1,6}|[0-9]{1,7});", RegexOptions.Compiled);
+
+        /// <summary>
+        /// 숫자로 지정된 코드포인트를 수집한다: C# <c>(char)0x25BC</c>·<c>(char)9660</c>,
+        /// <c>char.ConvertFromUtf32(0x1F600)</c>, HTML/XML 숫자 엔티티 <c>&amp;#x25BC;</c>·<c>&amp;#9660;</c>
+        /// (TMP 리치 텍스트·UXML). 비ASCII(0x80 이상)·유효 범위(서로게이트 제외)만 수집한다.
+        /// </summary>
+        internal static void CollectNumericCodepointReferences(string s, HashSet<int> sink)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                return;
+            }
+
+            if (s.IndexOf("(", StringComparison.Ordinal) >= 0 && s.IndexOf("char", StringComparison.Ordinal) >= 0)
+            {
+                AddMatches(CharCastRegex, s, sink, 1, false);
+            }
+
+            if (s.IndexOf("ConvertFromUtf32", StringComparison.Ordinal) >= 0)
+            {
+                AddMatches(ConvertFromUtf32Regex, s, sink, 1, false);
+            }
+
+            if (s.IndexOf("&#", StringComparison.Ordinal) >= 0)
+            {
+                AddMatches(NumericEntityRegex, s, sink, 1, true);
+            }
+        }
+
+        private static void AddMatches(Regex regex, string s, HashSet<int> sink, int group, bool entity)
+        {
+            foreach (Match m in regex.Matches(s))
+            {
+                string t = m.Groups[group].Value;
+                bool hex = entity
+                    ? (t.Length > 0 && (t[0] == 'x' || t[0] == 'X'))
+                    : (t.Length > 1 && (t[1] == 'x' || t[1] == 'X'));
+                string digits = hex ? t.Substring(entity ? 1 : 2) : t;
+                if (int.TryParse(
+                        digits,
+                        hex ? System.Globalization.NumberStyles.HexNumber : System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out int cp)
+                    && cp >= 0x80 && cp <= 0x10FFFF && (cp < 0xD800 || cp > 0xDFFF))
+                {
+                    sink.Add(cp);
+                }
+            }
+        }
+
+        /// <summary>C# 가변 길이 <c>\xH..HHHH</c>(최대 4 hex, 탐욕)를 해석. 실패 시 -1.</summary>
+        private static int TryReadGreedyHexEscape(string s, int backslashIndex)
+        {
+            int value = 0;
+            int n = 0;
+            int k = backslashIndex + 2;
+            while (k < s.Length && n < 4)
+            {
+                int d = HexDigit(s[k]);
+                if (d < 0)
+                {
+                    break;
+                }
+
+                value = (value << 4) | d;
+                n++;
+                k++;
+            }
+
+            return n == 0 ? -1 : value;
         }
 
         /// <summary>

@@ -383,4 +383,116 @@ public class AITTextureStreamJpegTranscoderTests
         Assert.AreEqual(0, renamed.Count);
         Assert.IsTrue(File.Exists(png), "비활성 시 어떤 파일도 건드리지 않음");
     }
+
+    // ─────────────────────────── 자동 모드 품질 안전장치 ───────────────────────────
+
+    [TestCase("Assets/Art/hero_n.png", true)]
+    [TestCase("Rock_Normal.PNG", true)]
+    [TestCase("rock_NRM.png", true)]
+    [TestCase("wall_mask.png", true)]
+    [TestCase("wall_rough.png", true)]
+    [TestCase("wall_metal.png", true)]
+    [TestCase("wall_ao.png", true)]
+    [TestCase("wall_height.png", true)]
+    [TestCase("wall_disp.png", true)]
+    [TestCase("wall_ORM.png", true)]
+    [TestCase("wall-mrao.png", true)]
+    [TestCase("hero_albedo.png", false)]
+    [TestCase("banner.png", false)]
+    [TestCase("normalize_bg.png", false)]
+    [TestCase("mask.png", false)]
+    [TestCase("", false)]
+    [TestCase(null, false)]
+    public void HasDataMapNameHint_Matches(string name, bool expected)
+    {
+        Assert.AreEqual(expected, AITTextureStreamJpegTranscoder.HasDataMapNameHint(name), name);
+    }
+
+    [Test]
+    public void GetAutoSkipReason_DefaultOpaqueBilinearSrgb_IsNull()
+    {
+        Assert.IsNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.Default, FilterMode.Bilinear, true, "Assets/a/photo.png"));
+    }
+
+    [Test]
+    public void GetAutoSkipReason_NonDefaultTypePointLinearOrHint_ReturnsReason()
+    {
+        Assert.IsNotNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.Sprite, FilterMode.Bilinear, true, "a.png"), "Sprite");
+        Assert.IsNotNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.GUI, FilterMode.Bilinear, true, "a.png"), "GUI");
+        Assert.IsNotNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.NormalMap, FilterMode.Bilinear, true, "a.png"), "NormalMap");
+        Assert.IsNotNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.Default, FilterMode.Point, true, "a.png"), "Point");
+        Assert.IsNotNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.Default, FilterMode.Bilinear, false, "a.png"), "sRGB=false");
+        Assert.IsNotNull(AITTextureStreamJpegTranscoder.GetAutoSkipReason(
+            UnityEditor.TextureImporterType.Default, FilterMode.Bilinear, true, "Assets/a/wall_n.png"), "이름 힌트");
+    }
+
+    [Test]
+    public void ComputeLumaPsnr_IdenticalIsInfinity_DifferentIsFinite()
+    {
+        var a = new byte[4 * 64];
+        for (int i = 0; i < a.Length; i++) a[i] = (byte)(i * 7);
+        Assert.IsTrue(double.IsPositiveInfinity(AITTextureStreamJpegTranscoder.ComputeLumaPsnr(a, (byte[])a.Clone(), 1)));
+
+        var b = (byte[])a.Clone();
+        for (int p = 0; p < 64; p++) { b[p * 4] = (byte)(b[p * 4] ^ 0x04); b[p * 4 + 1] = (byte)(b[p * 4 + 1] ^ 0x04); b[p * 4 + 2] = (byte)(b[p * 4 + 2] ^ 0x04); }
+        double psnr = AITTextureStreamJpegTranscoder.ComputeLumaPsnr(a, b, 1);
+        Assert.IsFalse(double.IsInfinity(psnr) || double.IsNaN(psnr));
+        Assert.Greater(psnr, 30.0, "작은 오차는 높은 PSNR");
+    }
+
+    [Test]
+    public void ComputeLumaPsnr_NoiseLikeLargeError_FailsGate()
+    {
+        var a = new byte[4 * 256];
+        var b = new byte[4 * 256];
+        for (int p = 0; p < 256; p++)
+        {
+            byte v = (byte)((p % 2) * 255);
+            a[p * 4] = a[p * 4 + 1] = a[p * 4 + 2] = v; a[p * 4 + 3] = 255;
+            byte w = (byte)(255 - v);
+            b[p * 4] = b[p * 4 + 1] = b[p * 4 + 2] = (byte)((v + w) / 2); b[p * 4 + 3] = 255;
+        }
+
+        double psnr = AITTextureStreamJpegTranscoder.ComputeLumaPsnr(a, b, 1);
+        Assert.Less(psnr, 32.0);
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.PassesPsnrGate(psnr));
+    }
+
+    [Test]
+    public void ComputeLumaPsnr_InvalidInput_IsNaN_AndGateRejects()
+    {
+        Assert.IsTrue(double.IsNaN(AITTextureStreamJpegTranscoder.ComputeLumaPsnr(null, new byte[4])));
+        Assert.IsTrue(double.IsNaN(AITTextureStreamJpegTranscoder.ComputeLumaPsnr(new byte[4], new byte[8])));
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.PassesPsnrGate(double.NaN));
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.PassesPsnrGate(double.PositiveInfinity));
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.PassesPsnrGate(32.0));
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.PassesPsnrGate(31.9));
+    }
+
+    [Test]
+    public void IsAutoMode_OnlyNegative()
+    {
+        _config.textureStreamJpeg = -1;
+        Assert.IsTrue(AITTextureStreamJpegTranscoder.IsAutoMode(_config));
+        _config.textureStreamJpeg = 1;
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsAutoMode(_config));
+        Assert.IsFalse(AITTextureStreamJpegTranscoder.IsAutoMode(null));
+    }
+
+    [Test]
+    public void TranscodeInPlace_Auto_UnknownImporter_KeepsPng()
+    {
+        _config.textureStreamJpeg = -1;
+        string png = WriteSineFieldPng("auto-noimporter.png", withAlpha: false);
+        var renamed = AITTextureStreamJpegTranscoder.TranscodeInPlace(_config, new[] { png });
+
+        Assert.AreEqual(0, renamed.Count, "임포터를 못 찾으면 자동 모드는 보수적으로 원본 유지");
+        Assert.IsTrue(File.Exists(png));
+    }
 }

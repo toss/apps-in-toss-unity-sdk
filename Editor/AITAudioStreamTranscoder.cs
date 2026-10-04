@@ -23,7 +23,7 @@
 // ⚠ 기본값 정책: auto(-1)는 ON(AITDefaultSettings.GetDefaultAudioStreamTranscode() == true),
 //   audioStreamTranscode=0 으로 끈다. cascaded lossy(320→160kbps 등)는 세대손실이 누적되고
 //   루핑 BGM 은 LAME delay/padding 갭 리스크가 있어, auto 에서는 빌드 씬·프리팹의 AudioSource 가
-//   loop=true 로 참조하는 클립을 건너뛴다(CollectLoopingClipGuids). 명시 활성(==1)은 게이트 없음.
+//   loop=true 로 참조하는 클립과 20초 초과 클립(러너 출력에 Xing/Info delay·padding 태그 없음)을 건너뛴다(CollectLoopingClipGuids). 명시 활성(==1)은 게이트 없음.
 
 using System;
 using System.Collections.Generic;
@@ -139,6 +139,19 @@ namespace AppsInToss.Editor
             // 하한 방어: minSourceKbps 가 target 이하로 잘못 설정돼도 target+32 미만 소스는 제외.
             int floor = Math.Max(minSourceKbps, targetKbps + 32);
             return kbps >= floor;
+        }
+
+        /// <summary>
+        /// 자동 모드에서 재인코딩하지 않을 '긴 클립' 기준(초). 러너 출력은 LAME Xing/Info 태그(인코더 delay/padding)가
+        /// 없는 순수 프레임 스트림이라 gapless 재생이 불가하고 세대마다 ~1105샘플 선행 지연이 붙는다.
+        /// 런타임 loop 설정은 탐지할 수 없으므로 BGM 일 가능성이 큰 긴 클립은 자동에서 제외한다(명시 ==1 은 무관).
+        /// </summary>
+        internal const float AutoMaxClipSeconds = 20f;
+
+        /// <summary>자동 모드 긴 클립 제외 판정. 길이 미상(0 이하)은 보수적으로 제외하지 않고 비트레이트 게이트에 맡긴다.</summary>
+        internal static bool IsLikelyBgmByLength(float seconds)
+        {
+            return seconds > AutoMaxClipSeconds;
         }
 
         /// <summary>채택 판정: 산출물이 원본 대비 MinGainPercent 이상 작아야 교체.</summary>
@@ -354,7 +367,21 @@ namespace AppsInToss.Editor
                 }
             }
 
-            // 자동 모드 안전 게이트: loop=true AudioSource 가 쓰는 클립은 제외(LAME delay/padding 이음새 갭 방지).
+            // 자동 모드 안전 게이트 ①: 긴 클립(>20초)은 BGM 가능성 — 인코더가 delay/padding 태그를 쓰지 않아 루프 갭을 막을 수 없다.
+            if (targets.Count > 0 && config.audioStreamTranscode < 0)
+            {
+                targets.RemoveAll(c =>
+                {
+                    bool longClip = IsLikelyBgmByLength(c.Seconds);
+                    if (longClip)
+                    {
+                        Debug.Log($"[AIT-AudioTranscode]   자동 제외({c.Seconds:0.#}초 > {AutoMaxClipSeconds:0}초, gapless 태그 없음): {Path.GetFileName(c.AbsPath)}");
+                    }
+                    return longClip;
+                });
+            }
+
+            // 자동 모드 안전 게이트 ②: loop=true AudioSource 가 쓰는 클립은 제외(LAME delay/padding 이음새 갭 방지).
             // 명시 활성(==1)은 사용자 의도를 그대로 따른다.
             if (targets.Count > 0 && config.audioStreamTranscode < 0)
             {

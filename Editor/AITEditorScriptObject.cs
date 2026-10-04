@@ -440,7 +440,7 @@ namespace AppsInToss
         [Tooltip("-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성(루프 클립 게이트 없이 전부). " +
                  "외부화된 스트리밍 오디오 '사본'(MP3)을 저비트레이트 MP3 로 재인코딩해 .ait 번들 크기를 줄입니다(실측 320→160kbps 기준 ~50% 절감). " +
                  "프로젝트 원본은 건드리지 않으며(외부화 사본만 교체) 런타임 복원 경로도 그대로입니다. " +
-                 "자동 모드는 빌드 씬·프리팹의 AudioSource 가 loop=true 로 참조하는 클립을 건너뜁니다(인코더 delay/padding 으로 루프 이음새에 갭이 생길 수 있음). " +
+                 "자동 모드는 빌드 씬·프리팹의 AudioSource 가 loop=true 로 참조하는 클립과 20초 초과 클립(BGM 가능성, 인코더가 gapless 태그를 쓰지 않음)을 건너뜁니다. " +
                  "⚠ 소스가 이미 lossy(MP3)라 세대손실이 누적됩니다. 스크립트에서 런타임에 loop 를 켜는 클립은 탐지되지 않으니 그런 경우 0 으로 끄세요.")]
         public int audioStreamTranscode = -1;
 
@@ -613,6 +613,7 @@ namespace AppsInToss
         [Tooltip("(lossy, 기본 ON) 알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환해 CDN 무압축 총량을 실감축합니다(실측 −77%). " +
                  "프로젝트 원본은 건드리지 않으며(스트림 사본만 교체) 런타임 LoadImage 는 PNG/JPG 를 매직 바이트로 자동 감지합니다. " +
                  "알파가 있는 텍스처는 자동에서도 변환하지 않습니다. " +
+                 "자동(-1)은 추가로 Sprite/UI 등 Default 가 아닌 텍스처 타입·Point 필터·sRGB 끔·데이터맵 이름(_n/_mask/_rough 등)을 제외하고, 변환 후 PSNR<32dB 인 텍스처도 원본을 유지합니다(명시 1 은 이 게이트 없음). " +
                  "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환입니다. 문제가 보이면 0 으로 끄세요. " +
                  "-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성.")]
         public int textureStreamJpeg = -1;

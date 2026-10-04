@@ -346,12 +346,17 @@ async function waitForCachePuts(page) {
   // 상한은 느린 러너에서도 put 이 끝날 만큼 넉넉해야 한다. put 은 디코드된 본문(wasm ~37MB, data ~30MB)을 렌더러 메인 스레드가
   // 읽어 쓰는 작업이라 CPU 스로틀 아래서는 TTFF 뒤로 수 초~수십 초 밀린다(6000.0 은 wasm 이 커서 15s 상한을 넘겨 재방문마다
   // 통째로 다시 받았다). 상한 안에 못 끝나면 warm 값이 네트워크 재다운로드를 포함하므로 경고를 남긴다.
+  const waitStart = Date.now();
   const done = await page.waitForFunction(() => {
     const s = window['__aitCacheStats'];
     const need = window['__aitWasmViaHttpCache'] ? 1 : 2;
     if (!s || !Array.isArray(s.puts)) return false;
     // put 실패(QuotaExceededError 등)는 그 URL 에 대해 종결 상태다 — 기대 수를 못 채워도 75초를 더 기다리지 않는다.
-    const failed = Array.isArray(s.errors) ? s.errors.filter((e) => String(e).indexOf('put ') === 0).length : 0;
+    // 'put timeout' 은 느린 put 진단일 뿐 put 은 계속 진행 중이므로 종결로 보지 않는다(종결로 보면 put 완료 전에
+    // 재방문을 열어 warm 이 통째로 재다운로드된다 — 6000.x 실측).
+    const failed = Array.isArray(s.errors)
+      ? s.errors.filter((e) => String(e).indexOf('put ') === 0 && String(e).indexOf('put timeout ') !== 0).length
+      : 0;
     return s.puts.length + failed >= need;
   }, undefined, { timeout: CACHE_PUT_WAIT_MS }).then(() => true).catch(() => false);
   // 진단용 요약: 상한 안에 끝났어도 put 실패가 섞였으면 남긴다(그 URL 은 warm 에서 재다운로드된다).
@@ -361,7 +366,11 @@ async function waitForCachePuts(page) {
     const n = (a) => (Array.isArray(a) ? a.length : -1);
     return { hits: n(s.hits), misses: n(s.misses), puts: n(s.puts), putUrls: s.puts, errors: s.errors, viaHttpCache: !!window['__aitWasmViaHttpCache'] };
   }).catch(() => null);
-  const putErrors = summary && Array.isArray(summary.errors) ? summary.errors.filter((e) => String(e).indexOf('put ') === 0) : [];
+  const putErrors = summary && Array.isArray(summary.errors)
+    ? summary.errors.filter((e) => String(e).indexOf('put ') === 0 && String(e).indexOf('put timeout ') !== 0)
+    : [];
+  const waited = Date.now() - waitStart;
+  if (done && waited > 10000) console.log(`  페이지 캐시 put 완료까지 ${waited}ms 대기`);
   if (!done) console.warn(`  페이지 캐시 put 이 ${CACHE_PUT_WAIT_MS}ms 안에 끝나지 않음 — 재방문 값에 재다운로드가 섞일 수 있다 stats=${JSON.stringify(summary)}`);
   else if (putErrors.length) console.warn(`  페이지 캐시 put 실패 — 재방문 값에 재다운로드가 섞일 수 있다 stats=${JSON.stringify(summary)}`);
   await page.waitForTimeout(500);

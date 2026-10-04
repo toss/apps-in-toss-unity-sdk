@@ -207,7 +207,9 @@
             function schedule() { if (!raf) raf = requestAnimationFrame(apply); }
             vv.addEventListener('resize', schedule);
             vv.addEventListener('scroll', schedule);
-            window.addEventListener('resize', schedule);
+            // WebView 자체가 줄어든 resize 는 다음 프레임까지 미루지 않는다. Unity 루프가 먼저 줄어든 캔버스를 읽으면
+            // 한 프레임 동안 화면을 축소했다가 되돌린다(Android 에서 측정).
+            window.addEventListener('resize', function () { if (raf) { cancelAnimationFrame(raf); } apply(); });
             fullHeight();
 
             function isTextField(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }

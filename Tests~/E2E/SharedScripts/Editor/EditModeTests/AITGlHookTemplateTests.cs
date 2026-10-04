@@ -100,7 +100,7 @@ public class AITGlHookTemplateTests
         Assert.AreEqual(1, Regex.Matches(js, @"\.loseContext\s*\(").Count,
             "loseContext 호출은 releaseProbe 안의 한 곳뿐이어야 합니다.");
 
-        Match release = Regex.Match(js, @"function releaseProbe\([^)]*\)\s*\{(?<body>.*?)\n    \}\n", RegexOptions.Singleline);
+        Match release = Regex.Match(js, @"function releaseProbe\([^)]*\)\s*\{(?<body>.*?)\r?\n    \}\r?\n", RegexOptions.Singleline);
         Assert.IsTrue(release.Success, "releaseProbe 함수를 찾지 못했습니다.");
         string body = release.Groups["body"].Value;
         StringAssert.Contains("isUnityCanvas(canvas)", body);

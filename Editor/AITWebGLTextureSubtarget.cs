@@ -22,6 +22,12 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// 이번 빌드에서 SDK 가 서브타겟을 자동으로 ASTC 로 바꿨는지. 블록 에스컬레이션 자동 모드가 이를 보고
+        /// 사용자가 고르지 않은 ASTC 위에 저화질 큰 블록을 덮어쓰지 않도록 한다.
+        /// </summary>
+        public static bool AutoSwitchedThisBuild { get; private set; }
+
+        /// <summary>
         /// 순수 결정 함수. setting: -1 자동, 0 유지. currentName: 현재 서브타겟 이름(Generic/DXT/ETC2/ASTC).
         /// 자동이면서 현재가 Generic 또는 DXT(Unity 기본값)일 때만 true.
         /// </summary>
@@ -65,6 +71,7 @@ namespace AppsInToss.Editor
                 handle.OriginalName = currentName;
                 EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.ASTC;
                 handle.Active = true;
+                AutoSwitchedThisBuild = true;
                 Debug.Log($"[AIT-TextureSubtarget] ✓ WebGL 텍스처 서브타겟 {currentName} → ASTC 로 변경(자동). " +
                     "iOS 는 DXT 를 지원하지 않아 RGBA8 로 풀려 메모리가 커집니다. 빌드 후 원래 값으로 복원합니다. " +
                     "끄려면 webglTextureSubtargetAuto = 0.");
@@ -82,6 +89,7 @@ namespace AppsInToss.Editor
         /// <summary>빌드 후(성공/실패 무관) 호출. null/미활성 핸들은 no-op.</summary>
         public static void RestoreForBuild(Handle handle)
         {
+            AutoSwitchedThisBuild = false;
             if (handle == null || !handle.Active)
             {
                 return;

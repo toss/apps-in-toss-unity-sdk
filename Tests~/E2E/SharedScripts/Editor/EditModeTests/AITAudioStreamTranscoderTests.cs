@@ -196,4 +196,14 @@ public class AITAudioStreamTranscoderTests
         _config.audioStreamTranscodeMinSourceKbps = 300;
         Assert.AreEqual(300, AITAudioStreamTranscoder.ResolveMinSourceKbps(_config));
     }
+
+    [Test]
+    public void IsLikelyBgmByLength_ThresholdIs20Seconds()
+    {
+        Assert.IsFalse(AITAudioStreamTranscoder.IsLikelyBgmByLength(0f), "길이 미상은 제외하지 않음");
+        Assert.IsFalse(AITAudioStreamTranscoder.IsLikelyBgmByLength(3.5f), "짧은 효과음은 대상");
+        Assert.IsFalse(AITAudioStreamTranscoder.IsLikelyBgmByLength(20f), "경계 20초는 대상");
+        Assert.IsTrue(AITAudioStreamTranscoder.IsLikelyBgmByLength(20.1f), "20초 초과는 BGM 가능성 → 자동 제외");
+        Assert.IsTrue(AITAudioStreamTranscoder.IsLikelyBgmByLength(180f));
+    }
 }

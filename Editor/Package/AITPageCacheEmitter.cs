@@ -270,6 +270,7 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         private const string BakedTailJs = @"
             var NATIVE_TIMEOUT_MS = 3000;
+            var PUT_TIMEOUT_MS = 30000; // put 이 이 시간 안에 안 끝나면 errors 에 기록(조용한 멈춤 방지).
             // 호스트가 리졸버 주입 가치를 판단할 수 있도록 신호를 노출(레버 OFF 면 false → 호스트가 주입 생략).
             window.__aitNativeSourceEnabled = NATIVE_SOURCE;
 
@@ -518,6 +519,28 @@ namespace AppsInToss.Editor.Package
 
             // 설치 시점의 fetch 를 캡처(여기선 native; Early Fetch 는 아직 미설치).
             var priorFetch = window.fetch.bind(window);
+            // 레거시 early-fetch 용: 네이티브 fetch 와 '완결 버퍼 원자 put'. clone-tee put 은 CI 에서 wasm 저장이 끝나지 않고
+            // 멈추는 경우가 있어(오류 기록도 없음) 버퍼가 이미 있는 호출자는 이쪽으로 저장한다. 결과는 통계에 그대로 반영한다.
+            window.__aitPageCachePriorFetch = priorFetch;
+            window.__aitPageCachePutBuffer = function (url, buf, ct) {
+                var settled = false;
+                var timer = setTimeout(function () {
+                    if (!settled) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
+                }, PUT_TIMEOUT_MS);
+                window.__aitCacheStats.misses.push(url);
+                try {
+                    var h = { 'Content-Type': ct || 'application/octet-stream', 'Content-Length': String(buf.byteLength) };
+                    getCache().then(function (c) { return c.put(url, new Response(buf, { status: 200, headers: h })); })
+                        .then(function () { settled = true; clearTimeout(timer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
+                        .catch(function (e) {
+                            settled = true; clearTimeout(timer);
+                            window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
+                        });
+                } catch (e) {
+                    settled = true; clearTimeout(timer);
+                    window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
+                }
+            };
 
             // populated 힌트: 이 버킷에 put 된 URL 목록을 localStorage 에 동기 조회 가능한 형태로 남긴다.
             // 캐시 조회(open→match)는 비동기라, head 에서 시작해도 응답 처리는 뒤따르는 body 파싱·첫 렌더가
@@ -596,9 +619,15 @@ namespace AppsInToss.Editor.Package
                                 if (resp && resp.ok && resp.body !== undefined) {
                                     // decode-free 계약: 응답을 가공 없이 그대로 저장/반환.
                                     var clone = resp.clone();
+                                    // 멈춘 put 이 조용히 남지 않도록 감시 타이머를 둔다(통계 errors 에 기록 → 진단 가능).
+                                    var putDone = false;
+                                    var putTimer = setTimeout(function () {
+                                        if (!putDone) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
+                                    }, PUT_TIMEOUT_MS);
                                     getCache().then(function (c) { return c.put(url, clone); })
-                                        .then(function () { window.__aitCacheStats.puts.push(url); markPopulated(url); })
+                                        .then(function () { putDone = true; clearTimeout(putTimer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
                                         .catch(function (e) {
+                                            putDone = true; clearTimeout(putTimer);
                                             // QuotaExceededError 포함 모든 put 실패 흡수(부팅 무영향).
                                             // 공간 회복은 다음 부팅의 allowlist 정리에 위임.
                                             window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));

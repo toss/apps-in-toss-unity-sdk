@@ -323,7 +323,16 @@
     // C# AITMemoryBridge 가 jslib 를 통해 호출한다. 등록 직후 현재 상태를 한 번 보낸다.
     mem.__bridgeRegister = function () {
         mem.bridgeReady = true;
-        setTimeout(function () { sendToBridge(snapshot(mem.crashCount > 0 ? 'crash' : 'snapshot')); }, 0);
+        // unityInstance 는 createUnityInstance 가 끝나야 생긴다. 준비될 때까지 100ms 간격으로 최대 5초 재시도한다.
+        var tries = 0;
+        (function first() {
+            var u = window.unityInstance;
+            if (u && typeof u.SendMessage === 'function') {
+                sendToBridge(snapshot(mem.crashCount > 0 ? 'crash' : 'snapshot'));
+                return;
+            }
+            if (++tries <= 50) setTimeout(first, 100);
+        })();
         return true;
     };
 

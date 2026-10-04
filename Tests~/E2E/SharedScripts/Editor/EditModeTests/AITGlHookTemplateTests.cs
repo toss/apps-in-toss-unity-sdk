@@ -10,6 +10,7 @@
 using System.IO;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using AppsInToss;          // AITConvertCore (namespace AppsInToss)
 using AppsInToss.Editor;
 
 [TestFixture]

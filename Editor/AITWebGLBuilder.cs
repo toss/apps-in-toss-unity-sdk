@@ -171,6 +171,7 @@ namespace AppsInToss.Editor
             // (#1008 유사 케이스 — 빌드 실패가 아니라 apply 단계 예외). 핸들은 모두 null 로 시작하고 각
             // RestoreForBuild 는 null/미활성 핸들에 대해 no-op 이므로, 어느 지점에서 예외가 나도 그때까지
             // 성공적으로 Apply 된 프로세서만 안전하게 복원된다.
+            AITWebGLTextureSubtarget.Handle textureSubtargetHandle = null;
             AITAudioStreamingProcessor.StreamHandle audioStreamHandle = null;
             AITAudioReencodeProcessor.ReencodeHandle audioReencodeHandle = null;
             AITTextureCrunchProcessor.CrunchHandle textureCrunchHandle = null;
@@ -186,6 +187,8 @@ namespace AppsInToss.Editor
             {
                 // 대용량 오디오를 StreamingAssets로 외부화하고 소스를 무음 스텁으로 치환 →
                 // BuildPlayer가 최적화본을 패키징.
+                // WebGL 텍스처 서브타겟 자동 ASTC — crunch/ASTC 프로세서가 서브타겟을 읽으므로 가장 먼저 적용한다.
+                textureSubtargetHandle = AITWebGLTextureSubtarget.ApplyForBuild(config);
                 audioStreamHandle = AITAudioStreamingProcessor.ExternalizeForBuild(config);
                 // 콘텐츠 최적화 — 오디오 재인코딩 (Vorbis+quality override 로 .data/CDN 오디오 축소, 빌드 후 임포터 원복)
                 // 스트리밍 외부화 직후에 적용해야 외부화된(스텁) 클립을 .aitstreambak 존재로 건너뛸 수 있다.
@@ -238,6 +241,8 @@ namespace AppsInToss.Editor
                 AITAudioReencodeProcessor.RestoreForBuild(audioReencodeHandle);
                 // 오디오 스트리밍 외부화 원복 (StreamingAssets — 다른 에셋과 .meta 중첩 없음)
                 AITAudioStreamingProcessor.RestoreForBuild(audioStreamHandle);
+                // WebGL 텍스처 서브타겟 원복 (가장 먼저 적용했으므로 가장 마지막에 복원)
+                AITWebGLTextureSubtarget.RestoreForBuild(textureSubtargetHandle);
 
                 // #1008: 버전 정보 JSON은 빌드 후 삭제하지 않는다 — 매 빌드 삭제/재생성하면 .meta GUID가
                 // 갱신되어 무변경 재빌드에도 data 아카이브가 재빌드+재압축된다. 유지가 빌드 캐시를 보존한다.

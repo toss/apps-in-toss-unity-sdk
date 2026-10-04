@@ -350,7 +350,7 @@ namespace AppsInToss
         public int nativeAssetSource = -1;
 
         [Header("렌더링 품질 설정")]
-        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
+        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 결정하되 최대 2로 제한), 1/2/3 = 고정값(상한 미적용, 3 지정 시 DPR 3 허용). 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;
 
         [Header("IL2CPP/Stripping 설정")]
@@ -402,6 +402,13 @@ namespace AppsInToss
         [Header("계측 설정")]
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
+        [Header("콘텐츠 최적화 — WebGL 텍스처 서브타겟")]
+        [Tooltip("-1 = 자동 (ASTC), 0 = 프로젝트 설정 유지. " +
+                 "iOS WebView 는 S3TC(DXT)를 지원하지 않아 DXT 텍스처를 RGBA8 로 풀어 메모리가 4~8배 커집니다. " +
+                 "자동이면 프로젝트 서브타겟이 Generic/DXT(기본값)일 때만 빌드 중 ASTC 로 바꾸고 빌드 후 원래 값으로 복원합니다. " +
+                 "ETC2/ASTC 를 직접 고른 프로젝트는 그대로 둡니다. Unity 2022.3 이상 전용.")]
+        public int webglTextureSubtargetAuto = -1;
+
         [Header("콘텐츠 최적화 — ASTC 블록 에스컬레이션")]
         [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
                  "ASTC 서브타겟 WebGL 빌드에서 텍스처를 더 큰 ASTC 블록(기본 12x12)으로 reimport 하여 " +

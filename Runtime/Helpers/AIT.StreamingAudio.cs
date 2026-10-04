@@ -56,6 +56,7 @@ namespace AppsInToss
             public string name;
             public string file;
             public float length;
+            public bool compressed;
         }
 
         [System.Serializable]
@@ -217,7 +218,11 @@ namespace AppsInToss
             using (var req = UnityWebRequestMultimedia.GetAudioClip(url, type))
             {
                 // 스트리밍 디코드(메모리 절약). 길이가 길어도 점진 재생.
-                ((DownloadHandlerAudioClip)req.downloadHandler).streamAudio = true;
+                var audioHandler = (DownloadHandlerAudioClip)req.downloadHandler;
+                audioHandler.streamAudio = true;
+                // 긴 클립은 압축 상태로 둔다. WebGL 은 비압축 클립을 float32 PCM AudioBuffer 로 통째 풀어 두지만
+                // 압축 클립은 브라우저 미디어 요소로 재생해 PCM 을 상주시키지 않는다(빌드 단계가 길이·설정으로 결정).
+                audioHandler.compressed = entry.compressed;
                 yield return req.SendWebRequest();
                 if (!IsSuccess(req))
                 {
@@ -253,7 +258,7 @@ namespace AppsInToss
                 if (real != null)
                 {
                     real.name = entry.name; // 이름 보존(이후 동일 클립 식별)
-                    Debug.Log($"[AIT-StreamingAudio] 재수화 {entry.name} loadType={real.loadType} len={real.length:0.0}s");
+                    Debug.Log($"[AIT-StreamingAudio] 재수화 {entry.name} loadType={real.loadType} compressed={entry.compressed} len={real.length:0.0}s");
                     loaded[entry.name] = real;
                     if (firstRequester != null && firstRequester.clip != null
                         && firstRequester.clip.name == entry.name && IsStubLength(firstRequester.clip.length))

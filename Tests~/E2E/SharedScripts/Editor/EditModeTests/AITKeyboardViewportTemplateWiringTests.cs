@@ -93,8 +93,11 @@ public class AITKeyboardViewportTemplateWiringTests
         Assert.IsTrue(Regex.IsMatch(ExtractFunction(script, "fullHeight"), @"window\.innerWidth\s*!==\s*baseW"),
             "기준 높이를 폭(회전)이 바뀔 때 다시 잡지 않습니다.");
         Assert.IsTrue(
-            Regex.IsMatch(pan, @"style\.height\s*=\s*up\s*&&\s*isTextField\(document\.activeElement\)\s*&&\s*window\.innerHeight\s*<\s*full\s*-\s*1\s*\?\s*full\s*\+\s*'px'\s*:\s*''"),
+            Regex.IsMatch(pan, @"style\.height\s*=\s*up\s*&&\s*isTextField\(document\.activeElement\)\s*&&\s*window\.innerHeight\s*<\s*full\s*-\s*1\s*\?\s*\(baseCH\s*\|\|\s*full\)\s*\+\s*'px'\s*:\s*''"),
             "pan 모드는 키보드가 떠 있고 입력창에 포커스가 있으며 WebView 가 줄었을 때만 컨테이너 높이를 기준 높이로 고정하고, 그 밖에는 지워야 합니다.");
+        Assert.IsTrue(
+            Regex.IsMatch(pan, @"if\s*\(\s*!up\s*&&\s*!c\.style\.height\s*\)\s*baseCH\s*=\s*c\.getBoundingClientRect\(\)\.height"),
+            "고정 높이는 키보드 없을 때 잰 컨테이너 높이(소수 포함)여야 합니다. 정수 innerHeight 로 고정하면 프레임버퍼가 1px 바뀝니다.");
     }
 
     [Test]

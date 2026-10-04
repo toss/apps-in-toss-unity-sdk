@@ -132,6 +132,7 @@
             var focusY = null, clearTimer = 0;
             var lastPan = -1, wasUp = false;
             var baseW = 0, baseH = 0;        // 키보드 없는 높이: 현재 폭에서 본 가장 큰 innerHeight
+            var baseCH = 0;                  // 키보드 없을 때 잰 컨테이너 높이(소수 포함). 정수 innerHeight 로 고정하면 1px 리사이즈가 난다
 
             function container() { return document.getElementById('unity-container'); }
             function fullHeight() {
@@ -172,7 +173,8 @@
                 // Android WebView 는 키보드만큼 WebView 를 줄여 height:100% 인 컨테이너와 캔버스가 함께 준다.
                 // 키보드 없는 높이로 고정해 프레임버퍼 리사이즈를 막고, 가려지는 아래쪽은 아래 pan 으로 끌어올린다.
                 // 입력창 포커스를 함께 보는 것은 데스크톱 창 크기 조절을 키보드로 오인하지 않기 위해서다.
-                c.style.height = up && isTextField(document.activeElement) && window.innerHeight < full - 1 ? full + 'px' : '';
+                if (!up && !c.style.height) baseCH = c.getBoundingClientRect().height;
+                c.style.height = up && isTextField(document.activeElement) && window.innerHeight < full - 1 ? (baseCH || full) + 'px' : '';
                 var barH = up && bar ? bar.offsetHeight : 0;
                 if (up && focusY !== null) {
                     var kb = full - vv.height;

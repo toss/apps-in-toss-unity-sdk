@@ -20,6 +20,22 @@ public class AITWebGLTextureSubtargetTests
         Assert.AreEqual(expected, AITWebGLTextureSubtarget.ShouldSwitchToAstc(setting, current));
     }
 
+    [TestCase(-1, true, true)]
+    [TestCase(-1, false, false)]
+    [TestCase(1, true, false)]
+    [TestCase(0, true, false)]
+    public void AstcBlock_SkipsOnlyWhenAutoAndSubtargetAutoSwitched(int escalation, bool autoSwitched, bool expected)
+    {
+        Assert.AreEqual(expected, AITAstcBlockProcessor.SkipForAutoSubtarget(escalation, autoSwitched));
+    }
+
+    [Test]
+    public void RestoreForBuild_ClearsAutoSwitchedFlag()
+    {
+        AITWebGLTextureSubtarget.RestoreForBuild(null);
+        Assert.IsFalse(AITWebGLTextureSubtarget.AutoSwitchedThisBuild);
+    }
+
     [Test]
     public void ApplyForBuild_NullConfig_ReturnsInactiveHandle()
     {

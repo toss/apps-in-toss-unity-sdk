@@ -167,7 +167,11 @@ test.describe('ait-gl.js 합성 페이지', () => {
   });
 
   test('데스크톱에서는 glDropAntialias=true 여도 antialias 를 끄지 않는다', async ({ browser }) => {
-    const context = await browser.newContext();
+    // 프로젝트(Mobile Chrome)의 use 옵션이 browser.newContext() 에도 적용되므로 데스크톱 UA 를 명시한다.
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      isMobile: false, hasTouch: false, viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1,
+    });
     try {
       const { page } = await openSynthetic(context, perfQuery({ glDropAntialias: true }));
       expect(await page.evaluate(() => window['__AIT_GL'].aaDecision)).toBe('not-mobile');

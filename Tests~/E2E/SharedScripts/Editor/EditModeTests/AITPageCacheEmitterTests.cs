@@ -71,6 +71,10 @@ public class AITPageCacheEmitterTests
         StringAssert.Contains("return isCacheable(url);", result);
         // 재방문 조회 훅: 힌트 없으면 동기 null, 있으면 CacheStorage match 후 hits 기록.
         StringAssert.Contains("window.__aitPageCacheLookup = function (url)", result);
+        // 버퍼 원자 put + put 멈춤 감시(조용한 멈춤 금지: errors 에 'put timeout' 기록).
+        StringAssert.Contains("window.__aitPageCachePutBuffer = function (url, buf, ct)", result);
+        StringAssert.Contains("window.__aitPageCachePriorFetch = priorFetch;", result);
+        StringAssert.Contains("'put timeout ' + url", result);
         StringAssert.Contains("if (!isCacheable(url) || !isHinted(url)) { return null; }", result);
     }
 

@@ -105,6 +105,12 @@ namespace AppsInToss.Editor
                     "DXT 환경에서는 crunch 를 사용하세요.");
                 return handle;
             }
+            if (SkipForAutoSubtarget(config.astcBlockEscalation, AITWebGLTextureSubtarget.AutoSwitchedThisBuild))
+            {
+                Debug.Log("[AIT-AstcBlock] 서브타겟을 SDK 가 자동으로 ASTC 로 바꾼 빌드라 블록 에스컬레이션(자동)을 건너뜁니다. " +
+                    "텍스처는 임포터 품질에 맞는 Unity 기본 ASTC 블록으로 굽습니다. 더 줄이려면 astcBlockEscalation = 1.");
+                return handle;
+            }
 #else
             // Unity 2021.3: WebGLTextureSubtarget API 미지원 — 서브타겟 감지 불가.
             Debug.LogWarning("[AIT-AstcBlock] Unity 2021.3에서는 WebGL 서브타겟 감지가 지원되지 않습니다. " +
@@ -615,6 +621,15 @@ namespace AppsInToss.Editor
             return config.astcBlockEscalation >= 0
                 ? config.astcBlockEscalation == 1
                 : AITDefaultSettings.GetDefaultAstcBlockEscalation();
+        }
+
+        /// <summary>
+        /// 자동 모드(-1)이면서 서브타겟이 사용자 선택이 아닌 SDK 자동 전환으로 ASTC 가 된 경우 true.
+        /// 큰 블록(기본 12x12, 0.89bpp)은 UI·노멀맵 화질을 크게 떨어뜨리므로 사용자가 ASTC 를 고른 프로젝트나 명시적 1 에서만 쓴다.
+        /// </summary>
+        internal static bool SkipForAutoSubtarget(int escalationSetting, bool subtargetAutoSwitched)
+        {
+            return escalationSetting < 0 && subtargetAutoSwitched;
         }
 
         /// <summary>

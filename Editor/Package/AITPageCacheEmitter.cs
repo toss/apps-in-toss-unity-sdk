@@ -271,6 +271,19 @@ namespace AppsInToss.Editor.Package
         private const string BakedTailJs = @"
             var NATIVE_TIMEOUT_MS = 3000;
             var PUT_TIMEOUT_MS = 30000; // put 이 이 시간 안에 안 끝나면 errors 에 기록(조용한 멈춤 방지).
+            // put 시작을 첫 프레임 뒤로 미루는 게이트. 템플릿이 첫 프레임에 window.__aitFirstFrame 을 세우고 'ait-first-frame' 이벤트를
+            // 내보낸다. 부팅 중(wasm 인스턴스화·씬 로드)에 수십 MB 버퍼를 읽으면 cold TTFF 가 늦어지므로 그 구간을 피한다.
+            // 신호가 없는 빌드(WebGL 미사용 등)를 위해 상한 시간 뒤에는 그냥 진행한다.
+            var FIRST_FRAME_WAIT_MS = 10000;
+            function afterFirstFrame() {
+                return new Promise(function (resolve) {
+                    if (window.__aitFirstFrame) { resolve(); return; }
+                    var t = null;
+                    function go() { window.removeEventListener('ait-first-frame', go); if (t) { clearTimeout(t); } resolve(); }
+                    window.addEventListener('ait-first-frame', go);
+                    t = setTimeout(go, FIRST_FRAME_WAIT_MS);
+                });
+            }
             // 호스트가 리졸버 주입 가치를 판단할 수 있도록 신호를 노출(레버 OFF 면 false → 호스트가 주입 생략).
             window.__aitNativeSourceEnabled = NATIVE_SOURCE;
 
@@ -619,18 +632,20 @@ namespace AppsInToss.Editor.Package
                                 if (resp && resp.ok && resp.body !== undefined) {
                                     // decode-free 계약: 응답을 가공 없이 그대로 저장/반환.
                                     var clone = resp.clone();
-                                    // 멈춘 put 이 조용히 남지 않도록 감시 타이머를 둔다(통계 errors 에 기록 → 진단 가능).
-                                    var putDone = false;
-                                    var putTimer = setTimeout(function () {
-                                        if (!putDone) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
-                                    }, PUT_TIMEOUT_MS);
+                                    // 멈춘 put 이 조용히 남지 않도록 감시 타이머를 둔다(통계 errors 에 기록 → 진단 가능). put 시작(첫 프레임 뒤)부터 잰다.
+                                    var putDone = false, putTimer = null;
                                     // 본문을 clone 스트림 그대로 put 하지 않고 완결 ArrayBuffer 로 읽어 저장한다. 스트림 put 은 청크마다 메인 스레드
                                     // 태스크가 필요해, 첫 프레임 뒤 게임 루프가 메인 스레드를 채우면 CPU 4x 에서 수십 초(6000.0 실측 38~62s)
                                     // 밀린다. 버퍼 읽기는 태스크 수가 적어 같은 조건에서 수 초 안에 끝난다(호출자가 받는 resp 는 영향 없음).
                                     // 디코드된 본문이므로 Content-Encoding/Length 는 싣지 않는다(레거시 완결 버퍼 put 과 같은 계약).
                                     var ct = 'application/octet-stream';
                                     try { ct = clone.headers.get('Content-Type') || ct; } catch (e) {}
-                                    getCache().then(function (c) {
+                                    afterFirstFrame().then(function () {
+                                        putTimer = setTimeout(function () {
+                                            if (!putDone) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
+                                        }, PUT_TIMEOUT_MS);
+                                        return getCache();
+                                    }).then(function (c) {
                                         return clone.arrayBuffer().then(function (buf) {
                                             return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
                                         });

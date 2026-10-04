@@ -630,7 +630,13 @@ namespace AppsInToss.Editor.Package
                                     // 디코드된 본문이므로 Content-Encoding/Length 는 싣지 않는다(레거시 완결 버퍼 put 과 같은 계약).
                                     var ct = 'application/octet-stream';
                                     try { ct = clone.headers.get('Content-Type') || ct; } catch (e) {}
+                                    // 단, 완결 버퍼 put 은 본문 전체가 ArrayBuffer 로 두 벌(스트림 읽기 + put 직전 Response) 잠시 상주해 구형 모바일에서
+                                    // 일시 +60MB 안팎의 메모리 피크를 만든다. 메모리가 넉넉할 때(deviceMemory >= 6)만 버퍼 put 을 쓰고,
+                                    // 그 미만이거나 API 가 없는 환경(iOS WebKit 등)은 clone 스트림을 그대로 put 한다(원래 동작, 감시/통계 동일).
+                                    var bufferedPut = false;
+                                    try { bufferedPut = typeof navigator !== 'undefined' && navigator.deviceMemory >= 6; } catch (e) {}
                                     getCache().then(function (c) {
+                                        if (!bufferedPut) { return c.put(url, clone); }
                                         return clone.arrayBuffer().then(function (buf) {
                                             return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
                                         });

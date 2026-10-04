@@ -619,7 +619,17 @@
         if (window.__AIT_PP) window.__AIT_PP.configure(config);
 
         // 기기 성능에 따른 최적 devicePixelRatio 계산
+        // auto 모드의 DPR 상한. DPR 3 렌더 타깃은 DPR 1 대비 약 3배 메모리(~34MB vs ~10MB)를 쓰고 구형 기기 GPU 부하도 크다.
+        // 고정값(1/2/3)을 명시하면 이 상한을 적용하지 않는다.
+        var AIT_AUTO_DPR_CAP = 2;
         function getOptimalDevicePixelRatio() {
+            if (aitDevicePixelRatioSetting > 0) {
+                return Math.min(aitDevicePixelRatioSetting, window.devicePixelRatio || 1);
+            }
+            return Math.min(computeAutoDevicePixelRatio(), AIT_AUTO_DPR_CAP);
+        }
+
+        function computeAutoDevicePixelRatio() {
             var baseRatio = window.devicePixelRatio || 1;
 
             // 고정값인 경우 (기기 기본값을 초과하지 않도록)

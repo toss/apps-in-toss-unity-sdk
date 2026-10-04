@@ -447,6 +447,19 @@ public class AITPageCacheEmitterTests
     }
 
     [Test]
+    public void Enabled_PutUsesBufferedOnlyWhenDeviceMemoryPlentiful_ElseStreaming()
+    {
+        config.pageCache = 1;
+        string result = AITPageCacheEmitter.GenerateInterceptorScript(config, DataFile, FrameworkFile, WasmFile);
+
+        StringAssert.Contains("navigator.deviceMemory >= 6", result, "버퍼 put 은 deviceMemory >= 6 일 때만 쓴다");
+        StringAssert.Contains("if (!bufferedPut) { return c.put(url, clone); }", result,
+            "deviceMemory 미만/미지원(iOS)은 clone 스트림 put 으로 폴백해야 한다");
+        StringAssert.Contains("clone.arrayBuffer()", result, "메모리가 넉넉하면 완결 버퍼 put 경로가 유지되어야 한다");
+        StringAssert.Contains("put timeout", result, "put 감시 타이머는 두 경로 공통으로 유지되어야 한다");
+    }
+
+    [Test]
     public void Enabled_IdbStoresArrayBufferBodyDecodeFree()
     {
         config.pageCache = 1;

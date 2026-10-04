@@ -826,8 +826,6 @@
         if (canvas) {
             aitOnFirstFrame(canvas, function () {
                 _aitFirstFrameDrawn = true;
-                // 페이지 캐시 put 이 첫 프레임 뒤에 시작하도록 알린다(AITPageCacheEmitter 의 afterFirstFrame).
-                try { window.__aitFirstFrame = true; window.dispatchEvent(new Event('ait-first-frame')); } catch (e) {}
                 if (_aitInstanceReady) hideLoadingScreen();
             });
         }

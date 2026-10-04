@@ -67,11 +67,11 @@ public class AITKeyboardViewportTemplateWiringTests
     }
 
     [Test]
-    public void IndexHtml_PanAndNoneModes_NeverTouchContainerHeight()
+    public void IndexHtml_NoneMode_NeverTouchesContainerHeight()
     {
         string script = ExtractKeyboardViewportScript();
 
-        foreach (string fn in new[] { "applyTop", "applyNone", "applyPan" })
+        foreach (string fn in new[] { "applyTop", "applyNone" })
         {
             string body = ExtractFunction(script, fn);
             Assert.IsFalse(
@@ -79,6 +79,46 @@ public class AITKeyboardViewportTemplateWiringTests
                 $"{fn} 가 #unity-container 의 height 를 건드립니다. 캔버스 크기가 바뀌면 Unity 가 프레임버퍼를 다시 만들고 " +
                 "UI 전체를 리레이아웃하므로 키보드 애니메이션 동안 프레임마다 끊깁니다.");
         }
+    }
+
+    [Test]
+    public void IndexHtml_PanMode_PinsContainerHeightOnlyWhenWebViewShrinks()
+    {
+        string script = ExtractKeyboardViewportScript();
+        string pan = ExtractFunction(script, "applyPan");
+
+        // Android WebView 는 키보드만큼 WebView 를 줄여 innerHeight 가 함께 준다. 키보드 높이는 그 폭에서 본 최대 높이 기준이어야 한다
+        Assert.IsTrue(Regex.IsMatch(ExtractFunction(script, "keyboardUp"), @"fullHeight\(\)\s*-\s*vv\.height"),
+            "keyboardUp 이 innerHeight 기준이면 Android 에서 키보드를 감지하지 못합니다(innerHeight 와 vv.height 가 함께 준다).");
+        Assert.IsTrue(Regex.IsMatch(ExtractFunction(script, "fullHeight"), @"window\.innerWidth\s*!==\s*baseW"),
+            "기준 높이를 폭(회전)이 바뀔 때 다시 잡지 않습니다.");
+        Assert.IsTrue(
+            Regex.IsMatch(pan, @"style\.height\s*=\s*up\s*&&\s*isTextField\(document\.activeElement\)\s*&&\s*window\.innerHeight\s*<\s*full\s*-\s*1\s*\?\s*full\s*\+\s*'px'\s*:\s*''"),
+            "pan 모드는 키보드가 떠 있고 입력창에 포커스가 있으며 WebView 가 줄었을 때만 컨테이너 높이를 기준 높이로 고정하고, 그 밖에는 지워야 합니다.");
+    }
+
+    [Test]
+    public void IndexHtml_PlacesUnityInputBarAboveKeyboard_InAllModes()
+    {
+        string script = ExtractKeyboardViewportScript();
+
+        // Unity 의 _JS_MobileKeyboard_Show 는 body 에 position:fixed; bottom:0 입력 바를 붙인다. iOS 는 레이아웃 뷰포트가
+        // 줄지 않아 그대로 두면 바가 키보드 뒤에 가려진다
+        Assert.IsTrue(Regex.IsMatch(ExtractFunction(script, "unityInputBar"), @"\.okButton\s*&&[^)]*\.input"),
+            "Unity 입력 바를 okButton·input 속성으로 찾지 않습니다.");
+        Assert.IsTrue(
+            Regex.IsMatch(ExtractFunction(script, "placeInputBar"), @"window\.innerHeight\s*-\s*vv\.offsetTop\s*-\s*vv\.height"),
+            "입력 바를 보이는 영역 맨 아래(innerHeight - offsetTop - vv.height)로 옮기지 않습니다.");
+        string apply = ExtractFunction(script, "apply");
+        int barIndex = apply.IndexOf("placeInputBar(bar)", System.StringComparison.Ordinal);
+        int modeIndex = apply.IndexOf("if (mode === 'resize')", System.StringComparison.Ordinal);
+        Assert.GreaterOrEqual(barIndex, 0, "apply() 가 입력 바 위치를 잡지 않습니다.");
+        Assert.Less(barIndex, modeIndex, "입력 바 위치는 모드 분기 전에, 모든 모드에서 잡아야 합니다.");
+        int earlyReturn = script.IndexOf("if (mode !== 'pan') return;", System.StringComparison.Ordinal);
+        int barFocusin = script.IndexOf("addEventListener('focusin'", System.StringComparison.Ordinal);
+        Assert.Less(barFocusin, earlyReturn, "입력 바가 생길 때의 focusin 구독은 pan 전용 분기보다 앞에 있어야 합니다.");
+        Assert.IsTrue(ExtractFunction(script, "applyPan").Contains("bar.offsetHeight"),
+            "pan 이동량에 입력 바 높이를 더하지 않으면 아래쪽 입력창이 바에 가려집니다.");
     }
 
     [Test]
@@ -139,7 +179,7 @@ public class AITKeyboardViewportTemplateWiringTests
             Regex.IsMatch(script, @"if\s*\(\s*mode\s*!==\s*'resize'\s*&&\s*mode\s*!==\s*'none'\s*\)\s*mode\s*=\s*'pan'"),
             "미치환 리터럴·알 수 없는 값이 pan 으로 떨어지는 fail-safe 가 없습니다.");
         Assert.IsTrue(
-            Regex.IsMatch(script, @"if\s*\(\s*mode\s*===\s*'resize'\s*\)\s*applyResize\(c\);\s*else if\s*\(\s*mode\s*===\s*'none'\s*\)\s*applyNone\(c\);\s*else applyPan\(c\)"),
+            Regex.IsMatch(script, @"if\s*\(\s*mode\s*===\s*'resize'\s*\)\s*applyResize\(c\);\s*else if\s*\(\s*mode\s*===\s*'none'\s*\)\s*applyNone\(c\);\s*else applyPan\(c,\s*bar\)"),
             "apply() 의 분기 기본값이 pan 이 아닙니다.");
     }
 

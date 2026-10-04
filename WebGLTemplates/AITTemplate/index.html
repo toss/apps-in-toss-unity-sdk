@@ -110,7 +110,12 @@
          resize: 컨테이너 top·height 를 visualViewport 에 맞춘다. 캔버스가 줄어 Unity 가 프레임버퍼를 다시 만들고
            UI 를 리레이아웃하므로 키보드 애니메이션 동안 프레임마다 비용이 든다.
          none: top 보정만 한다. 아래쪽 입력창은 키보드에 가려질 수 있다.
-         키보드가 내려가면 인라인 top·height·transform 을 지워 CSS 기본값으로 돌아간다. -->
+         키보드가 내려가면 인라인 top·height·transform 을 지워 CSS 기본값으로 돌아간다.
+         키보드 높이는 이 폭에서 본 가장 큰 innerHeight 를 기준으로 잰다. iOS WKWebView 는 visualViewport 만 줄이지만
+         Android WebView 는 WebView 자체를 줄여 innerHeight 도 같이 줄기 때문이다. pan 모드는 Android 에서 컨테이너 높이를
+         그 기준 높이로 고정해 캔버스가 줄지 않게 한다.
+         모든 모드에서 Unity 가 body 에 붙이는 입력 바(position:fixed; bottom:0)를 보이는 영역 맨 아래, 곧 키보드 바로 위로
+         옮긴다. 레이아웃 뷰포트가 줄지 않는 iOS 에서는 그대로 두면 바가 키보드 뒤에 가려져 입력 중인 글자가 안 보인다. -->
     <script>
         (function () {
             var vv = window.visualViewport;
@@ -126,32 +131,58 @@
             var ptrY = null, ptrAt = 0;      // 마지막 탭의 컨테이너 콘텐츠 좌표 Y
             var focusY = null, clearTimer = 0;
             var lastPan = -1, wasUp = false;
+            var baseW = 0, baseH = 0;        // 키보드 없는 높이: 현재 폭에서 본 가장 큰 innerHeight
 
             function container() { return document.getElementById('unity-container'); }
-            function keyboardUp() { return window.innerHeight - vv.height > KEYBOARD_MIN_HEIGHT; }
+            function fullHeight() {
+                if (window.innerWidth !== baseW) { baseW = window.innerWidth; baseH = window.innerHeight; }
+                else if (window.innerHeight > baseH) baseH = window.innerHeight;
+                return baseH;
+            }
+            function keyboardUp() { return fullHeight() - vv.height > KEYBOARD_MIN_HEIGHT; }
+            // Unity 의 _JS_MobileKeyboard_Show 가 body 에 붙이는 입력 바. okButton·input 은 Unity 가 붙이는 속성이고,
+            // 숨길 때는 input 을 먼저 비운 뒤 DOM 에서 지운다.
+            function unityInputBar() {
+                var kids = document.body ? document.body.children : [];
+                for (var i = kids.length - 1; i >= 0; i--) {
+                    if (kids[i].okButton && kids[i].input) return kids[i];
+                }
+                return null;
+            }
+            function placeInputBar(bar) {
+                var gap = Math.max(0, Math.round(window.innerHeight - vv.offsetTop - vv.height));
+                bar.style.bottom = gap + 'px';
+            }
 
             function applyTop(c) {
                 var offset = Math.round(vv.offsetTop);
                 c.style.top = offset > 1 ? offset + 'px' : '';
             }
             function applyNone(c) { applyTop(c); }
-            function applyPan(c) {
+            function applyPan(c, bar) {
                 applyTop(c);
                 c.style.transition = 'transform 180ms ease-out';
+                var full = fullHeight();
                 var pan = 0;
                 // 입력창 밖을 탭하면 Unity 가 숨은 input 을 DOM 에서 지우는데, WebKit 은 이때 focusout 을 보내지 않는다.
                 // 키보드가 내려가는 순간 포커스 위치를 지워, 다음 포커스가 이전 위치로 화면을 올리지 않게 한다.
                 var up = keyboardUp();
                 if (wasUp && !up) focusY = null;
                 wasUp = up;
+                // Android WebView 는 키보드만큼 WebView 를 줄여 height:100% 인 컨테이너와 캔버스가 함께 준다.
+                // 키보드 없는 높이로 고정해 프레임버퍼 리사이즈를 막고, 가려지는 아래쪽은 아래 pan 으로 끌어올린다.
+                // 입력창 포커스를 함께 보는 것은 데스크톱 창 크기 조절을 키보드로 오인하지 않기 위해서다.
+                c.style.height = up && isTextField(document.activeElement) && window.innerHeight < full - 1 ? full + 'px' : '';
+                var barH = up && bar ? bar.offsetHeight : 0;
                 if (up && focusY !== null) {
-                    var kb = window.innerHeight - vv.height;
-                    pan = Math.min(kb, Math.max(0, Math.round(focusY + PAN_MARGIN - vv.height)));
+                    var kb = full - vv.height;
+                    pan = Math.min(kb, Math.max(0, Math.round(focusY + PAN_MARGIN + barH - vv.height)));
                 }
                 c.style.transform = pan > 0 ? 'translateY(' + (-pan) + 'px)' : '';
                 if (pan !== lastPan) {
                     lastPan = pan;
-                    if (window.__AIT_VP) console.log('[E2E-VP] pan focusY=' + focusY + ' vvH=' + Math.round(vv.height) + ' pan=' + pan);
+                    if (window.__AIT_VP) console.log('[E2E-VP] pan focusY=' + focusY + ' vvH=' + Math.round(vv.height) +
+                        ' innerH=' + window.innerHeight + ' fullH=' + full + ' barH=' + barH + ' pan=' + pan);
                 }
             }
             function applyResize(c) {
@@ -165,15 +196,23 @@
             }
             function apply() {
                 raf = 0;
+                var bar = unityInputBar();
+                if (bar) placeInputBar(bar);
                 var c = container();
                 if (!c) return;
                 if (mode === 'resize') applyResize(c);
                 else if (mode === 'none') applyNone(c);
-                else applyPan(c);
+                else applyPan(c, bar);
             }
             function schedule() { if (!raf) raf = requestAnimationFrame(apply); }
             vv.addEventListener('resize', schedule);
             vv.addEventListener('scroll', schedule);
+            window.addEventListener('resize', schedule);
+            fullHeight();
+
+            function isTextField(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }
+            // 입력 바가 새로 생기면(focusin) 키보드 애니메이션 전에 한 번 자리를 잡는다. 이후는 vv 이벤트가 따라간다.
+            window.addEventListener('focusin', function (e) { if (isTextField(e.target)) schedule(); }, true);
 
             if (mode !== 'pan') return;
             function recordPointer(e) {
@@ -194,7 +233,6 @@
                     }, FIELD_SWITCH_CHECK_MS);
                 }
             }
-            function isTextField(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }
             window.addEventListener('pointerdown', recordPointer, true);
             window.addEventListener('touchstart', recordPointer, true);
             window.addEventListener('focusin', function (e) {

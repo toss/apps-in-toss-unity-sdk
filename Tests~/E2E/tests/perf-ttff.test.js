@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
@@ -332,6 +332,239 @@ async function killServer(proc, port) {
   freePort(port);
   await waitForPortRelease(port, 5000);
 }
+// ---- 메모리 계측 (PAIR_MODE 기본 ON, PERF_MEMORY=1/0 으로 강제) ----
+// 로드(첫 프레임) + MEM_SETTLE_MS 동안 JS 힙(CDP Runtime.getHeapUsage, 50ms 폴링)과 렌더러 프로세스 RSS 를 Node 쪽에서 잰다.
+// RSS: Linux 는 /proc/<pid>/status 의 VmHWM(진짜 피크)·VmRSS, 그 외(mac)는 `ps -o rss` 폴링 최댓값으로 폴백한다.
+// 페이지 쪽은 init script 로 1MB 이상 ArrayBuffer 할당만 센다(레버: exactDataBody 재포장이 데이터 크기 임시 버퍼를 없애는지).
+const MEASURE_MEMORY = process.env.PERF_MEMORY ? process.env.PERF_MEMORY === '1' : PAIR_MODE;
+const MEM_SETTLE_MS = 5000;
+const MEM_HEAP_POLL_MS = 50;
+const MEM_RSS_POLL_MS = 500;
+const MEM_BIG_ALLOC_BYTES = 1048576;
+
+const MEM_INIT_SCRIPT = `
+(function () {
+  if (window.__memHooked) return;
+  window.__memHooked = true;
+  var TH = ${MEM_BIG_ALLOC_BYTES};
+  var st = window.__aitBigAllocs = { count: 0, totalBytes: 0, maxBytes: 0 };
+  function rec(n) {
+    if (typeof n === 'number' && n >= TH) { st.count++; st.totalBytes += n; if (n > st.maxBytes) st.maxBytes = n; }
+  }
+  function wrapCtor(name, sizeOf) {
+    try {
+      var T = window[name];
+      if (typeof T !== 'function') return;
+      window[name] = new Proxy(T, {
+        construct: function (t, args, nt) {
+          try { rec(sizeOf(args)); } catch (e) {}
+          return Reflect.construct(t, args, nt === window[name] ? t : nt);
+        }
+      });
+    } catch (e) {}
+  }
+  // ArrayBuffer/SharedArrayBuffer(len), TypedArray(len) — 숫자 인자 형태만(뷰 생성·복사 생성은 아래 별도 처리).
+  function lenArg(a) { return typeof a[0] === 'number' ? a[0] : 0; }
+  wrapCtor('ArrayBuffer', lenArg);
+  wrapCtor('Uint8Array', lenArg);
+  wrapCtor('Float32Array', function (a) { return lenArg(a) * 4; });
+  // 다른 TypedArray 나 배열을 복사 생성하는 Uint8Array(typedArray)도 새 버퍼를 만든다.
+  try {
+    var U8 = window.Uint8Array;
+    window.Uint8Array = new Proxy(U8, {
+      construct: function (t, args, nt) {
+        try {
+          var a0 = args[0];
+          if (typeof a0 === 'number') rec(a0);
+          else if (a0 && typeof a0 === 'object' && !(a0 instanceof ArrayBuffer) && typeof a0.length === 'number') rec(a0.length);
+        } catch (e) {}
+        return Reflect.construct(t, args, nt === window.Uint8Array ? t : nt);
+      }
+    });
+  } catch (e) {}
+  // 네이티브가 만들어 돌려주는 버퍼: Response/Blob.arrayBuffer, ArrayBuffer/TypedArray.slice
+  function wrapAsync(proto, m) {
+    try {
+      var o = proto && proto[m]; if (typeof o !== 'function') return;
+      proto[m] = function () {
+        var r = o.apply(this, arguments);
+        if (r && typeof r.then === 'function') r.then(function (b) { try { rec(b && b.byteLength); } catch (e) {} }, function () {});
+        return r;
+      };
+    } catch (e) {}
+  }
+  wrapAsync(window.Response && Response.prototype, 'arrayBuffer');
+  wrapAsync(window.Blob && Blob.prototype, 'arrayBuffer');
+  function wrapSync(proto, m) {
+    try {
+      var o = proto && proto[m]; if (typeof o !== 'function') return;
+      proto[m] = function () {
+        var r = o.apply(this, arguments);
+        try { rec(r && r.byteLength); } catch (e) {}
+        return r;
+      };
+    } catch (e) {}
+  }
+  wrapSync(ArrayBuffer.prototype, 'slice');
+  try { wrapSync(Object.getPrototypeOf(Uint8Array.prototype), 'slice'); } catch (e) {}
+})();
+`;
+
+let browserCdpPromise = null;
+function getBrowserCdp(browser) {
+  if (!browserCdpPromise) browserCdpPromise = browser.newBrowserCDPSession().catch(() => null);
+  return browserCdpPromise;
+}
+
+/** 프로세스 RSS(바이트). Linux: /proc VmHWM/VmRSS, 그 외: ps(현재 RSS 만, 피크는 호출부가 폴링 최댓값으로 대체). */
+function readProcRss(pid) {
+  try {
+    if (process.platform === 'linux') {
+      const st = fs.readFileSync(`/proc/${pid}/status`, 'utf8');
+      const kb = (k) => { const m = st.match(new RegExp(`^${k}:\\s+(\\d+)\\s*kB`, 'm')); return m ? Number(m[1]) * 1024 : null; };
+      return { rss: kb('VmRSS'), hwm: kb('VmHWM'), source: '/proc VmHWM' };
+    }
+    const out = execFileSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf8', timeout: 2000 }).trim();
+    const kb = Number(out);
+    return Number.isFinite(kb) && kb > 0 ? { rss: kb * 1024, hwm: null, source: 'ps 폴링 최댓값' } : null;
+  } catch (e) { return null; }
+}
+
+/**
+ * 반복 1회 동안의 메모리 샘플러. start() 는 navigation 전에, stop() 은 첫 프레임 + settle 뒤에 부른다.
+ * 모든 읽기는 실패해도 측정을 깨지 않는다(null 로 남는다).
+ */
+async function listProcs(browser, types) {
+  const browserCdp = await getBrowserCdp(browser);
+  if (!browserCdp) return [];
+  try {
+    const info = await browserCdp.send('SystemInfo.getProcessInfo');
+    // type 은 'renderer' 와 'GPU' 처럼 대소문자가 섞여 온다.
+    return (info.processInfo || []).map((p) => ({ ...p, type: String(p.type).toLowerCase() })).filter((p) => types.includes(p.type));
+  } catch (e) { return []; }
+}
+/** 컨텍스트·페이지를 만들기 전에 불러, 이번 반복의 렌더러만 가려낼 기준 집합을 만든다. */
+async function captureRendererBaseline(browser) {
+  return new Set((await listProcs(browser, ['renderer'])).map((p) => p.id));
+}
+async function startMemorySampler(browser, context, page, baseline) {
+  const listRenderers = (types) => listProcs(browser, types);
+  let pageCdp = null;
+  try { pageCdp = await context.newCDPSession(page); } catch (e) { /* 힙 측정만 건너뛴다 */ }
+  const s = { heapPeak: 0, heapTotalPeak: 0, heapFinal: null, heapSamples: 0, procs: new Map() };
+  let stopped = false;
+
+  const pollHeap = async () => {
+    if (!pageCdp) return;
+    try {
+      const h = await pageCdp.send('Runtime.getHeapUsage');
+      s.heapSamples++;
+      s.heapFinal = h.usedSize;
+      if (h.usedSize > s.heapPeak) s.heapPeak = h.usedSize;
+      if (h.totalSize > s.heapTotalPeak) s.heapTotalPeak = h.totalSize;
+    } catch (e) { /* 페이지 전환 중 등 */ }
+  };
+  const pollRss = async () => {
+    for (const p of await listRenderers(['renderer', 'gpu'])) {
+      // 렌더러는 이번 반복에서 새로 뜬 것만(이전 컨텍스트 잔재 제외). GPU 프로세스는 상주라 baseline 과 무관하게 본다.
+      if (p.type === 'renderer' && baseline.has(p.id)) continue;
+      const r = readProcRss(p.id);
+      if (!r) continue;
+      // 상주 GPU 프로세스의 VmHWM 은 이전 반복의 피크가 섞이므로 쓰지 않고 폴링 RSS 최댓값만 쓴다.
+      if (p.type === 'gpu') r.hwm = null;
+      const cur = s.procs.get(p.id) || { type: p.type, peak: 0, last: null, hwm: null, source: r.source };
+      cur.last = r.rss;
+      if (r.hwm != null) cur.hwm = r.hwm;
+      if (r.rss != null && r.rss > cur.peak) cur.peak = r.rss;
+      s.procs.set(p.id, cur);
+    }
+  };
+  const loop = (fn, ms) => (async () => {
+    while (!stopped) {
+      const t0 = Date.now();
+      await fn();
+      const wait = ms - (Date.now() - t0);
+      if (wait > 0 && !stopped) await new Promise((r) => setTimeout(r, wait));
+    }
+  })();
+  const heapLoop = loop(pollHeap, MEM_HEAP_POLL_MS);
+  const rssLoop = loop(pollRss, MEM_RSS_POLL_MS);
+
+  return {
+    async stop() {
+      stopped = true;
+      await Promise.all([heapLoop, rssLoop]);
+      await pollHeap();
+      await pollRss();
+      const bigAllocs = await page.evaluate(() => window['__aitBigAllocs'] || null).catch(() => null);
+      const pick = (type) => {
+        let best = null;
+        for (const v of s.procs.values()) {
+          if (v.type !== type) continue;
+          const peak = Math.max(v.hwm ?? 0, v.peak);
+          if (!best || peak > best.peak) best = { peak, rss: v.last, source: v.hwm != null ? '/proc VmHWM' : (process.platform === 'linux' ? '/proc VmRSS 폴링 최댓값' : 'ps 폴링 최댓값') };
+        }
+        return best;
+      };
+      const rend = pick('renderer');
+      const gpu = pick('gpu');
+      return {
+        jsHeapPeakBytes: s.heapSamples ? s.heapPeak : null,
+        jsHeapTotalPeakBytes: s.heapSamples ? s.heapTotalPeak : null,
+        jsHeapFinalBytes: s.heapSamples ? s.heapFinal : null,
+        heapSamples: s.heapSamples,
+        rendererPeakRssBytes: rend ? rend.peak : null,
+        rendererRssBytes: rend ? rend.rss : null,
+        gpuPeakRssBytes: gpu ? gpu.peak : null,
+        rssSource: rend ? rend.source : null,
+        bigAllocs: bigAllocs && typeof bigAllocs.count === 'number'
+          ? { count: bigAllocs.count, totalBytes: bigAllocs.totalBytes, maxBytes: bigAllocs.maxBytes }
+          : null,
+      };
+    },
+  };
+}
+
+const MB = 1048576;
+const fmtMB = (v) => (typeof v === 'number' ? (v / MB).toFixed(1) + 'MB' : 'N/A');
+
+/** 샘플 배열에서 메모리 지표별 중앙값 객체를 만든다. */
+function summarizeMemory(samples) {
+  const med = (f) => median(samples.map((s) => f(s.memory)).filter((v) => typeof v === 'number'));
+  return {
+    rendererPeakRssBytes: med((m) => m?.rendererPeakRssBytes),
+    rendererRssBytes: med((m) => m?.rendererRssBytes),
+    gpuPeakRssBytes: med((m) => m?.gpuPeakRssBytes),
+    jsHeapPeakBytes: med((m) => m?.jsHeapPeakBytes),
+    jsHeapFinalBytes: med((m) => m?.jsHeapFinalBytes),
+    bigAllocCount: med((m) => m?.bigAllocs?.count),
+    bigAllocTotalBytes: med((m) => m?.bigAllocs?.totalBytes),
+    bigAllocMaxBytes: med((m) => m?.bigAllocs?.maxBytes),
+    rssSource: samples.map((s) => s.memory?.rssSource).find((v) => v) ?? null,
+  };
+}
+
+function logMemory(label, mem) {
+  console.log(`메모리 [${label}]: rendererPeakRSS=${fmtMB(mem.rendererPeakRssBytes)} rss=${fmtMB(mem.rendererRssBytes)} ` +
+    `jsHeapPeak=${fmtMB(mem.jsHeapPeakBytes)} gpuPeakRSS=${fmtMB(mem.gpuPeakRssBytes)} ` +
+    `bigAllocs=${mem.bigAllocCount ?? 'N/A'}(합 ${fmtMB(mem.bigAllocTotalBytes)}, 최대 ${fmtMB(mem.bigAllocMaxBytes)})` +
+    (mem.rssSource ? ` [rss: ${mem.rssSource}]` : ''));
+}
+
+/** 반복별 B−A 차이를 모아 중앙값/부호 통계를 만든다. */
+function deltaStat(samplesA, samplesB, pick) {
+  const d = samplesA.map((a, i) => {
+    const x = pick(a.memory), y = pick(samplesB[i]?.memory);
+    return (typeof x === 'number' && typeof y === 'number') ? y - x : null;
+  }).filter((v) => v !== null);
+  return d.length
+    ? { median: median(d), min: Math.min(...d), max: Math.max(...d), values: d, negativeCount: d.filter((v) => v < 0).length }
+    : { median: null, min: null, max: null, values: [], negativeCount: 0 };
+}
+function logDelta(name, st) {
+  console.log(`  Δ메모리 ${name} median: ${fmtMB(st.median)} (min=${fmtMB(st.min)}, max=${fmtMB(st.max)}, 부호일치(음수)=${st.negativeCount}/${st.values.length})`);
+}
+
 function median(values) {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);
@@ -521,9 +754,12 @@ function withDeadline(promise, ms, what) {
  * PERF_WARM 이 켜져 있으면 같은 컨텍스트에서 한 번 더 열어 재방문(warm) 값도 잰다.
  */
 async function measureIteration(browser, url, iter, label) {
+  const memBaseline = MEASURE_MEMORY ? await captureRendererBaseline(browser) : null;
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   await context.addInitScript(TTFF_INIT_SCRIPT);
+  if (MEASURE_MEMORY) await context.addInitScript(MEM_INIT_SCRIPT);
   const page = await openThrottledPage(context);
+  const memSampler = MEASURE_MEMORY ? await startMemorySampler(browser, context, page, memBaseline).catch((e) => { console.warn(`  메모리 샘플러 시작 실패: ${e.message}`); return null; }) : null;
   const audioConsole = [];
   if (iter === 0) {
     page.on('console', (m) => {
@@ -536,6 +772,13 @@ async function measureIteration(browser, url, iter, label) {
   try {
     const metrics = await measureLoad(page, url);
     const ttff = metrics.ttff;
+
+    // 첫 프레임 뒤 settle 동안 계속 샘플링한 뒤 멈춘다(TTFF 값은 이미 확정됐으므로 TTFF 에 영향 없음).
+    let memory = null;
+    if (memSampler) {
+      await page.waitForTimeout(MEM_SETTLE_MS);
+      memory = await memSampler.stop().catch((e) => { console.warn(`  메모리 집계 실패: ${e.message}`); return null; });
+    }
 
     const sample = {
       iteration: iter,
@@ -550,6 +793,7 @@ async function measureIteration(browser, url, iter, label) {
     };
     // 페어 모드 전용 필드 — 단일 모드 결과 JSON 스키마는 기존과 완전히 동일해야 하므로 반드시 가드 안에서만 추가.
     if (PAIR_MODE) sample.label = label;
+    if (memory) sample.memory = memory;
 
     let warmNote = '';
     let audioLogged = false;
@@ -633,6 +877,7 @@ function summarize(samples, projectPath) {
       data: { median: median(dataValues) },
       total: { median: median(totalValues) },
     },
+    ...(MEASURE_MEMORY ? { memory: summarizeMemory(samples) } : {}),
     samples,
   };
 }
@@ -767,6 +1012,13 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
       deltaWasmBytes: (wasmA != null && wasmB != null) ? wasmB - wasmA : null,
       deltaTotalBytes: (totalA != null && totalB != null) ? totalB - totalA : null,
       peerProject: PAIR_PROJECT,
+      ...(MEASURE_MEMORY ? {
+        deltaMemory: {
+          rendererPeakRssBytes: deltaStat(samplesA, samplesB, (m) => m?.rendererPeakRssBytes),
+          jsHeapPeakBytes: deltaStat(samplesA, samplesB, (m) => m?.jsHeapPeakBytes),
+          bigAllocTotalBytes: deltaStat(samplesA, samplesB, (m) => m?.bigAllocs?.totalBytes),
+        },
+      } : {}),
     };
     resultA.pairing = { role: 'A', ...pairing };
     resultB.pairing = { role: 'B', ...pairing };
@@ -781,6 +1033,13 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
     console.log(`  ΔTTFF median: ${pairing.deltaTtffMs.median !== null ? pairing.deltaTtffMs.median.toFixed(0) + ' ms' : 'N/A'} ` +
       `(min=${pairing.deltaTtffMs.min ?? 'N/A'}, max=${pairing.deltaTtffMs.max ?? 'N/A'}, 부호일치(음수)=${pairing.deltaTtffMs.negativeCount}/${dTtff.length})`);
     console.log(`  Δwasm total:  ${pairing.deltaWasmBytes != null ? (pairing.deltaWasmBytes / 1048576).toFixed(3) + ' MB' : 'N/A'}`);
+    if (MEASURE_MEMORY) {
+      logMemory(LABEL_A, resultA.memory);
+      logMemory(LABEL_B, resultB.memory);
+      logDelta('rendererPeakRSS', pairing.deltaMemory.rendererPeakRssBytes);
+      logDelta('jsHeapPeak', pairing.deltaMemory.jsHeapPeakBytes);
+      logDelta('bigAllocs 합', pairing.deltaMemory.bigAllocTotalBytes);
+    }
     console.log(`  order: ${order.join(' ')}`);
     console.log(`  → ${outPathB}`);
     console.log('━'.repeat(72) + '\n');
@@ -801,6 +1060,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   console.log(`  on-wire wasm:     ${resultA.onWireBytes.wasm.median ? (resultA.onWireBytes.wasm.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);
   console.log(`  on-wire data:     ${resultA.onWireBytes.data.median ? (resultA.onWireBytes.data.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);
   console.log(`  on-wire total:    ${resultA.onWireBytes.total.median ? (resultA.onWireBytes.total.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);
+  if (MEASURE_MEMORY && !PAIR_MODE) logMemory(LABEL_A, resultA.memory);
   console.log(`  → ${outPath}`);
   console.log('━'.repeat(72) + '\n');
 

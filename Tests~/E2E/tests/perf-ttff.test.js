@@ -171,6 +171,26 @@ const TTFF_INIT_SCRIPT = `
     }
     return ctx;
   };
+  // 오디오 메모리 계측: decodeAudioData 로 풀린 PCM(float32) 바이트와 media element 경로(압축 유지) 수.
+  window.__aitAudioPcmBytes = 0;
+  window.__aitAudioMediaEls = 0;
+  try {
+    var AC = window.BaseAudioContext || window.AudioContext || window.webkitAudioContext;
+    if (AC && AC.prototype.decodeAudioData) {
+      var origDecode = AC.prototype.decodeAudioData;
+      AC.prototype.decodeAudioData = function () {
+        var r = origDecode.apply(this, arguments);
+        if (r && typeof r.then === 'function') {
+          r.then(function (b) { try { window.__aitAudioPcmBytes += b.length * b.numberOfChannels * 4; } catch (e) {} }, function () {});
+        }
+        return r;
+      };
+    }
+    if (AC && AC.prototype.createMediaElementSource) {
+      var origMes = AC.prototype.createMediaElementSource;
+      AC.prototype.createMediaElementSource = function () { window.__aitAudioMediaEls++; return origMes.apply(this, arguments); };
+    }
+  } catch (e) { /* 오디오 API 미지원 환경 — 계측만 생략 */ }
   // 로딩 오버레이가 사라진 시각. 첫 draw 뒤에도 오버레이가 덮고 있으면 사용자는 게임 화면을 보지 못한다.
   window.__overlayHidden__ = null;
   function watchOverlay() {
@@ -376,6 +396,17 @@ async function waitForCachePuts(page) {
   await page.waitForTimeout(500);
 }
 
+/**
+ * 오디오 메모리 진단: cold 방문에서 decodeAudioData 로 풀린 PCM 과 media element 경로 수를 남긴다.
+ * 외부화 클립 재수화는 interactive 이후에 일어나므로 put 대기 뒤(첫 iter)에 읽는다.
+ */
+async function logAudioDecode(page, label) {
+  const audio = await page.evaluate(() => ({ pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls })).catch(() => null);
+  if (audio && typeof audio.pcm === 'number') {
+    console.log(`  오디오 디코드${PAIR_MODE ? ` [${label}]` : ''}: PCM=${(audio.pcm / 1048576).toFixed(2)}MB mediaElement=${audio.media}`);
+  }
+}
+
 /** 재방문 측정 전에 페이지 캐시 put 완료를 기다리는 상한. WARM_DEADLINE_MS 안에서 재방문 로드 자체가 들어갈 여유를 남긴다. */
 const CACHE_PUT_WAIT_MS = 75000;
 
@@ -426,6 +457,7 @@ async function measureIteration(browser, url, iter, label) {
     if (PAIR_MODE) sample.label = label;
 
     let warmNote = '';
+    let audioLogged = false;
     const warmFits = Date.now() + WARM_DEADLINE_MS + CLOSE_DEADLINE_MS < testDeadlineAt;
     if (MEASURE_WARM && typeof ttff === 'number' && !warmFits) {
       console.warn(`  warm 측정 생략(iter ${iter + 1}): 테스트 시간 예산 부족`);
@@ -434,6 +466,7 @@ async function measureIteration(browser, url, iter, label) {
       try {
         const warm = await withDeadline((async () => {
           await waitForCachePuts(page);
+          if (iter === 0) { await logAudioDecode(page, label); audioLogged = true; }
           await page.close();
           const warmPage = await openThrottledPage(context);
           return measureLoad(warmPage, url);
@@ -450,6 +483,8 @@ async function measureIteration(browser, url, iter, label) {
         console.warn(`  warm 측정 실패(iter ${iter + 1}): ${e && e.message}`);
       }
     }
+
+    if (iter === 0 && !audioLogged) await logAudioDecode(page, label);
 
     console.log(`  iter ${iter + 1}/${ITERATIONS}${PAIR_MODE ? ` [${label}]` : ''}: TTFF=${ttff !== null ? ttff.toFixed(0) + 'ms' : 'N/A'} ` +
       `visible=${metrics.firstVisible !== null ? metrics.firstVisible.toFixed(0) + 'ms' : 'N/A'} ` +

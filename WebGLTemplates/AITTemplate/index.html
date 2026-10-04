@@ -3,6 +3,15 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <!-- 모바일 런타임 최적화 플래그(window.__AIT_PERF).
+         빌드 시 해석된 실효값 JSON 이 작은따옴표 리터럴 안에 들어간다. 이 블록은 아래 모든 스크립트
+         (페이지 캐시·조기 fetch·Runtime/ait-*.js)보다 먼저 실행돼야 하므로 head 맨 위에 둔다.
+         JSON.parse 가 실패하면(플레이스홀더 미치환 포함) {} 로 fail-open — 각 스크립트가 자동 기본값으로 동작한다.
+         키 계약은 Editor/Package/AITPerfFlags.cs 머리 주석 참조. -->
+    <script>
+        var __AIT_PERF = (function(){try{return JSON.parse('%AIT_PERF_FLAGS%')||{}}catch(e){return {}}})();
+        window.__AIT_PERF = __AIT_PERF;
+    </script>
     <title>Unity WebGL Player | %UNITY_WEB_NAME%</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <!-- TemplateData/style.css 링크 없음: 모든 스타일은 아래 인라인 <style>에 있고(파일은 죽은 참조로 보존),
@@ -16,7 +25,25 @@
     <!-- Unity Resource Early Fetch (SDK Auto-generated) -->
     %AIT_EARLY_FETCH_SCRIPT%
 
+    <!-- 메모리 텔레메트리(WebAssembly.Memory.grow 래퍼, crash-loop 감지).
+         wasm 인스턴스화보다 먼저 설치돼야 하므로 head 에서 로드한다. 페이지 캐시·조기 fetch 인라인 스크립트
+         '뒤'에 둬서 그 킥오프를 늦추지 않는다. -->
+    <script src="Runtime/ait-mem.js"></script>
+
     <style>
+        /* 모바일 터치 동작 정리: 당겨서 새로고침/바운스 스크롤 방지, 캔버스 위 제스처·텍스트 선택·롱프레스 메뉴·탭 하이라이트 제거 */
+        html, body {
+            overscroll-behavior: none;
+        }
+
+        #unity-canvas {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
             margin: 0;
             padding: 0;
@@ -204,6 +231,12 @@
     </script>
     <!-- PlayerPrefs 영속화 레이어 — Unity 로더보다 먼저 로드해 스냅샷 fetch를 미리 착수 -->
     <script src="Runtime/ait-playerprefs.js"></script>
+    <!-- 라이프사이클·프레임 페이싱(ait-pacing.js)과 data 응답 재포장(ait-databuf.js).
+         둘 다 config 가 만들어진 뒤 아래 메인 스크립트에서 configure(config) 로 활성화된다.
+         databuf 는 페이지 캐시·조기 fetch 가 설치한 fetch 래퍼 '위'에 가장 바깥 래퍼로 얹혀야 하므로
+         그 인라인 스크립트(head)보다 뒤인 여기서 로드한다. -->
+    <script src="Runtime/ait-pacing.js"></script>
+    <script src="Runtime/ait-databuf.js"></script>
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 
@@ -416,6 +449,10 @@
         window._aitLoaderLoaded = false;
     </script>
 
+    <!-- WebGL 컨텍스트 훅(getContext 요청/실제 속성 기록·antialias 조건부 해제·probe 해제), context 손실 복구, DPR tier.
+         Unity 가 컨텍스트를 만들기 전(로더 실행 전)에 설치돼야 우회되지 않는다. -->
+    <script src="Runtime/ait-gl.js"></script>
+
     <!-- Unity Loader Script -->
     <script src="%UNITY_WEBGL_LOADER_URL%" onerror="showLoadError('Unity Loader 스크립트 로드 실패', '게임을 시작하는 데 필요한 파일을 불러올 수 없습니다.', ['파일 경로: %UNITY_WEBGL_LOADER_URL%', '서버에서 파일이 제공되고 있는지 확인하세요.', '브라우저 개발자 도구의 Network 탭을 확인하세요.'], {url: '%UNITY_WEBGL_LOADER_URL%'});" onload="window._aitLoaderLoaded = true; console.log('[AIT] ✓ Unity Loader 스크립트 로드 완료');"></script>
 
@@ -464,6 +501,8 @@
             productVersion: "%UNITY_PRODUCT_VERSION%",
             showBanner: unityShowBanner,
         };
+        // 런타임 스크립트(ait-gl/ait-pacing/ait-databuf 등)와 jslib 가 config 에 접근할 수 있도록 노출한다.
+        window.unityConfig = config;
 
         // wasm 스트리밍 컴파일 수리:
         // decompressionFallback OFF(.br/.gz 네이티브 서빙) 빌드에서 브라우저가 wasm을
@@ -618,6 +657,22 @@
         // 이미 선언되어 있다. 반드시 createUnityInstance 앞에서 호출한다.
         if (window.__AIT_PP) window.__AIT_PP.configure(config);
 
+        // 성능 런타임 모듈 활성화. 각 모듈은 window.__AIT_PERF 의 플래그를 읽어 스스로 켜고 끈다.
+        // 모듈이 없거나(구버전 Runtime 폴더) 던져도 부팅을 막지 않는다. PlayerPrefs 훅 뒤에 둬서 preRun 배열 교체 이후에 붙는다.
+        try { if (typeof window.__AIT_DATABUF === 'object' && window.__AIT_DATABUF && typeof window.__AIT_DATABUF.configure === 'function') window.__AIT_DATABUF.configure(config); } catch (e) { console.warn('[AIT] __AIT_DATABUF.configure 실패:', e); }
+        try { if (typeof window.__AIT_PACING === 'object' && window.__AIT_PACING && typeof window.__AIT_PACING.configure === 'function') window.__AIT_PACING.configure(config); } catch (e) { console.warn('[AIT] __AIT_PACING.configure 실패:', e); }
+
+        // ait-gl.js 의 DPR 상한(tier). 0 이면 상한 없음. 명시적 DPR 설정이면 아래에서 아예 적용하지 않는다.
+        function aitGlTierCap() {
+            try {
+                if (typeof window.__AIT_GL === 'object' && window.__AIT_GL && typeof window.__AIT_GL.tierCap === 'function') {
+                    var cap = Number(window.__AIT_GL.tierCap());
+                    return cap > 0 ? cap : 0;
+                }
+            } catch (e) {}
+            return 0;
+        }
+
         // 기기 성능에 따른 최적 devicePixelRatio 계산
         // auto 모드의 DPR 상한. DPR 3 렌더 타깃은 DPR 1 대비 약 3배 메모리(~34MB vs ~10MB)를 쓰고 구형 기기 GPU 부하도 크다.
         // 고정값(1/2/3)을 명시하면 이 상한을 적용하지 않는다.
@@ -626,7 +681,9 @@
             if (aitDevicePixelRatioSetting > 0) {
                 return Math.min(aitDevicePixelRatioSetting, window.devicePixelRatio || 1);
             }
-            return Math.min(computeAutoDevicePixelRatio(), AIT_AUTO_DPR_CAP);
+            var autoDpr = Math.min(computeAutoDevicePixelRatio(), AIT_AUTO_DPR_CAP);
+            var tierCap = aitGlTierCap();
+            return tierCap > 0 ? Math.min(autoDpr, tierCap) : autoDpr;
         }
 
         function computeAutoDevicePixelRatio() {
@@ -690,6 +747,8 @@
         } else {
             console.log('[AIT] 데스크톱 환경 - devicePixelRatio: 기본값 사용');
         }
+        // 실제로 Unity 에 넘기는 DPR(관측·테스트용). 모바일이 아니면 브라우저 기본값이다.
+        window.__AIT_EFFECTIVE_DPR = (isMobile && config.devicePixelRatio) ? config.devicePixelRatio : (window.devicePixelRatio || 1);
 
         // WebGL context 실패 시 상세 원인 진단
         function diagnoseWebGLContext() {
@@ -1035,10 +1094,21 @@
                     console.error('[AIT] WebGL 진단 정보:', JSON.stringify(window._aitWebGLDiag, null, 2));
                 });
 
-                canvas.addEventListener('webglcontextlost', function(e) {
-                    console.error('[AIT] webglcontextlost 이벤트 발생');
-                    e.preventDefault();
-                });
+                // context 손실 처리: ait-gl.js 가 있으면 거기에 맡기고(복구 reload·루프 가드), 없거나 거부하면 종전 동작.
+                var _aitContextLossBound = false;
+                try {
+                    if (typeof window.__AIT_GL === 'object' && window.__AIT_GL && typeof window.__AIT_GL.bindContextLoss === 'function') {
+                        _aitContextLossBound = window.__AIT_GL.bindContextLoss(canvas) === true;
+                    }
+                } catch (e) {
+                    console.warn('[AIT] __AIT_GL.bindContextLoss 실패 — 기본 처리로 대체:', e);
+                }
+                if (!_aitContextLossBound) {
+                    canvas.addEventListener('webglcontextlost', function(e) {
+                        console.error('[AIT] webglcontextlost 이벤트 발생');
+                        e.preventDefault();
+                    });
+                }
 
                 // 다운로드 정체(stall) 워치독:
                 // 데이터 스트림이 에러 없이 조용히 멈추는 경우(좀비 커넥션)에는

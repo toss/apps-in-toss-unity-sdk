@@ -73,6 +73,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 모바일 런타임 최적화 (구형 기기 메모리·전력) — UI 본체는 AdvancedSettings 파일
+            DrawMobileRuntimeSettings();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings(config);
             if (modifiedCount > 0)
@@ -1363,6 +1368,26 @@ namespace AppsInToss.Editor
             bool defaultFontStreaming = AITDefaultSettings.GetDefaultFontStreaming();
             if (config.fontStreaming >= 0 && (config.fontStreaming == 1) != defaultFontStreaming) count++;
 
+            // 모바일 런타임 최적화. webglAntialiasOpt 는 자동(기록만)·0(훅 끔)·1(AA 끔)이 서로 다른 동작이라
+            // 명시값(>=0)이면 전부 변경으로 집계한다. 나머지는 자동 기준 실효값과 다를 때만 집계.
+            if (config.webglAntialiasOpt >= 0) count++;
+            bool defaultContextRecovery = AITDefaultSettings.GetDefaultWebglContextRecovery();
+            if (config.webglContextRecovery >= 0 && (config.webglContextRecovery == 1) != defaultContextRecovery) count++;
+            bool defaultFrameRateCap = AITDefaultSettings.GetDefaultFrameRateCap();
+            if (config.frameRateCap >= 0 && (config.frameRateCap == 1) != defaultFrameRateCap) count++;
+            bool defaultAdaptiveFrameRate = AITDefaultSettings.GetDefaultAdaptiveFrameRate();
+            if (config.adaptiveFrameRate >= 0 && (config.adaptiveFrameRate == 1) != defaultAdaptiveFrameRate) count++;
+            bool defaultMobileLifecycle = AITDefaultSettings.GetDefaultMobileLifecycle();
+            if (config.mobileLifecycle >= 0 && (config.mobileLifecycle == 1) != defaultMobileLifecycle) count++;
+            bool defaultMemoryTelemetry = AITDefaultSettings.GetDefaultMemoryTelemetry();
+            if (config.memoryTelemetry >= 0 && (config.memoryTelemetry == 1) != defaultMemoryTelemetry) count++;
+            bool defaultExactDataBody = AITDefaultSettings.GetDefaultExactDataBody();
+            if (config.exactDataBody >= 0 && (config.exactDataBody == 1) != defaultExactDataBody) count++;
+            bool defaultReleaseConsumedData = AITDefaultSettings.GetDefaultReleaseConsumedData();
+            if (config.releaseConsumedData >= 0 && (config.releaseConsumedData == 1) != defaultReleaseConsumedData) count++;
+            bool defaultAudioForceCompressed = AITDefaultSettings.GetDefaultAudioForceCompressedPlayback();
+            if (config.audioForceCompressedPlayback >= 0 && (config.audioForceCompressedPlayback == 1) != defaultAudioForceCompressed) count++;
+
             return count;
         }
 
@@ -1595,6 +1620,18 @@ namespace AppsInToss.Editor
             config.fontStreaming = -1;
             config.fontStreamingTargetPaths = string.Empty;
             config.fontStreamingMaxConcurrent = 2;
+
+            // 모바일 런타임 최적화
+            config.webglAntialiasOpt = -1;
+            config.webglContextRecovery = -1;
+            config.frameRateCap = -1;
+            config.adaptiveFrameRate = -1;
+            config.mobileLifecycle = -1;
+            config.memoryTelemetry = -1;
+            config.exactDataBody = -1;
+            config.releaseConsumedData = -1;
+            config.audioForceCompressedPlayback = -1;
+            config.audioForceCompressedMinSeconds = 10f;
         }
 
     }

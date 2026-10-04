@@ -656,6 +656,59 @@ namespace AppsInToss
         [Tooltip("PlayerPrefs 영속화 (앱인토스 Storage): -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int playerPrefsPersistence = -1;
 
+        // ── 모바일 런타임 최적화 (구형 기기 메모리·전력 대응) ──
+        // 전부 tri-state: -1 = 자동, 0 = 비활성, 1 = 활성. 자동의 실효값은 AITDefaultSettings.GetDefault* 가 정하고,
+        // 빌드 시 WebGLBuildCopier 가 실효값을 JSON 으로 풀어 index.html 의 window.__AIT_PERF 로 주입한다(AITPerfFlags).
+        [Header("모바일 런타임 최적화 (구형 기기)")]
+        [Tooltip("WebGL 컨텍스트 antialias 처리: -1 = 자동(요청/실제 속성을 기록하고 probe 컨텍스트만 해제, antialias 는 끄지 않음), " +
+                 "0 = 비활성(훅 자체를 설치하지 않음), 1 = 활성(모바일에서 DPR 1.5 이상이거나 메모리 6GB 미만이면 antialias 를 끔). " +
+                 "⚠ QualitySettings.antiAliasing 이 0 보다 큰 프로젝트에서 antialias 를 끄면 Unity 가 자체 MSAA 렌더 타깃을 만들어 " +
+                 "오히려 메모리가 늘 수 있습니다. 실기기 검증 전까지 자동은 antialias 를 끄지 않습니다.")]
+        public int webglAntialiasOpt = -1;
+
+        [Tooltip("WebGL 컨텍스트 손실 복구: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "webglcontextlost 가 오면 페이지를 다시 불러옵니다(120초 안에 반복되면 reload 루프를 막고 안내 화면을 띄웁니다). " +
+                 "게임 상태는 사라지지만 영구 검은 화면보다 낫습니다. 컨텍스트가 연속 손실된 기기는 다음 부팅부터 렌더 해상도 상한(DPR)을 낮춥니다.")]
+        public int webglContextRecovery = -1;
+
+        [Tooltip("프레임레이트 상한: -1 = 자동(활성: 100Hz 이상 디스플레이에서 60fps 로 제한), 0 = 비활성(주사율 그대로), 1 = 활성(자동과 동일). " +
+                 "60Hz 기기에서는 효과가 없습니다. 120fps 를 의도한 게임은 0 으로 끄세요.")]
+        public int frameRateCap = -1;
+
+        [Tooltip("적응형 프레임레이트: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "배터리·발열 압력 신호가 오면 30fps 로 낮춥니다. 오탐 시 30fps 에 갇힐 수 있어 실기기 데이터가 나오기 전까지 자동은 꺼 둡니다.")]
+        public int adaptiveFrameRate = -1;
+
+        [Tooltip("모바일 라이프사이클 게이트: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "페이지가 hidden/pagehide/freeze 가 되면 메인 루프를 멈추고, 실행 중이던 AudioContext 와 미디어 요소만 일시정지했다가 " +
+                 "visible 이 되면 재개합니다. 숨겨진 동안 게임 타이머가 멈추므로 백그라운드 진행이 필요한 게임은 0 으로 끄세요.")]
+        public int mobileLifecycle = -1;
+
+        [Tooltip("메모리 텔레메트리: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "WebAssembly.Memory.grow 횟수·소요 시간·크기와 OOM 을 기록하고, 이전 세션이 비정상 종료됐는지(crashCount)를 추적해 " +
+                 "연속 크래시 시 렌더 해상도 상한을 낮추는 근거로 씁니다. 게임 동작은 바꾸지 않습니다.")]
+        public int memoryTelemetry = -1;
+
+        [Tooltip("data 응답 정확한 크기 재포장: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "빌드 때 .data 의 압축 해제 크기를 재서 Content-Length 로 박아, 로더가 버퍼를 한 번만 할당하게 합니다(로드 시점 일시 피크 감소). " +
+                 "측정에 실패하거나 Decompression Fallback(.unityweb) 이면 아무것도 하지 않습니다.")]
+        public int exactDataBody = -1;
+
+        [Tooltip("소비한 data 버퍼 해제: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "global-metadata.dat 처럼 한 번 읽고 다시 안 쓰는 data 구간을 읽은 뒤 해제해 정상 상태 메모리를 줄입니다. " +
+                 "Unity 버전별 FS 동작 검증 전이라 자동은 꺼 둡니다(Chrome 111 / iOS 16.4 이상 전용).")]
+        public int releaseConsumedData = -1;
+
+        [Tooltip("긴 오디오 강제 압축 재생(framework 패치): -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "외부화되지 않은 긴 클립(DecompressOnLoad)도 PCM 으로 풀지 않고 압축 상태로 미디어 요소로 재생하도록 framework 를 빌드 후 패치합니다. " +
+                 "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 꺼 둡니다. " +
+                 "Unity 가 알 수 없는 형태로 바뀌면 패치를 건너뜁니다. Decompression Fallback(.unityweb) 이면 적용하지 않습니다.")]
+        public int audioForceCompressedPlayback = -1;
+
+        [Tooltip("audioForceCompressedPlayback 이 압축 재생으로 강제하는 최소 클립 길이(초). 기본 10. 0 이하이면 10 으로 취급합니다. " +
+                 "이보다 짧은 클립은 기존대로 PCM 으로 풀립니다(짧은 효과음 지연 방지).")]
+        public float audioForceCompressedMinSeconds = 10f;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -1124,6 +1177,71 @@ namespace AppsInToss
         {
             return true;
         }
+
+        // ── 모바일 런타임 최적화: 자동(-1)의 실효값 ──
+        // 실효값은 여기가 단일 출처다. AITPerfFlags(빌드 시 __AIT_PERF 주입)와 설정 창 UI·변경 배지가 모두 이 값을 쓴다.
+
+        /// <summary>
+        /// WebGL 컨텍스트 antialias 끄기(DPR/메모리 조건부) 자동 실효값: false.
+        /// 컨텍스트 antialias 를 끄면 Unity 가 자체 MSAA 렌더 타깃을 만들어 메모리가 오히려 늘 수 있어
+        /// 실기기·AA 변형 빌드 검증 전까지 자동은 요청/실제 속성 기록과 probe 컨텍스트 해제만 한다.
+        /// (webglAntialiasOpt 가 0 이면 훅 자체를 설치하지 않는다 — 자동과 0 은 다르다.)
+        /// </summary>
+        public static bool GetDefaultWebglAntialiasOpt()
+        {
+            return false;
+        }
+
+        /// <summary>WebGL 컨텍스트 손실 복구(reload + 루프 가드) 자동 실효값: true.</summary>
+        public static bool GetDefaultWebglContextRecovery()
+        {
+            return true;
+        }
+
+        /// <summary>프레임레이트 상한(100Hz 이상 패널에서 60) 자동 실효값: true. 60Hz 기기에서는 효과가 없다.</summary>
+        public static bool GetDefaultFrameRateCap()
+        {
+            return true;
+        }
+
+        /// <summary>적응형 프레임레이트(30fps 하향) 자동 실효값: false. 오탐 시 30fps 에 갇히므로 실기기 데이터 전까지 opt-in.</summary>
+        public static bool GetDefaultAdaptiveFrameRate()
+        {
+            return false;
+        }
+
+        /// <summary>모바일 라이프사이클 게이트(hidden 시 루프·오디오 정지) 자동 실효값: true.</summary>
+        public static bool GetDefaultMobileLifecycle()
+        {
+            return true;
+        }
+
+        /// <summary>메모리 텔레메트리(grow 기록·crash-loop 감지) 자동 실효값: true. 게임 동작을 바꾸지 않는다.</summary>
+        public static bool GetDefaultMemoryTelemetry()
+        {
+            return true;
+        }
+
+        /// <summary>data 응답 정확한 크기 재포장 자동 실효값: true. 값이 낡거나 측정 실패면 종전 동작으로 돌아갈 뿐 실패하지 않는다.</summary>
+        public static bool GetDefaultExactDataBody()
+        {
+            return true;
+        }
+
+        /// <summary>소비한 data 버퍼 해제(metadata 등) 자동 실효값: false. Unity 버전별 FS 동작 검증 전까지 opt-in.</summary>
+        public static bool GetDefaultReleaseConsumedData()
+        {
+            return false;
+        }
+
+        /// <summary>긴 오디오 강제 압축 재생(framework 패치) 자동 실효값: false. iOS 실기기 검증 전까지 opt-in.</summary>
+        public static bool GetDefaultAudioForceCompressedPlayback()
+        {
+            return false;
+        }
+
+        /// <summary>audioForceCompressedMinSeconds 가 0 이하일 때 쓰는 기본 최소 길이(초).</summary>
+        public const float DefaultAudioForceCompressedMinSeconds = 10f;
 
         /// <summary>
         /// 기본 오디오 스트리밍 활성화 여부.

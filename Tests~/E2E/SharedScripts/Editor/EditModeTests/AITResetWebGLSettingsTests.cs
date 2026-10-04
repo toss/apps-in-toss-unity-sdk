@@ -80,6 +80,10 @@ public class AITResetWebGLSettingsTests
         "textureStreamJpeg", "textureStreamJpegQuality",
         // 대형 폰트 deferral
         "fontStreaming", "fontStreamingTargetPaths", "fontStreamingMaxConcurrent",
+        // 모바일 런타임 최적화 (구형 기기)
+        "webglAntialiasOpt", "webglContextRecovery", "frameRateCap", "adaptiveFrameRate",
+        "mobileLifecycle", "memoryTelemetry", "exactDataBody", "releaseConsumedData",
+        "audioForceCompressedPlayback", "audioForceCompressedMinSeconds",
     };
 
     [Test]

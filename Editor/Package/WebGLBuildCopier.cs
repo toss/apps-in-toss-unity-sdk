@@ -149,6 +149,18 @@ namespace AppsInToss.Editor.Package
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
+            // ── 빌드 후 패치(framework → loader) + data 원본 크기 측정 ──
+            // 반드시 이 지점 — Unity 산출물이 buildSrc 에 있고 필수 파일 검증을 통과한 직후, 그리고
+            // brotli 재압축·캐시명 크기 스냅숏·buildSrc→buildDest 복사·page cache/warm manifest 산출·
+            // index.html 치환보다 앞 — 이어야 한다. 패처는 파일명에 .aitpN 접미사를 붙여 rename 하므로
+            // (AITPatchedFileNaming) 이후 단계가 읽는 이름 변수(loaderFile 등)가 여기서 갱신돼야 하고,
+            // page cache·warm manifest 는 해시 파일명을 캐시 키로 쓰기 때문에 최종 이름이 정해진 뒤에 돌아야 한다.
+            // .unityweb(Decompression Fallback)은 감지 마커 때문에 패치·재포장 대상이 아니다.
+            bool unitywebBuild = IsUnitywebBuild(decompressionFallback, loaderFile, dataFile, frameworkFile, wasmFile);
+            ApplyBuildPatches(config, buildSrc, unitywebBuild, ref loaderFile, ref dataFile, ref frameworkFile, ref wasmFile, ref symbolsFile);
+            long dataRawSize = MeasureDataRawSizeIfEnabled(config, buildSrc, dataFile, unitywebBuild);
+            string perfFlagsJson = AITPerfFlags.ToJson(config, dataRawSize, unitywebBuild);
+
             // Early Fetch 캐시명(BuildDataCacheName)의 콘텐츠 버스팅 기준 크기는 재인코딩 훅 실행 '전'에
             // 스냅숏한다. brotli q11 재인코딩은 콘텐츠가 그대로여도 산출 .br 바이트 크기를 바꾸므로, 훅
             // 온/오프 토글(동일 버전 재배포·카나리 등)만으로 캐시명이 바뀌면 레거시 캐싱 스크립트의
@@ -408,6 +420,8 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor ?? "#3182f6"))
                 // 번들 마킹 — 이 SDK 변형(perf 채널 등) 식별자를 in-page JS(window.AITLoading.buildVariant)에 주입
                 .Replace("%AIT_BUILD_VARIANT%", AITJsStringEscaper.EscapeSingleQuoted(AITBuildVariant.Value))
+                // 모바일 런타임 최적화 플래그(window.__AIT_PERF). 템플릿이 JSON.parse 로 읽고 실패하면 {} 로 fail-open 한다.
+                .Replace("%AIT_PERF_FLAGS%", AITJsStringEscaper.EscapeSingleQuoted(perfFlagsJson))
                 // ── 코드 문맥(값이 그대로 JS 로 전개) — 이스케이프하면 안 된다 ──
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
                 // 페이지 캐시 인터셉터 (재방문 서빙, opt-in). index.html 에서 Early Fetch 보다 '앞'에 위치해야

@@ -126,6 +126,127 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndVertical();
         }
 
+        /// <summary>
+        /// 모바일 런타임 최적화(구형 기기 메모리·전력) tri-state 레버 UI.
+        /// WebGL 최적화 설정 패널(DrawWebGLOptimizationSettings)에서 호출되며, 변경 배지·"기본값 복원"도 그 패널의
+        /// CountModifiedWebGLSettings / ResetWebGLOptimizationDefaults 가 담당한다(레버 목록을 양쪽과 맞출 것).
+        /// 자동(-1)의 실효값은 AITDefaultSettings.GetDefault* 가 정한다.
+        /// </summary>
+        private void DrawMobileRuntimeSettings()
+        {
+            EditorGUILayout.LabelField("모바일 런타임 최적화 (구형 기기)", EditorStyles.boldLabel);
+
+            // webglAntialiasOpt: 자동(기록만) / 0(훅 끔) / 1(AA 끔) 은 서로 다른 동작이라 명시값이면 모두 '변경됨'.
+            config.webglAntialiasOpt = DrawPerfTriState(
+                config.webglAntialiasOpt, "WebGL antialias 처리",
+                "자동은 컨텍스트 요청/실제 속성을 기록하고 probe 컨텍스트만 해제합니다(antialias 는 끄지 않음). " +
+                "활성화는 모바일에서 DPR 1.5 이상이거나 메모리 6GB 미만이면 antialias 를 끕니다. " +
+                "⚠ QualitySettings.antiAliasing > 0 인 프로젝트에서는 Unity 가 자체 MSAA 렌더 타깃을 만들어 메모리가 오히려 늘 수 있어 실기기 검증 전까지 자동은 끄지 않습니다.",
+                AITDefaultSettings.GetDefaultWebglAntialiasOpt(),
+                autoText: "기록만", offText: "비활성화 (훅 끔)", onText: "활성화 (AA 끄기)",
+                anyExplicitIsModified: true);
+
+            config.webglContextRecovery = DrawPerfTriState(
+                config.webglContextRecovery, "WebGL 컨텍스트 손실 복구",
+                "webglcontextlost 가 오면 페이지를 다시 불러옵니다. 120초 안에 반복되면 reload 루프를 막고 안내 화면을 띄우며, " +
+                "다음 부팅부터 렌더 해상도 상한(DPR)을 낮춥니다. 게임 상태는 사라지지만 영구 검은 화면보다 낫습니다.",
+                AITDefaultSettings.GetDefaultWebglContextRecovery());
+
+            config.frameRateCap = DrawPerfTriState(
+                config.frameRateCap, "프레임레이트 상한 (60fps)",
+                "100Hz 이상 디스플레이에서 60fps 로 제한해 전력을 줄입니다. 60Hz 기기에서는 효과가 없습니다. 120fps 를 의도한 게임은 비활성화하세요.",
+                AITDefaultSettings.GetDefaultFrameRateCap());
+
+            config.adaptiveFrameRate = DrawPerfTriState(
+                config.adaptiveFrameRate, "적응형 프레임레이트 (30fps)",
+                "배터리·발열 압력 신호가 오면 30fps 로 낮춥니다. 오탐 시 30fps 에 갇힐 수 있어 실기기 데이터 전까지 자동은 비활성입니다.",
+                AITDefaultSettings.GetDefaultAdaptiveFrameRate());
+
+            config.mobileLifecycle = DrawPerfTriState(
+                config.mobileLifecycle, "라이프사이클 게이트 (hidden 시 정지)",
+                "페이지가 hidden/pagehide/freeze 가 되면 메인 루프와 오디오를 멈췄다가 visible 이 되면 재개합니다. " +
+                "숨겨진 동안 게임 타이머가 멈추므로 백그라운드 진행이 필요한 게임은 비활성화하세요.",
+                AITDefaultSettings.GetDefaultMobileLifecycle());
+
+            config.memoryTelemetry = DrawPerfTriState(
+                config.memoryTelemetry, "메모리 텔레메트리",
+                "WebAssembly.Memory.grow 와 OOM 을 기록하고 이전 세션 비정상 종료를 추적합니다. 게임 동작은 바꾸지 않습니다.",
+                AITDefaultSettings.GetDefaultMemoryTelemetry());
+
+            config.exactDataBody = DrawPerfTriState(
+                config.exactDataBody, "data 정확한 크기 재포장",
+                "빌드 때 .data 의 압축 해제 크기를 재서 로더가 버퍼를 한 번만 할당하게 합니다(로드 시점 메모리 피크 감소). " +
+                "Decompression Fallback(.unityweb) 이면 적용되지 않습니다.",
+                AITDefaultSettings.GetDefaultExactDataBody());
+
+            config.releaseConsumedData = DrawPerfTriState(
+                config.releaseConsumedData, "소비한 data 버퍼 해제",
+                "한 번 읽고 다시 쓰지 않는 data 구간(global-metadata.dat 등)을 읽은 뒤 해제합니다. " +
+                "Unity 버전별 동작 검증 전이라 자동은 비활성입니다(Chrome 111 / iOS 16.4 이상 전용).",
+                AITDefaultSettings.GetDefaultReleaseConsumedData());
+
+            config.audioForceCompressedPlayback = DrawPerfTriState(
+                config.audioForceCompressedPlayback, "긴 오디오 강제 압축 재생 (framework 패치)",
+                "외부화되지 않은 긴 클립도 PCM 으로 풀지 않고 압축 상태로 브라우저 미디어 요소로 재생하도록 framework 를 빌드 후 패치합니다. " +
+                "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 비활성입니다.",
+                AITDefaultSettings.GetDefaultAudioForceCompressedPlayback());
+
+            bool forceCompressedEffective = config.audioForceCompressedPlayback >= 0
+                ? config.audioForceCompressedPlayback == 1
+                : AITDefaultSettings.GetDefaultAudioForceCompressedPlayback();
+            if (forceCompressedEffective)
+            {
+                EditorGUI.indentLevel++;
+                config.audioForceCompressedMinSeconds = EditorGUILayout.FloatField(
+                    new GUIContent("최소 클립 길이(초)",
+                        "이 길이 이상인 클립만 압축 재생으로 강제합니다(기본 10). 0 이하이면 10 으로 취급합니다."),
+                    config.audioForceCompressedMinSeconds);
+                if (config.audioForceCompressedMinSeconds <= 0f)
+                {
+                    config.audioForceCompressedMinSeconds = AITDefaultSettings.DefaultAudioForceCompressedMinSeconds;
+                }
+                EditorGUI.indentLevel--;
+            }
+        }
+
+        /// <summary>
+        /// tri-state(-1 자동 / 0 비활성 / 1 활성) 팝업 한 줄을 그리고 새 값을 돌려준다. 다른 레버 UI 와 같은 모양
+        /// (변경 점·팝업·↺ 버튼)이다.
+        /// </summary>
+        /// <param name="anyExplicitIsModified">true 면 0/1 어느 쪽이든 명시값이면 '변경됨'으로 본다(자동·0·1 이 모두 다른 동작인 레버용).</param>
+        private int DrawPerfTriState(
+            int value,
+            string label,
+            string tooltip,
+            bool defaultValue,
+            string autoText = null,
+            string offText = "비활성화",
+            string onText = "활성화",
+            bool anyExplicitIsModified = false)
+        {
+            bool isModified = value >= 0 && (anyExplicitIsModified || (value == 1) != defaultValue);
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string autoLabel = autoText ?? (defaultValue ? onText : offText);
+            string shownLabel = value < 0 ? $"{label} (자동: {autoLabel})" : label;
+
+            string[] options = { $"자동 ({autoLabel})", offText, onText };
+            int currentIndex = value < 0 ? 0 : value + 1;
+            int newIndex = EditorGUILayout.Popup(new GUIContent(shownLabel, tooltip), currentIndex, options);
+            int result = newIndex == 0 ? -1 : newIndex - 1;
+
+            if (isModified && DrawResetButton())
+            {
+                result = -1;
+            }
+
+            EditorGUILayout.EndHorizontal();
+            return result;
+        }
+
         private void DrawFontStreamingSettings()
         {
             EditorGUILayout.LabelField("폰트 스트리밍 (대형 폰트 deferral)", EditorStyles.boldLabel);

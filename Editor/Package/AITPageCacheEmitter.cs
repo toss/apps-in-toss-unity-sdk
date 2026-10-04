@@ -624,7 +624,17 @@ namespace AppsInToss.Editor.Package
                                     var putTimer = setTimeout(function () {
                                         if (!putDone) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
                                     }, PUT_TIMEOUT_MS);
-                                    getCache().then(function (c) { return c.put(url, clone); })
+                                    // 본문을 clone 스트림 그대로 put 하지 않고 완결 ArrayBuffer 로 읽어 저장한다. 스트림 put 은 청크마다 메인 스레드
+                                    // 태스크가 필요해, 첫 프레임 뒤 게임 루프가 메인 스레드를 채우면 CPU 4x 에서 수십 초(6000.0 실측 38~62s)
+                                    // 밀린다. 버퍼 읽기는 태스크 수가 적어 같은 조건에서 수 초 안에 끝난다(호출자가 받는 resp 는 영향 없음).
+                                    // 디코드된 본문이므로 Content-Encoding/Length 는 싣지 않는다(레거시 완결 버퍼 put 과 같은 계약).
+                                    var ct = 'application/octet-stream';
+                                    try { ct = clone.headers.get('Content-Type') || ct; } catch (e) {}
+                                    getCache().then(function (c) {
+                                        return clone.arrayBuffer().then(function (buf) {
+                                            return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
+                                        });
+                                    })
                                         .then(function () { putDone = true; clearTimeout(putTimer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
                                         .catch(function (e) {
                                             putDone = true; clearTimeout(putTimer);

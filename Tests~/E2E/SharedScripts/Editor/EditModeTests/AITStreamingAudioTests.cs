@@ -12,6 +12,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using AppsInToss;
+using AppsInToss.Editor;
 
 [TestFixture]
 public class AITStreamingAudioTests
@@ -100,5 +101,25 @@ public class AITStreamingAudioTests
         {
             Object.DestroyImmediate(go);
         }
+    }
+
+    // ShouldKeepCompressed — 긴 외부화 클립은 압축 재생(PCM 상주 제거), 짧은 클립·길이 미상·opt-out 은 기존 PCM 경로
+    [TestCase(-1, 60f, true)]
+    [TestCase(-1, 10f, true)]
+    [TestCase(-1, 9.9f, false)]
+    [TestCase(-1, 0f, false)]
+    [TestCase(0, 60f, false)]
+    [TestCase(1, 60f, true)]
+    public void ShouldKeepCompressed_LongClipsUnlessOptedOut(int setting, float seconds, bool expected)
+    {
+        Assert.AreEqual(expected, AITAudioStreamingProcessor.ShouldKeepCompressed(setting, seconds));
+    }
+
+    [Test]
+    public void CompressedPlayback_DefaultIsAuto()
+    {
+        var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+        try { Assert.AreEqual(-1, config.audioStreamingCompressedPlayback); }
+        finally { UnityEngine.Object.DestroyImmediate(config); }
     }
 }

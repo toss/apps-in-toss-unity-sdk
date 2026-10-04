@@ -47,7 +47,7 @@ public class AITResetWebGLSettingsTests
         // 페이지 캐시 / warm / 네이티브 프리페치
         "pageCache", "pageCacheName", "warmManifest", "warmPage", "nativeAssetSource",
         // 오디오 스트리밍
-        "audioStreaming", "audioStreamingMinBytes", "audioStreamingDirs",
+        "audioStreaming", "audioStreamingMinBytes", "audioStreamingDirs", "audioStreamingCompressedPlayback",
         // 스트림 사본 저비트레이트 재인코딩
         "audioStreamTranscode", "audioStreamTranscodeBitrateKbps", "audioStreamTranscodeMinSourceKbps",
         // 오디오 재인코딩

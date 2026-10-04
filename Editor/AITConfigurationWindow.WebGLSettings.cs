@@ -143,6 +143,15 @@ namespace AppsInToss.Editor
                     new GUIContent("대상 폴더(쉼표 구분)", "Assets/ 기준 경로. 비우면 프로젝트 전체의 큰 오디오가 대상. 예) Assets/Sounds/BGM,Assets/Music"),
                     config.audioStreamingDirs);
 
+                // 하위 레버: 긴 외부화 클립 압축 재생(auto=ON — PCM 상주 메모리 제거, 끄려면 비활성화)
+                string[] compressedOptions = { "자동 (활성화)", "비활성화" };
+                int compressedIndex = config.audioStreamingCompressedPlayback == 0 ? 1 : 0;
+                int newCompressedIndex = EditorGUILayout.Popup(
+                    new GUIContent("긴 클립 압축 재생", "10초 이상 외부화 클립을 PCM 으로 풀지 않고 압축 상태로 브라우저 미디어 요소로 재생합니다. " +
+                        "3분 스테레오 BGM 기준 약 63MB 메모리를 아낍니다. GetData 미지원·루프 이음새가 문제면 비활성화하세요."),
+                    compressedIndex, compressedOptions);
+                config.audioStreamingCompressedPlayback = newCompressedIndex == 1 ? 0 : -1;
+
                 // 하위 레버: 외부화 사본 저비트레이트 재인코딩 (auto=ON, 루프 클립 제외 — 끄려면 비활성화)
                 bool transcodeDefault = AITDefaultSettings.GetDefaultAudioStreamTranscode();
                 string transcodeAuto = transcodeDefault ? "활성화" : "비활성화";
@@ -1523,6 +1532,7 @@ namespace AppsInToss.Editor
             config.audioStreaming = -1;
             config.audioStreamingMinBytes = 262144;
             config.audioStreamingDirs = "";
+            config.audioStreamingCompressedPlayback = -1;
             config.audioStreamTranscode = -1;
             config.audioStreamTranscodeBitrateKbps = 160;
             config.audioStreamTranscodeMinSourceKbps = 256;

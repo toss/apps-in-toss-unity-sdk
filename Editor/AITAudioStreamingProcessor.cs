@@ -184,12 +184,14 @@ namespace AppsInToss.Editor
                     File.Copy(silent, srcFull, true);
                     AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
 
+                    bool keepCompressed = ShouldKeepCompressed(config.audioStreamingCompressedPlayback, realLen);
                     entries.Add("{\"guid\":\"" + g + "\",\"name\":" + JsonStr(clipName)
-                                + ",\"file\":" + JsonStr(streamFile) + ",\"length\":" + realLen.ToString("0.###") + "}");
+                                + ",\"file\":" + JsonStr(streamFile) + ",\"length\":" + realLen.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                                + ",\"compressed\":" + (keepCompressed ? "true" : "false") + "}");
                     n++;
                     stubbedBytes += size;
                     externalizedPaths.Add(path);
-                    Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s) → {streamFile}");
+                    Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s{(keepCompressed ? ", 압축 재생" : "")}) → {streamFile}");
                 }
 
                 // 3) 외부화 사본 재인코딩(옵션, 명시 활성 시에만). 파일명/매니페스트 불변,
@@ -404,5 +406,17 @@ namespace AppsInToss.Editor
 
         private static string JsonStr(string s)
             => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+        /// <summary>압축 재생으로 둘 최소 길이(초). 짧은 효과음은 지연 없는 PCM 재생을 유지한다.</summary>
+        internal const float CompressedPlaybackMinSeconds = 10f;
+
+        /// <summary>
+        /// 외부화 클립을 런타임에 압축 상태(미디어 요소 재생)로 둘지 결정한다. setting: -1 자동, 0 비활성, 1 활성.
+        /// 길이를 모르면(0) 기존 PCM 경로를 유지한다.
+        /// </summary>
+        internal static bool ShouldKeepCompressed(int setting, float seconds)
+        {
+            return setting != 0 && seconds >= CompressedPlaybackMinSeconds;
+        }
     }
 }

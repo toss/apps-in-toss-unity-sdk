@@ -444,6 +444,13 @@ namespace AppsInToss
         [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 오디오가 대상입니다. 예) Assets/Sounds/BGM,Assets/Music")]
         public string audioStreamingDirs = "";
 
+        [Tooltip("-1 = 자동(활성), 0 = 비활성. " +
+                 "외부화된 오디오 중 10초 이상인 클립을 런타임에 압축 상태로 두고 브라우저 미디어 요소로 재생합니다. " +
+                 "Unity WebGL 기본 경로는 클립 전체를 float32 PCM 으로 풀어 두므로 3분 스테레오 BGM 하나가 약 63MB 를 차지하는데, " +
+                 "압축 재생은 그 메모리를 압축 크기 수준으로 줄입니다(구형 기기 WebView 메모리 한도 대응). " +
+                 "대신 그 클립은 AudioClip.GetData 를 쓸 수 없고, 루프 이음새나 재생 시작 지연이 브라우저에 따라 조금 생길 수 있습니다. 문제가 되면 0 으로 끄세요.")]
+        public int audioStreamingCompressedPlayback = -1;
+
         [Tooltip("-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성(루프 클립 게이트 없이 전부). " +
                  "외부화된 스트리밍 오디오 '사본'(MP3)을 저비트레이트 MP3 로 재인코딩해 .ait 번들 크기를 줄입니다(실측 320→160kbps 기준 ~50% 절감). " +
                  "프로젝트 원본은 건드리지 않으며(외부화 사본만 교체) 런타임 복원 경로도 그대로입니다. " +

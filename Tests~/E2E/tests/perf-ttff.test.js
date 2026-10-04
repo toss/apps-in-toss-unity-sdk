@@ -202,6 +202,20 @@ const TTFF_INIT_SCRIPT = `
       AC.prototype.createMediaElementSource = function () { window.__aitAudioMediaEls++; return origMes.apply(this, arguments); };
     }
   } catch (e) { /* 오디오 API 미지원 환경 — 계측만 생략 */ }
+  // wasm 힙 크기: 오디오 로그 시점의 메모리 규모(압축 재생 전환의 효과 비교용). Unity 인스턴스 전역에 기대지 않고 Memory 생성자를 감싼다.
+  window.__aitWasmMemories = [];
+  try {
+    if (window.WebAssembly && WebAssembly.Memory) {
+      var OrigMemory = WebAssembly.Memory;
+      var WrappedMemory = function (desc) {
+        var m = new OrigMemory(desc);
+        try { window.__aitWasmMemories.push(m); } catch (e) {}
+        return m;
+      };
+      WrappedMemory.prototype = OrigMemory.prototype;
+      WebAssembly.Memory = WrappedMemory;
+    }
+  } catch (e) { /* 계측만 생략 */ }
   // 로딩 오버레이가 사라진 시각. 첫 draw 뒤에도 오버레이가 덮고 있으면 사용자는 게임 화면을 보지 못한다.
   window.__overlayHidden__ = null;
   function watchOverlay() {
@@ -423,13 +437,15 @@ async function logAudioDecode(page, label, consoleLines) {
   const audio = await page.evaluate(() => ({
     pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls,
     calls: window.__aitAudioDecodeCalls || 0, inBytes: window.__aitAudioDecodeInBytes || 0, errors: window.__aitAudioDecodeErrors || 0,
+    heap: (window.__aitWasmMemories || []).reduce((mx, m) => { try { return Math.max(mx, m.buffer.byteLength); } catch (e) { return mx; } }, 0),
   })).catch(() => null);
   if (audio && typeof audio.pcm === 'number') {
     console.log(`  오디오 디코드${tag}: PCM=${(audio.pcm / 1048576).toFixed(2)}MB mediaElement=${audio.media}` +
       ` decode호출=${audio.calls}(입력 ${(audio.inBytes / 1048576).toFixed(2)}MB, 실패 ${audio.errors})` +
+      ` wasm힙=${(audio.heap / 1048576).toFixed(0)}MB` +
       (probed ? ` (재수화 대기 ${Date.now() - t0}ms)` : ''));
   }
-  for (const l of consoleLines.slice(0, 16)) console.log(`    console${tag}: ${l.slice(0, 200)}`);
+  for (const l of consoleLines.slice(0, 40)) console.log(`    console${tag}: ${l.slice(0, 200)}`);
 }
 
 /** 외부화 BGM 재수화를 기다리는 상한(첫 iter 에서만). */
@@ -468,7 +484,7 @@ async function measureIteration(browser, url, iter, label) {
   if (iter === 0) {
     page.on('console', (m) => {
       const t = m.text();
-      if (/AIT-StreamingAudio|HeavyAudioProbe|Decode error/.test(t)) audioConsole.push(t);
+      if (/AIT-StreamingAudio|AIT-Audio|HeavyAudioProbe|Decode error|AIT-GL|AIT-Pacing|AIT-Memory|AIT-DataBuf/.test(t)) audioConsole.push(t);
     });
   }
 

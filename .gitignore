@@ -230,6 +230,9 @@ yarn.lock.meta
 !Editor/PngRecompress~/package-lock.json
 !Editor/AudioTranscode~
 !Editor/AudioTranscode~/package-lock.json
+# Editor/FrameworkPatch~: 빌드 때 framework 에 주입하는 런타임 JS 는 커밋
+!Editor/FrameworkPatch~
+!Editor/FrameworkPatch~/**
 
 # Lockfile은 일반적으로 커밋하지 않음 (BuildConfig~, Tests~/E2E/tests, sdk-runtime-generator~,
 # Editor/FontSubset~·PngRecompress~·AudioTranscode~ 제외)

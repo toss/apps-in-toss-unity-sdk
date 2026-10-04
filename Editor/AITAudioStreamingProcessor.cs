@@ -191,7 +191,7 @@ namespace AppsInToss.Editor
                     n++;
                     stubbedBytes += size;
                     externalizedPaths.Add(path);
-                    Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s{(keepCompressed ? ", 압축 재생" : "")}) → {streamFile}");
+                    Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s{(keepCompressed ? ", 압축 재생(stream 해제)" : "")}) → {streamFile}");
                 }
 
                 // 3) 외부화 사본 재인코딩(옵션, 명시 활성 시에만). 파일명/매니페스트 불변,
@@ -413,6 +413,8 @@ namespace AppsInToss.Editor
         /// <summary>
         /// 외부화 클립을 런타임에 압축 상태(미디어 요소 재생)로 둘지 결정한다. setting: -1 자동, 0 비활성, 1 활성.
         /// 길이를 모르면(0) 기존 PCM 경로를 유지한다.
+        /// 결과는 매니페스트 compressed 필드가 되고, 런타임(AITStreamingAudio.DecideLoadMode)이 true 일 때
+        /// stream=false + compressed=true 로 요청한다(stream 이 compressed 를 이기므로 stream 을 꺼야 압축 재생이 선택된다).
         /// </summary>
         internal static bool ShouldKeepCompressed(int setting, float seconds)
         {

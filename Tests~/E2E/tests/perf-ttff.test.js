@@ -400,12 +400,25 @@ async function waitForCachePuts(page) {
  * 오디오 메모리 진단: cold 방문에서 decodeAudioData 로 풀린 PCM 과 media element 경로 수를 남긴다.
  * 외부화 클립 재수화는 interactive 이후에 일어나므로 put 대기 뒤(첫 iter)에 읽는다.
  */
-async function logAudioDecode(page, label) {
+async function logAudioDecode(page, label, consoleLines) {
+  const tag = PAIR_MODE ? ` [${label}]` : '';
+  // BGM 프로브가 붙은 빌드면 외부화 클립 재수화(다운로드 + 디코드)가 끝날 때까지 상한 안에서 기다린다.
+  const probed = consoleLines.some((l) => l.indexOf('[HeavyAudioProbe]') >= 0);
+  const t0 = Date.now();
+  if (probed) {
+    await page.waitForFunction(() => window.__aitAudioPcmBytes > 1048576 || window.__aitAudioMediaEls > 0,
+      undefined, { timeout: AUDIO_REHYDRATE_WAIT_MS }).catch(() => {});
+  }
   const audio = await page.evaluate(() => ({ pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls })).catch(() => null);
   if (audio && typeof audio.pcm === 'number') {
-    console.log(`  오디오 디코드${PAIR_MODE ? ` [${label}]` : ''}: PCM=${(audio.pcm / 1048576).toFixed(2)}MB mediaElement=${audio.media}`);
+    console.log(`  오디오 디코드${tag}: PCM=${(audio.pcm / 1048576).toFixed(2)}MB mediaElement=${audio.media}` +
+      (probed ? ` (재수화 대기 ${Date.now() - t0}ms)` : ''));
   }
+  for (const l of consoleLines.slice(0, 8)) console.log(`    console${tag}: ${l.slice(0, 200)}`);
 }
+
+/** 외부화 BGM 재수화를 기다리는 상한(첫 iter 에서만). */
+const AUDIO_REHYDRATE_WAIT_MS = 30000;
 
 /** 재방문 측정 전에 페이지 캐시 put 완료를 기다리는 상한. WARM_DEADLINE_MS 안에서 재방문 로드 자체가 들어갈 여유를 남긴다. */
 const CACHE_PUT_WAIT_MS = 75000;
@@ -436,6 +449,13 @@ async function measureIteration(browser, url, iter, label) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   await context.addInitScript(TTFF_INIT_SCRIPT);
   const page = await openThrottledPage(context);
+  const audioConsole = [];
+  if (iter === 0) {
+    page.on('console', (m) => {
+      const t = m.text();
+      if (/AIT-StreamingAudio|HeavyAudioProbe/.test(t)) audioConsole.push(t);
+    });
+  }
 
   const navStart = Date.now();
   try {
@@ -465,8 +485,9 @@ async function measureIteration(browser, url, iter, label) {
     if (MEASURE_WARM && typeof ttff === 'number' && warmFits) {
       try {
         const warm = await withDeadline((async () => {
+          // 오디오 재수화 대기는 put 대기와 겹치도록 먼저 한다(warm 시간 예산 안에 들도록).
+          if (iter === 0) { await logAudioDecode(page, label, audioConsole); audioLogged = true; }
           await waitForCachePuts(page);
-          if (iter === 0) { await logAudioDecode(page, label); audioLogged = true; }
           await page.close();
           const warmPage = await openThrottledPage(context);
           return measureLoad(warmPage, url);
@@ -484,7 +505,7 @@ async function measureIteration(browser, url, iter, label) {
       }
     }
 
-    if (iter === 0 && !audioLogged) await logAudioDecode(page, label);
+    if (iter === 0 && !audioLogged) await logAudioDecode(page, label, audioConsole);
 
     console.log(`  iter ${iter + 1}/${ITERATIONS}${PAIR_MODE ? ` [${label}]` : ''}: TTFF=${ttff !== null ? ttff.toFixed(0) + 'ms' : 'N/A'} ` +
       `visible=${metrics.firstVisible !== null ? metrics.firstVisible.toFixed(0) + 'ms' : 'N/A'} ` +

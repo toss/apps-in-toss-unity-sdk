@@ -35,6 +35,14 @@ namespace AppsInToss.Sentry
         {
             try
             {
+#if UNITY_6000_0_OR_NEWER
+                // 브리지 호출과 콜백 역직렬화가 첫 프레임 앞에 끼어들면 그만큼 TTFF 가 밀리므로
+                // 첫 프레임이 그려진 다음 프레임부터 수집한다.
+                // Unity 6 미만은 Awaitable 이 없어 지연하지 않는다. Task.Yield 대체안을 넣은 빌드에서
+                // 2022.3 E2E 가 불안정했던 적이 있어(원인 미확정) 보류 중이다.
+                await WaitForFirstFrame();
+#endif
+
                 var context = new Dictionary<string, string>();
 
                 context["sdk_version"] = AITVersion.FullVersion;
@@ -89,6 +97,15 @@ namespace AppsInToss.Sentry
         }
 
 #if UNITY_6000_0_OR_NEWER
+        private static async Awaitable WaitForFirstFrame()
+        {
+            int startFrame = Time.frameCount;
+            while (Time.frameCount <= startFrame + 1)
+            {
+                await Awaitable.NextFrameAsync();
+            }
+        }
+
         private delegate Awaitable<string> AsyncStringCall();
 
         private static async Awaitable<string> CollectSafe(string apiName, AsyncStringCall call)

@@ -10,12 +10,46 @@ using AppsInToss.Editor;
 /// </summary>
 public class E2EBuildRunner
 {
+    /// <summary>SharedScripts 패키지 내 비임포트 원본 폰트 디렉토리 이름(Runtime/ 바로 아래, "~" 접미 —
+    /// Unity가 임포트하지 않음). AITFontSubsetProcessor.ToolDirName 과 동일한 명명 관용구.</summary>
+    private const string FontsSourceDirName = "Fonts~";
+
+    /// <summary>비임포트 원본에서 복사해 각 프로젝트 Assets/Resources/Fonts/ 에 배치할 폰트 파일명
+    /// (UIBuilder.cs 의 Resources.Load("Fonts/NotoSansKR-Regular") 상대 경로가 이 이름에 의존한다).</summary>
+    private const string NotoSansKrFileName = "NotoSansKR-Regular.otf";
+
+    /// <summary>minimal 빌드에서만 켜는 WebGL 스크립팅 디파인. E2EBootstrapper 의 자동 부팅을 막아
+    /// 테스트 픽스처 코드가 스트리핑되게 한다.</summary>
+    internal const string MinimalDefine = "AIT_PERF_MINIMAL";
+
     [MenuItem("E2E/Build with SDK")]
     public static void BuildWithSDK()
     {
+        BuildWithSDK(minimal: false);
+    }
+
+    /// <param name="minimal">true 면 픽스처(부팅 폰트·벤치 씬 오브젝트·E2E 부트스트래퍼)를 빼고
+    /// 카메라만 있는 빈 씬에 SDK 만 얹어 빌드한다. 빈 프로젝트의 로드 하한을 재는 perf minimal posture 용.</param>
+    public static void BuildWithSDK(bool minimal)
+    {
         Debug.Log("========================================");
-        Debug.Log("E2E Build with Apps in Toss SDK");
+        Debug.Log(minimal ? "E2E Build with Apps in Toss SDK (minimal)" : "E2E Build with Apps in Toss SDK");
         Debug.Log("========================================");
+
+        // 폰트 원본은 패키지 비임포트 폴더(Runtime/Fonts~/)에 있어 "패키지 Runtime/Resources/ 는
+        // 무조건 빌드 포함" 규칙을 벗어난다(15MB+ 폰트가 서브셋 불가능하게 모든 .data 에 실리는 문제
+        // 해결) — 각 프로젝트 Assets/Resources/Fonts/ 로 복사해 (a) UIBuilder.cs:69 의
+        // Resources.Load("Fonts/NotoSansKR-Regular") 경로를 유지하면서 (b) Assets/ 하위이므로
+        // fontSubset 레버 사정권에 들어오게 한다. 다른 러너(HeavyBuildRunner/DeployProbeBuildRunner)도
+        // 이 폰트를 별도 용도로 복사하지만 이 훅에 의존하지 않고 각자 원본에서 직접 해석한다.
+        if (minimal)
+        {
+            DeleteStagedFonts();
+        }
+        else
+        {
+            EnsureFontsCopiedToResources();
+        }
 
         // 포트 충돌 방지: Profiler 자동연결 비활성화
         // Unity WebGL 빌드 시 websockify가 포트를 사용하는데 (6000.x: 35020, 2021-2022: 54998),
@@ -31,6 +65,15 @@ public class E2EBuildRunner
         // webGLExceptionSupport가 커밋값 1에서 3으로 고착돼 ProjectSettings.asset이 계속 dirty였다).
         // E2E 하네스는 픽스처를 더럽히면 안 되므로 러너가 직접 원본을 들고 있다가 빌드 후 되돌린다.
         var preBuildPlayerSettings = PlayerSettingsSnapshot.Capture();
+        // 스크립팅 디파인은 스냅샷에 없으므로 따로 들고 있다가 되돌린다.
+        string originalWebGLDefines = GetWebGLDefines();
+        if (minimal)
+        {
+            SetWebGLDefines(string.IsNullOrEmpty(originalWebGLDefines)
+                ? MinimalDefine
+                : originalWebGLDefines + ";" + MinimalDefine);
+            Debug.Log($"✓ WebGL 스크립팅 디파인에 {MinimalDefine} 추가");
+        }
 
         // 1. 씬 생성 및 설정
         Debug.Log("[1/5] Creating and setting up benchmark scene...");
@@ -61,7 +104,10 @@ public class E2EBuildRunner
 #else
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 #endif
-        SetupBenchmarkScene();
+        if (!minimal)
+        {
+            SetupBenchmarkScene();
+        }
 
         // 씬 저장
         EditorSceneManager.SaveScene(scene, scenePath);
@@ -79,6 +125,19 @@ public class E2EBuildRunner
         };
         EditorBuildSettings.scenes = scenes;
         Debug.Log("✓ Scene added to Build Settings");
+
+        // 배포 프로브 픽스처 훅: DeployProbeBuildRunner가 env var로 프로브 씬 경로를 넘기면
+        // index 1로 추가한다(위 단일 원소 덮어쓰기 로직은 그대로 두고 최소 개입으로 append).
+        string probeScenePath = System.Environment.GetEnvironmentVariable("AIT_DEPLOY_PROBE_SCENE_PATH");
+        if (!string.IsNullOrEmpty(probeScenePath) && File.Exists(probeScenePath))
+        {
+            EditorBuildSettings.scenes = new EditorBuildSettingsScene[]
+            {
+                scenes[0],
+                new EditorBuildSettingsScene(probeScenePath, true)
+            };
+            Debug.Log($"✓ Deploy probe scene added to Build Settings (index 1): {probeScenePath}");
+        }
 
         // 2. SDK 설정 구성
         Debug.Log("[2/5] Configuring Apps in Toss SDK...");
@@ -143,6 +202,10 @@ public class E2EBuildRunner
         // 결과에 영향이 없다. EditorApplication.Exit 이후에는 finally가 보장되지 않으므로
         // 분기 이전에 처리한다.
         preBuildPlayerSettings.Restore();
+        if (minimal)
+        {
+            SetWebGLDefines(originalWebGLDefines);
+        }
         AssetDatabase.SaveAssets();
         Debug.Log("✓ PlayerSettings restored to pre-build state");
 
@@ -297,6 +360,127 @@ public class E2EBuildRunner
     }
 
     /// <summary>
+    /// 패키지 비임포트 원본(Runtime/Fonts~/NotoSansKR-Regular.otf)을 이 프로젝트의
+    /// Assets/Resources/Fonts/ 로 복사한다. UPM/embedded 설치 모두에서 실경로를 해석하기 위해
+    /// AITFontSubsetProcessor.ResolveToolSourceDir 와 동일한 관용구(PackageInfo.FindForAssembly
+    /// resolvedPath 우선 → CallerFilePath 폴백)를 사용한다. 내용이 실제로 다를 때만 File.Copy 해
+    /// 불필요한 재임포트/증분 캐시 무효화를 피한다(Editor/AITWebGLBuilder.cs 의
+    /// VersionInfoAssetPath 와 동일 사유).
+    ///
+    /// 해석 실패(원본을 못 찾음) 시에도 빌드를 중단하지 않는다 — UIBuilder.DefaultFont 에
+    /// LegacyRuntime.ttf 폴백이 있어 빌드 자체는 성공하지만 한글이 tofu 로 렌더링되므로 경고 로그를
+    /// 눈에 띄게 남긴다.
+    /// </summary>
+    private static void EnsureFontsCopiedToResources()
+    {
+        try
+        {
+            string srcPath = ResolveFontsSourcePath();
+            if (string.IsNullOrEmpty(srcPath) || !File.Exists(srcPath))
+            {
+                Debug.LogWarning(
+                    "⚠ [EnsureFontsCopiedToResources] 원본 폰트를 찾지 못했습니다(Runtime/Fonts~/" +
+                    $"{NotoSansKrFileName}). Assets/Resources/Fonts/ 로 복사를 건너뜁니다 — " +
+                    "UIBuilder.DefaultFont 가 LegacyRuntime.ttf 로 폴백해 빌드는 계속되지만 한글이 " +
+                    "깨져(tofu) 보일 수 있습니다.");
+                return;
+            }
+
+            string destDir = Path.Combine("Assets", "Resources", "Fonts");
+            if (!Directory.Exists(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+
+            string destPath = Path.Combine(destDir, NotoSansKrFileName);
+            if (!FilesAreIdentical(srcPath, destPath))
+            {
+                File.Copy(srcPath, destPath, overwrite: true);
+            }
+
+            string assetPath = "Assets/Resources/Fonts/" + NotoSansKrFileName;
+            AssetDatabase.ImportAsset(
+                assetPath,
+                ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+            Debug.Log($"✓ 폰트 복사 완료: {srcPath} → {assetPath}");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning(
+                $"⚠ [EnsureFontsCopiedToResources] 폰트 복사 중 예외(빌드는 계속 진행, LegacyRuntime.ttf 폴백 가능): {e}");
+        }
+    }
+
+    /// <summary>SharedScripts 패키지에 동봉된 원본 폰트 소스 경로. UPM/embedded 설치 모두 해석
+    /// (AITFontSubsetProcessor.ResolveToolSourceDir 와 동일 관용구).</summary>
+    private static string ResolveFontsSourcePath()
+    {
+        try
+        {
+            var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(E2EBuildRunner).Assembly);
+            if (pkg != null && !string.IsNullOrEmpty(pkg.resolvedPath))
+            {
+                return Path.Combine(pkg.resolvedPath, "Runtime", FontsSourceDirName, NotoSansKrFileName);
+            }
+        }
+        catch
+        {
+            // PackageInfo 미해석(Assets 내 임베드 개발) → 소스 파일 위치 폴백.
+        }
+
+        string here = CallerDir();
+        return string.IsNullOrEmpty(here)
+            ? null
+            : Path.GetFullPath(Path.Combine(here, "..", "Runtime", FontsSourceDirName, NotoSansKrFileName));
+    }
+
+    private static string CallerDir([System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
+        => string.IsNullOrEmpty(thisFile) ? null : Path.GetDirectoryName(thisFile);
+
+    /// <summary>두 파일의 길이+바이트가 완전히 같은지 비교한다(불필요한 재임포트/증분 캐시 무효화 방지).</summary>
+    private static bool FilesAreIdentical(string pathA, string pathB)
+    {
+        if (!File.Exists(pathB))
+        {
+            return false;
+        }
+
+        var infoA = new FileInfo(pathA);
+        var infoB = new FileInfo(pathB);
+        if (infoA.Length != infoB.Length)
+        {
+            return false;
+        }
+
+        const int bufferSize = 1024 * 1024;
+        using (var streamA = File.OpenRead(pathA))
+        using (var streamB = File.OpenRead(pathB))
+        {
+            var bufferA = new byte[bufferSize];
+            var bufferB = new byte[bufferSize];
+            int readA;
+            while ((readA = streamA.Read(bufferA, 0, bufferSize)) > 0)
+            {
+                int readB = streamB.Read(bufferB, 0, readA);
+                if (readB != readA)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < readA; i++)
+                {
+                    if (bufferA[i] != bufferB[i])
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// 커맨드라인에서 호출 가능한 메서드 (기존 benchmark.sh 호환)
     /// </summary>
     public static void CommandLineBuild()
@@ -367,6 +551,35 @@ public class E2EBuildRunner
         }
 
         Debug.Log("Benchmark scene setup complete (scripts will be added at runtime by E2EBootstrapper)");
+    }
+
+    /// <summary>이전 빌드가 스테이징한 부팅 폰트를 지운다. Resources 밑이라 남아 있으면 minimal 빌드의 .data 에 실린다.</summary>
+    private static void DeleteStagedFonts()
+    {
+        string path = "Assets/Resources/Fonts/" + NotoSansKrFileName;
+        if (File.Exists(path))
+        {
+            AssetDatabase.DeleteAsset(path);
+            Debug.Log($"✓ Staged font removed for minimal build: {path}");
+        }
+    }
+
+    private static string GetWebGLDefines()
+    {
+#if UNITY_6000_0_OR_NEWER
+        return PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.WebGL);
+#else
+        return PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL);
+#endif
+    }
+
+    private static void SetWebGLDefines(string defines)
+    {
+#if UNITY_6000_0_OR_NEWER
+        PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.WebGL, defines);
+#else
+        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, defines);
+#endif
     }
 
     private static Light FindLight()

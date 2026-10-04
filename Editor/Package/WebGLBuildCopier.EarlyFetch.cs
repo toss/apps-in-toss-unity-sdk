@@ -16,17 +16,42 @@ namespace AppsInToss.Editor.Package
         ///
         /// 해결: head에서 JS fetch()를 즉시 시작하고, window.fetch를 일회성으로 인터셉트하여
         /// Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
+        ///
+        /// 워밍 대상 확장(data/wasm → +framework/+loader):
+        ///  · framework.js, loader.js: 둘 다 &lt;script src&gt; 로 소비됩니다 — loader.js 는 index.html 이,
+        ///    framework.js 는 로더 자신이 document.createElement('script') 로 로드합니다. 따라서 window.fetch 를
+        ///    통해 재요청되지 않아 earlyFetchMap 엔트리가 소진되지 않습니다(브라우저 HTTP 캐시 워밍이 목적).
+        ///    이로 인한 두 가지 양성(benign) 부작용: (1) earlyFetchMap 이 완전히 비지 않아 window.fetch 가
+        ///    originalFetch 로 복원되지 않고 early-fetch 래퍼가 상주(fetch 호출당 프로퍼티 조회 1회 오버헤드,
+        ///    무시 가능), (2) early-fetch 의 bare fetch(framework/loader)가 page-cache 래퍼를 경유해 일시적으로
+        ///    page-cache 에 put 될 수 있으나 부팅 sweep 이 allowlist(data/wasm 만) 기준으로 즉시 삭제합니다.
+        ///    둘 다 측정 중립이며 게임 동작/allowlist 계약을 바꾸지 않습니다. (선시작/kickoff 대상에서는
+        ///    이 둘을 제외합니다 — 아래 kickUrls 주석 참조.)
         /// </summary>
-        private static string GenerateEarlyFetchScript(string dataFile, string wasmFile, string buildSrc, string bundleVersion)
+        private static string GenerateEarlyFetchScript(string dataFile, string frameworkFile, string wasmFile, string loaderFile, string bundleVersion, long cacheDataSize, long cacheWasmSize)
         {
             var urls = new List<string>();
             if (!string.IsNullOrEmpty(dataFile)) urls.Add($"Build/{dataFile}");
             if (!string.IsNullOrEmpty(wasmFile)) urls.Add($"Build/{wasmFile}");
+            if (!string.IsNullOrEmpty(frameworkFile)) urls.Add($"Build/{frameworkFile}");
+            if (!string.IsNullOrEmpty(loaderFile)) urls.Add($"Build/{loaderFile}");
 
             if (urls.Count == 0) return "";
 
             // JSON 배열로 URL 목록 생성
             var urlsJson = "[" + string.Join(",", urls.ConvertAll(u => $"\"{u}\"")) + "]";
+
+            // 선시작(prefetch/kickoff) 대상은 window.fetch 로 실제 소비되는 data/wasm 뿐이다 — 레거시·modern
+            // 공통. loader 는 index.html 이, framework 은 로더(2022.3·6000.x 모두 createElement('script'))가
+            // <script src> 로 소비해 window.fetch 를 타지 않으므로, 선시작하면 응답이 소진되지 않고 이중
+            // 다운로드만 유발한다(2026-07 베타 E2E 에서 6000.x loader/framework 각 2회 다운로드로 실측 적발).
+            // 어느 파일이 data/wasm 인지는 C# 이 명확히 알고 있으므로(파일명 sniffing 아님) 명시 리스트로 넘긴다.
+            // 런타임에서 절대 URL(host+path 포함)에 substring 매칭하면 배포 도메인/경로에 우연히 '.data'/'.wasm'
+            // 이 포함될 때 framework/loader 를 오탐 선시작할 수 있어 그 휴리스틱을 원천 배제한다.
+            var kickUrls = new List<string>();
+            if (!string.IsNullOrEmpty(dataFile)) kickUrls.Add($"Build/{dataFile}");
+            if (!string.IsNullOrEmpty(wasmFile)) kickUrls.Add($"Build/{wasmFile}");
+            var kickUrlsJson = "[" + string.Join(",", kickUrls.ConvertAll(u => $"\"{u}\"")) + "]";
 
             // Unity 6000.x 로더는 자체 IndexedDB(UnityCache)로 데이터를 검증 캐싱하므로 warm reload에서
             // 재다운로드가 없다 → 우리 Cache-Storage 오버라이드는 순이득이 없고 스테일/이중 저장 위험만 더한다.
@@ -34,11 +59,11 @@ namespace AppsInToss.Editor.Package
             // 순단에 노출된다. 따라서 Cache-Storage 워밍은 레거시에만 적용하고 6000.x는 기존 스크립트를 유지한다.
             if (!IsLegacyUnityLoader())
             {
-                return GenerateEarlyFetchScriptModern(urlsJson);
+                return GenerateEarlyFetchScriptModern(kickUrlsJson);
             }
 
-            string cacheName = BuildDataCacheName(dataFile, wasmFile, buildSrc, bundleVersion);
-            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName);
+            string cacheName = BuildDataCacheName(dataFile, cacheDataSize, cacheWasmSize, bundleVersion);
+            return GenerateEarlyFetchScriptLegacyCaching(urlsJson, cacheName, kickUrlsJson, string.IsNullOrEmpty(wasmFile) ? null : $"Build/{wasmFile}");
         }
 
         /// <summary>
@@ -66,11 +91,13 @@ namespace AppsInToss.Editor.Package
         /// Cache-Storage 캐시명 생성. 콘텐츠 변경 버스팅을 위해 data/wasm 파일의 바이트 크기와 bundleVersion을
         /// 캐시명에 포함한다. 2021 고정 파일명(webgl.data)에서도 콘텐츠(에셋/코드)가 바뀌면 최소 한 파일의 크기가
         /// 달라져 새 캐시명이 되고, 이전 빌드 캐시는 콜드 로드 시 정리된다(스테일 데이터/wasm 서빙 방지).
+        /// dataSize/wasmSize는 반드시 brotli q11 재인코딩 훅(있다면) 실행 '전' 크기를 넘겨야 한다 — 훅은
+        /// 동일 콘텐츠라도 .br 산출 바이트 크기를 바꾸므로, 훅 실행 후 크기를 쓰면 재인코딩 온/오프
+        /// 토글만으로 캐시명이 흔들려 콘텐츠 불변 빌드까지 스테일로 오판되어 불필요한 전체 재다운로드가
+        /// 발생한다(호출부 CopyWebGLToPublic 참조).
         /// </summary>
-        private static string BuildDataCacheName(string dataFile, string wasmFile, string buildSrc, string bundleVersion)
+        private static string BuildDataCacheName(string dataFile, long dataSize, long wasmSize, string bundleVersion)
         {
-            long dataSize = FileSizeSafe(Path.Combine(buildSrc, dataFile));
-            long wasmSize = string.IsNullOrEmpty(wasmFile) ? 0L : FileSizeSafe(Path.Combine(buildSrc, wasmFile));
             string ver = string.IsNullOrEmpty(bundleVersion) ? "0" : bundleVersion;
             return $"ait-unity-{SanitizeCacheToken(dataFile)}-{dataSize}-{wasmSize}-{SanitizeCacheToken(ver)}";
         }
@@ -96,8 +123,11 @@ namespace AppsInToss.Editor.Package
 
         /// <summary>
         /// 6000.x용 기존 Early Fetch 스크립트(무캐시): 콜드 로드에서 병렬 prefetch → 로더에 전달, 재로드에서는 미설치.
+        /// urlsJson 에는 window.fetch 로 실제 소비되는 리소스(data/wasm)만 넘겨야 한다 — loader/framework 은
+        /// 6000.x 에서도 &lt;script src&gt; 로 소비되어 prefetch 응답이 소진되지 않고 이중 다운로드가 된다
+        /// (2026-07 베타 E2E CE 테스트에서 실측 적발, 디스패처가 kickUrlsJson 을 전달).
         /// </summary>
-        private static string GenerateEarlyFetchScriptModern(string urlsJson)
+        internal static string GenerateEarlyFetchScriptModern(string urlsJson)
         {
             return $@"<script>
     // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
@@ -133,6 +163,9 @@ namespace AppsInToss.Editor.Package
                 if (Object.keys(earlyFetchMap).length === 0) {{
                     window.fetch = originalFetch;
                 }}
+                // 로더가 취소 시그널을 넘기면(현행 로더는 미사용) early fetch는 그것을 반영할 수 없으므로
+                // pending 재사용 대신 실제 인자로 위임해 취소 시맨틱을 보존한다(향후 로더 변경 대비 방어).
+                if (init && init.signal) return originalFetch.apply(this, arguments);
                 // early fetch 실패(null)·비정상 응답(!ok)·body 소진 시 원본 fetch로 재시도
                 var self = this, args = arguments;
                 return pending.then(function(r) {{
@@ -141,6 +174,8 @@ namespace AppsInToss.Editor.Package
             }}
             return originalFetch.apply(this, arguments);
         }};
+        // 우리 래퍼 표식(index.html 의 wasm 경로가 vConsole 류 몽키패치와 구분하기 위함).
+        try {{ window.fetch.__aitWrapper = true; }} catch (e) {{}}
     }})();
     </script>";
         }
@@ -160,19 +195,30 @@ namespace AppsInToss.Editor.Package
         ///    arrayBuffer reject, 길이 불일치 → throw → 최대 MAX_TRIES회 재시도. 성공 시 완결 버퍼를
         ///    Cache Storage에 저장(버퍼가 이미 완전 → put 원자적, 부분/오염 엔트리 없음)하고 로더에는
         ///    완결 Response(body 스트림 + Content-Length)를 반환한다 → 로더는 undefined를 볼 수 없다.
+        ///    단, Content-Encoding 응답(.br/.gz 네이티브 서빙)은 해제된 byteLength 와 압축 크기
+        ///    Content-Length 가 정의상 불일치라 길이 대조를 생략(잘린 CE 스트림은 디코더가
+        ///    arrayBuffer 를 reject → 재시도 방어 유지). 미생략 시 콜드 부트마다 data+wasm 이
+        ///    2회 전송된다(실측 2026-07).
         ///  - 콜드 로드에서 data/wasm 모두 결정적으로 캐싱되므로(이전 clone-tee가 CI에서 wasm을 못 담던 문제
         ///    해소) 이후 reload는 전량 HIT → 네트워크 접촉 0.
         ///  - 저메모리 기기(deviceMemory<4)는 ~80MB 버퍼링이 OOM 위험 → 버퍼링/캐싱을 생략하고 원본
         ///    스트리밍 fetch로 폴백(기존 동작 유지, 제품 워치독이 방어).
         ///  - 워치독 복구 reload는 SKIP_KEY로 캐시를 1회 우회 → 오염 캐시가 복구를 막지 않음(self-amplification 차단).
         ///  - 캐시명에 data/wasm 바이트 크기 포함 → 콘텐츠 변경 시 자동 버스팅(2021 고정 파일명 스테일 방지).
+        ///  - EARLY KICKOFF: 콜드 로드에서 캐시 MISS 리소스(data/wasm/framework)의 bufferedFetch를 head 파싱
+        ///    시점에 선시작하고, 로더의 fetch가 pending promise에 합류한다 → 로더 다운로드+파싱+초기화 갭만큼
+        ///    크리티컬 다운로드가 앞당겨진다(modern 6000.x 경로와 동일 발상, 캐시 HIT/reload 는 선시작 없음).
         /// </summary>
-        private static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName)
+        internal static string GenerateEarlyFetchScriptLegacyCaching(string urlsJson, string cacheName, string kickUrlsJson, string wasmUrl = null)
         {
+            // Chromium 계열 wasm 처리용: wasm 상대 경로(없으면 빈 문자열). 런타임에서 절대 URL 로 비교한다.
+            string wasmUrlJs = "'" + (wasmUrl ?? "").Replace("\\", "\\\\").Replace("'", "\\'") + "'";
             return $@"<script>
     (function() {{
         var urls = {urlsJson};
         if (!urls || !urls.length) return;
+        var kickUrls = {kickUrlsJson};
+        var WASM_URL = {wasmUrlJs};
         var CACHE_NAME = '{cacheName}';
         var SKIP_KEY = '__ait_skip_data_cache__';
         var MAX_TRIES = 3;
@@ -181,6 +227,31 @@ namespace AppsInToss.Editor.Package
         for (var i = 0; i < urls.length; i++) {{
             knownSet[new URL(urls[i], location.href).href] = urls[i];
         }}
+
+        // Chromium 계열(Blink, Android WebView 포함)에서 wasm 은 버퍼링/Cache Storage 를 거치지 않고
+        // 'URL 이 살아 있는 네이티브 fetch Response' 그대로 로더(index.html instantiateWasm)에 넘긴다.
+        // V8 은 컴파일된 wasm 코드를 HTTP 캐시 응답에 대한 instantiateStreaming 에서만 영속 캐시하는데,
+        // 버퍼링 후 new Response(buf) 로 재합성하거나 Cache Storage 에서 서빙하면 URL/HTTP 캐시 출처를 잃는다.
+        // WebKit 전용 엔진(iOS)은 영속 wasm 코드 캐시가 없어 기존 경로(버퍼링+Cache Storage)를 유지한다.
+        // 엔진 판정은 여기 한 곳에서만 한다.
+        var IS_CHROMIUM = false;
+        try {{
+            var ua0 = navigator.userAgent || '';
+            IS_CHROMIUM = /Chrome\/|Chromium\/|Android/.test(ua0) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua0);
+        }} catch (e) {{}}
+        var WASM_ABS = '';
+        try {{ if (WASM_URL) WASM_ABS = new URL(WASM_URL, location.href).href; }} catch (e) {{}}
+        // wasm 우회는 'application/wasm 직접 스트리밍 확인' 플래그(index.html 이 네트워크 응답 기준으로 기록)가 있을 때만 켠다.
+        // 없으면(첫 방문·호스팅이 Content-Type 을 안 맞춤) 기존처럼 버퍼링+Cache Storage 로 처리한다.
+        var WASM_OK_KEY = 'ait-wasm-http-ok:' + CACHE_NAME;
+        var WASM_BYPASS = false;
+        try {{ WASM_BYPASS = IS_CHROMIUM && !!WASM_ABS && localStorage.getItem(WASM_OK_KEY) === '1'; }} catch (e) {{}}
+        window.__aitWasmHttpOkKey = WASM_OK_KEY;
+        // 네트워크 직출이 아닌 Response(캐시 HIT, 버퍼링 재합성)는 index.html 의 플래그 판정에서 제외하도록 표시한다.
+        var NON_NET = null;
+        try {{ NON_NET = window.__aitNonNetworkResp || (window.__aitNonNetworkResp = new WeakSet()); }} catch (e) {{}}
+        function markNonNet(r) {{ try {{ if (NON_NET && r && typeof r === 'object') NON_NET.add(r); }} catch (e) {{}} return r; }}
+        function isPlainWasm(url) {{ return WASM_BYPASS && url === WASM_ABS; }}
 
         // Cache Storage 가용성(보안 컨텍스트 필요: https 또는 localhost — E2E/프로덕션 모두 충족).
         var hasCache = false;
@@ -211,8 +282,34 @@ namespace AppsInToss.Editor.Package
 
         var originalFetch = window.fetch;
 
+        // stored 힌트: 이 캐시에 저장을 마친 URL 을 localStorage 에 남겨 동기로 조회한다.
+        // 캐시 조회(open→match)는 비동기라 head 에서 걸어도 응답 처리가 body 파싱·첫 렌더 뒤로 밀려,
+        // 캐시가 빈 첫 방문에서 data/wasm 다운로드 시작이 그만큼 늦어진다(CPU 4x 스로틀 실측 ~200ms).
+        // 이 캐시는 아래 storeBuffer 만 채우므로, 힌트에 없는 URL 은 조회를 건너뛰고 바로 네트워크로 간다.
+        // localStorage 접근 불가면 판단할 수 없으므로 기존대로 조회한다.
+        var HINT_KEY = 'ait-dc-stored:' + CACHE_NAME;
+        function isStored(url) {{
+            try {{
+                return ('\n' + (localStorage.getItem(HINT_KEY) || '') + '\n').indexOf('\n' + url + '\n') >= 0;
+            }} catch (e) {{ return true; }}
+        }}
+        function markStored(url) {{
+            try {{
+                if (isStored(url)) return;
+                var prev = localStorage.getItem(HINT_KEY);
+                localStorage.setItem(HINT_KEY, prev ? prev + '\n' + url : url);
+            }} catch (e) {{}}
+        }}
+
         // 콜드 로드에서 이전(스테일) 빌드 캐시 정리(현재 캐시명은 data/wasm 바이트 크기로 버스팅됨).
         if (!isReload && cacheOK) {{
+            // 이전 빌드 캐시명에 딸린 stored 힌트도 함께 정리한다.
+            try {{
+                for (var hi = localStorage.length - 1; hi >= 0; hi--) {{
+                    var hk = localStorage.key(hi);
+                    if (hk && hk.indexOf('ait-dc-stored:') === 0 && hk !== HINT_KEY) localStorage.removeItem(hk);
+                }}
+            }} catch (e) {{}}
             try {{
                 self.caches.keys().then(function(names) {{
                     names.forEach(function(n) {{
@@ -230,6 +327,7 @@ namespace AppsInToss.Editor.Package
                 self.caches.open(CACHE_NAME).then(function(c) {{
                     return c.put(url, new Response(buf, {{ status: 200, headers: h }}));
                 }}).then(function() {{
+                    markStored(url);
                     try {{ console.log('[AIT] cache: stored ' + url); }} catch (e) {{}}
                 }}).catch(function() {{
                     try {{ console.warn('[AIT] cache: put failed ' + url); }} catch (e) {{}}
@@ -241,18 +339,46 @@ namespace AppsInToss.Editor.Package
         // 스트림 중단(ERR_CONNECTION_CLOSED) → arrayBuffer reject, 길이 불일치 → 재시도.
         // 성공 시 (cacheOK면) 캐시에 저장하고 로더에는 완결 Response(body 스트림 + Content-Length 보유)를 반환한다.
         // 모두 소진 시 원본 fetch로 폴백(로더가 실패를 삼키면 제품 워치독 reload가 처리).
+        // Content-Encoding 응답(.br/.gz 네이티브 서빙)은 길이 대조를 생략한다: fetch 가 해제한
+        // buf.byteLength(원본 크기)와 헤더의 Content-Length(압축 크기)는 정의상 항상 불일치라
+        // 대조하면 완결 본문도 short read 로 오판 → 성공할 수 없는 재다운로드 루프(콜드 부트
+        // data+wasm 2회 전송 실측). 잘린 CE 스트림은 디코더가 arrayBuffer 를 reject 하므로
+        // 재시도 방어는 길이 대조 없이도 유지된다.
+        function pcAtomic(url) {{
+            try {{
+                return typeof window.__aitPageCachePutBuffer === 'function' && typeof window.__aitPageCachePriorFetch === 'function'
+                    && typeof window.__aitPageCacheCovers === 'function' && window.__aitPageCacheCovers(url) === true;
+            }} catch (e) {{ return false; }}
+        }}
         function bufferedFetch(url, left) {{
-            return originalFetch(url, {{ method: 'GET' }}).then(function(r) {{
+            // 페이지 캐시 대상은 래퍼(cacheFirst: 선시작+clone put)를 건너뛰고 네이티브 fetch 로 받아 완결 버퍼를 직접 put 한다.
+            var viaPc = cacheOK && pcAtomic(url);
+            return (viaPc ? window.__aitPageCachePriorFetch : originalFetch)(url, {{ method: 'GET' }}).then(function(r) {{
                 if (!r || !r.ok) throw new Error('bad status ' + (r && r.status));
                 var ct = r.headers.get('Content-Type') || 'application/octet-stream';
-                var expected = parseInt(r.headers.get('Content-Length') || '-1', 10);
+                var expected = r.headers.get('Content-Encoding') ? -1 : parseInt(r.headers.get('Content-Length') || '-1', 10);
                 return r.arrayBuffer().then(function(ab) {{
                     var buf = new Uint8Array(ab);
                     if (expected >= 0 && buf.byteLength !== expected) {{
                         throw new Error('short read ' + buf.byteLength + '/' + expected);
                     }}
-                    if (cacheOK) {{ storeBuffer(url, buf, ct); }}
-                    return new Response(buf, {{ status: 200, headers: {{ 'Content-Type': ct, 'Content-Length': String(buf.byteLength) }} }});
+                    if (cacheOK) {{
+                        // 페이지 캐시가 맡는 URL 은 완결 버퍼를 페이지 캐시에 원자적으로 put 한다(같은 바이트를 두 캐시에 저장하면
+                        // 메모리 기반 저장소 상한에서 QuotaExceeded). tee 된 clone 으로 put 하는 cacheFirst 경로는 CI 에서 wasm put 이
+                        // 끝나지 않고 멈추는 경우가 있어(오류도 기록 없음) 이 경로에서는 쓰지 않는다.
+                        if (viaPc) {{
+                            try {{ console.log('[AIT] cache: delegated to page cache ' + url); }} catch (e) {{}}
+                            window.__aitPageCachePutBuffer(url, buf, ct);
+                        }} else {{
+                            storeBuffer(url, buf, ct);
+                        }}
+                    }}
+                    // 재합성 Response 는 URL 이 없어 index.html 이 직접 경로를 판정할 수 없다. 네트워크 응답의 Content-Type 이
+                    // application/wasm 이고 no-store 가 아니면 여기서 플래그를 켠다(이후 방문의 직접 경로 실패는 index.html 이 플래그를 지운다).
+                    try {{
+                        if (IS_CHROMIUM && url === WASM_ABS && ct.indexOf('application/wasm') !== -1 && (r.headers.get('Cache-Control') || '').toLowerCase().indexOf('no-store') === -1) localStorage.setItem(WASM_OK_KEY, '1');
+                    }} catch (e) {{}}
+                    return markNonNet(new Response(buf, {{ status: 200, headers: {{ 'Content-Type': ct, 'Content-Length': String(buf.byteLength) }} }}));
                 }});
             }}).catch(function(e) {{
                 if (left > 1) {{
@@ -264,22 +390,87 @@ namespace AppsInToss.Editor.Package
             }});
         }}
 
+        // EARLY KICKOFF: 콜드(비리로드) 로드에서 known 리소스의 다운로드를 head 파싱 시점에 선시작한다.
+        // 로더가 같은 URL을 fetch하면 아래 오버라이드가 pending promise를 재사용해 이중 다운로드 없이
+        // 로더 다운로드+파싱+초기화 갭만큼 크리티컬 다운로드를 앞당긴다(modern 6000.x 경로와 동일 발상).
+        //  · 캐시 가용 + stored 힌트가 있으면 HIT 확인 후 MISS만 선시작 → 재방문(비리로드 내비게이션) 캐시 HIT에
+        //    네트워크 낭비 없음. 힌트가 없으면(첫 방문) 조회 없이 즉시 선시작한다.
+        //    (pendingEarly 엔트리는 동기 설정되므로 로더 fetch가 match 진행 중에 와도 같은 promise에 합류 — race 없음)
+        //  · 선시작 대상은 C# 이 명시로 넘긴 kickUrls(= data/wasm 만): 레거시(2021/2022) 로더는 framework 을
+        //    <script src> 로, index.html 은 loader 를 <script src> 로 소비해 window.fetch 로 재요청되지
+        //    않으므로, 이 둘을 선시작하면 pending 이 소진되지 않고 CDN cache-control: max-age=0 에서
+        //    이중 다운로드만 유발한다(2022.3 loader.js 의 createElement('script') 경로 grep 확인). 절대 URL
+        //    substring 매칭이 아니라 명시 리스트라, 배포 host/path 에 '.data'/'.wasm' 이 들어가도 오탐 없음.
+        //  · isReload 제외: 이전 문서 keep-alive 소켓 해체와 경합(ERR_CONNECTION_CLOSED 위험) + HTTP 캐시 이미 warm.
+        //  · 저메모리(cacheOK=false)는 버퍼링 없이 bare 스트리밍 fetch로 선시작(OOM 방어 유지).
+        //  · 실패는 엔트리 삭제 후 null → 오버라이드가 originalFetch로 폴백(bufferedFetch 자체가 재시도+폴백 내장).
+        // 페이지 캐시가 이미 채운 URL 의 재방문 조회(동기 null = 힌트 없음/비대상). 워치독 복구 reload 는 우회한다.
+        function warmLookup(url) {{
+            if (skipCacheOnce || typeof window.__aitPageCacheLookup !== 'function') return null;
+            try {{ return window.__aitPageCacheLookup(url) || null; }} catch (e) {{ return null; }}
+        }}
+        var pendingEarly = {{}};
+        if (!isReload) {{
+            for (var ki = 0; ki < kickUrls.length; ki++) (function(url) {{
+                var p, pcl;
+                if (isPlainWasm(url)) {{
+                    // Chromium wasm: 단일 네이티브 fetch(HTTP 캐시 경유) — 로더가 이 Response 를 그대로 받는다(이중 다운로드 없음).
+                    p = originalFetch(url, {{ method: 'GET' }});
+                }} else if (cacheOK && (pcl = warmLookup(url))) {{
+                    // 페이지 캐시 히트는 버퍼링 없이 스트림 그대로 서빙(재방문 지연 방지). 미스면 버퍼링 다운로드.
+                    p = pcl.then(function(hit) {{ return (hit && hit.ok) ? hit : bufferedFetch(url, MAX_TRIES); }});
+                }} else if (cacheOK && !skipCacheOnce && isStored(url)) {{
+                    p = self.caches.open(CACHE_NAME).then(function(c) {{
+                        return c.match(url, {{ ignoreSearch: true }});
+                    }}).then(function(hit) {{
+                        return (hit && hit.ok) ? markNonNet(hit) : bufferedFetch(url, MAX_TRIES);
+                    }});
+                }} else if (cacheOK) {{
+                    p = bufferedFetch(url, MAX_TRIES);
+                }} else {{
+                    p = originalFetch(url, {{ method: 'GET' }});
+                }}
+                pendingEarly[url] = p.catch(function() {{ delete pendingEarly[url]; return null; }});
+                try {{ console.log('[AIT] cache: early-kick ' + url); }} catch (e) {{}}
+            }})(new URL(kickUrls[ki], location.href).href);
+        }}
+
         window.fetch = function(resource, init) {{
             var url = (typeof resource === 'string') ? new URL(resource, location.href).href : resource.url;
             if (!knownSet[url]) return originalFetch.apply(this, arguments);
+            var pend = pendingEarly[url];
+            if (pend) {{
+                delete pendingEarly[url];
+                // 로더가 취소 시그널을 넘기면(현행 레거시 로더는 미사용) kickoff 는 그것을 반영할 수 없으므로
+                // pending 재사용 대신 실제 인자로 위임해 취소 시맨틱을 보존한다(향후 로더 변경 대비 방어).
+                if (init && init.signal) return originalFetch.apply(this, arguments);
+                var s3 = this, a3 = arguments;
+                try {{ console.log('[AIT] cache: early-join ' + url); }} catch (e) {{}}
+                return pend.then(function(r) {{
+                    return (r && r.ok && !r.bodyUsed) ? r : originalFetch.apply(s3, a3);
+                }});
+            }}
             var self2 = this, args = arguments;
+
+            // Chromium wasm(선시작 안 된 경우 포함): 버퍼링/Cache Storage 없이 네이티브 fetch.
+            if (isPlainWasm(url)) return originalFetch.apply(self2, args);
 
             // 저메모리/무캐시: 버퍼링 없이 원본 스트리밍 fetch(기존 동작, 제품 워치독 방어).
             if (!cacheOK) return originalFetch.apply(self2, args);
 
+            var pcl2 = warmLookup(url);
+            if (pcl2) {{
+                return pcl2.then(function(hit) {{ return (hit && hit.ok) ? hit : bufferedFetch(url, MAX_TRIES); }});
+            }}
+
             // 캐시 우선(skip 플래그면 우회). HIT → 네트워크 없이 서빙(warm reload 순단 원천 차단).
-            if (!skipCacheOnce) {{
+            if (!skipCacheOnce && isStored(url)) {{
                 return self.caches.open(CACHE_NAME).then(function(c) {{
                     return c.match(url, {{ ignoreSearch: true }});
                 }}).then(function(cached) {{
                     if (cached && cached.ok) {{
                         try {{ console.log('[AIT] cache: HIT ' + url); }} catch (e) {{}}
-                        return cached;
+                        return markNonNet(cached);
                     }}
                     try {{ console.log('[AIT] cache: MISS ' + url); }} catch (e) {{}}
                     return bufferedFetch(url, MAX_TRIES);
@@ -289,6 +480,8 @@ namespace AppsInToss.Editor.Package
             }}
             return bufferedFetch(url, MAX_TRIES);
         }};
+        // 우리 래퍼 표식(index.html 의 wasm 경로가 vConsole 류 몽키패치와 구분하기 위함).
+        try {{ window.fetch.__aitWrapper = true; }} catch (e) {{}}
     }})();
     </script>";
         }

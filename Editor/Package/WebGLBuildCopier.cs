@@ -43,8 +43,11 @@ namespace AppsInToss.Editor.Package
         /// 동일한 최종 상태를 보장합니다.
         /// </summary>
         /// <returns>성공 시 SUCCEED, 실패 시 해당 에러 코드</returns>
-        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, AITBuildProfile profile = null)
+        internal static AITConvertCore.AITExportError CopyWebGLToPublic(string webglPath, string buildProjectPath, out string inlinePrefetchJson, AITBuildProfile profile = null, bool fastBuild = false)
         {
+            // prefetch 인라인 카탈로그는 성공 경로(WriteManifest 산출)에서만 채워짐. 그 외 경로는 null 유지.
+            inlinePrefetchJson = null;
+
             // 프로필이 없으면 기본 프로필 사용
             if (profile == null)
             {
@@ -144,6 +147,31 @@ namespace AppsInToss.Editor.Package
                     sentryCapture: false
                 );
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
+            }
+
+            // Early Fetch 캐시명(BuildDataCacheName)의 콘텐츠 버스팅 기준 크기는 재인코딩 훅 실행 '전'에
+            // 스냅숏한다. brotli q11 재인코딩은 콘텐츠가 그대로여도 산출 .br 바이트 크기를 바꾸므로, 훅
+            // 온/오프 토글(동일 버전 재배포·카나리 등)만으로 캐시명이 바뀌면 레거시 캐싱 스크립트의
+            // 스테일-스윕(ait-unity- 접두 삭제)이 콘텐츠 불변 빌드까지 구 캐시로 오판해 콜드 부트마다
+            // 불필요한 전체 재다운로드를 유발한다. 재인코딩 전(Unity 자체 출력) 크기는 동일 콘텐츠에 대해
+            // 결정적이므로 이 스냅숏이 캐시 버스팅 기준으로는 더 안정적이다.
+            // (totalBytes 로그·AITWarmManifestEmitter·플레이스홀더 치환 등 다른 모든 소비자는 이 스냅숏과
+            // 무관하게 buildSrc 를 직접 재읽어 항상 실제(재인코딩 후) 바이트를 사용하므로 정확성 영향 없음.)
+            long cacheDataSize = FileSizeSafe(Path.Combine(buildSrc, dataFile));
+            long cacheWasmSize = string.IsNullOrEmpty(wasmFile) ? 0L : FileSizeSafe(Path.Combine(buildSrc, wasmFile));
+
+            // ── brotli .br q11 in-place 재인코딩 (자동: 빠른 빌드가 아니면 ON) ──
+            // Unity 내장 brotli(~q5)를 외부 q11 로 다시 눌러 data/wasm 을 더 줄인다(동일 파일명 유지).
+            // 반드시 이 지점 — 필수 파일 검증 직후, 그리고 buildSrc→buildDest 복사·totalBytes 로그·
+            // early-fetch kickUrls·플레이스홀더 치환·AITWarmManifestEmitter/ValidatePlaceholderSubstitution
+            // (파일 크기 읽는 모든 단계)보다 앞 — 에서 buildSrc 를 in-place 로 갱신해야 이후 복사본과
+            // 그 크기 읽기들이 실제 바이트와 일치한다(캐시명은 위 스냅숏을 쓰므로 예외).
+            // 훅이 뒤로 가면 totalBytes 로그·warm manifest 가 재인코딩 전 크기로 계산돼 실 바이트와 어긋난다.
+            // 대상은 buildSrc 최상위 .br 파일만이며 .unityweb(감지 마커)은 AITBrotliCompressor 가 제외한다.
+            if (EffectiveBrotliRecompress(config, fastBuild))
+            {
+                Debug.Log("[AIT] brotli q11 재인코딩 활성 — buildSrc 의 .br 파일을 in-place 재인코딩합니다.");
+                AITBrotliCompressor.RecompressBrFilesInPlace(buildSrc);
             }
 
             // 필수 파일만 선별 복사 (변경분만 — 크기/내용이 같으면 스킵해 초 단위 I/O를 줄인다)
@@ -378,10 +406,17 @@ namespace AppsInToss.Editor.Package
                 .Replace("%AIT_ICON_URL%", AITJsStringEscaper.EscapeSingleQuoted(config.iconUrl ?? ""))
                 .Replace("%AIT_DISPLAY_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.displayName ?? ""))
                 .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor ?? "#3182f6"))
+                // 번들 마킹 — 이 SDK 변형(perf 채널 등) 식별자를 in-page JS(window.AITLoading.buildVariant)에 주입
+                .Replace("%AIT_BUILD_VARIANT%", AITJsStringEscaper.EscapeSingleQuoted(AITBuildVariant.Value))
                 // ── 코드 문맥(값이 그대로 JS 로 전개) — 이스케이프하면 안 된다 ──
                 .Replace("%AIT_DEVICE_PIXEL_RATIO%", config.devicePixelRatio.ToString())
-                // Early Fetch 스크립트 (로딩 성능 개선 + 레거시 warm-reload Cache-Storage 워밍)
-                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, wasmFile, buildSrc, PlayerSettings.bundleVersion));
+                // 페이지 캐시 인터셉터 (재방문 서빙, opt-in). index.html 에서 Early Fetch 보다 '앞'에 위치해야
+                // priorFetch=native 캡처 → 캐시 히트가 Early Fetch 소진과 무관하게 단락됨.
+                // 각 토큰은 독립 치환이므로 치환 순서는 출력 위치를 바꾸지 않음(물리 위치는 index.html 이 보장).
+                .Replace("%AIT_PAGE_CACHE_SCRIPT%", AITPageCacheEmitter.GenerateInterceptorScript(config, dataFile, frameworkFile, wasmFile))
+                // Early Fetch 스크립트 (로딩 성능 개선 + 레거시 warm-reload Cache-Storage 워밍).
+                // framework/loader 도 함께 조기 요청해 HTTP 캐시를 워밍한다.
+                .Replace("%AIT_EARLY_FETCH_SCRIPT%", GenerateEarlyFetchScript(dataFile, frameworkFile, wasmFile, loaderFile, PlayerSettings.bundleVersion, cacheDataSize, cacheWasmSize));
 
             // 로딩 화면 삽입 (%AIT_LOADING_SCREEN% 플레이스홀더)
             string loadingContent = "";
@@ -420,9 +455,46 @@ namespace AppsInToss.Editor.Package
                 return AITConvertCore.AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED;
             }
 
+            // Build 파일 복사 및 index.html 치환 완료 후 warm manifest 를 산출합니다.
+            // [destPath = publicPath] 명세 원문은 'index.html 이 놓이는 web 루트(buildProjectPath)' 라 기술하나,
+            // Build/* 파일은 publicPath(buildProjectPath/public/)에 복사되므로 wireBytes 계산이
+            // buildProjectPath 기준이면 FileInfo.Length 가 실패합니다. publicPath 를 전달해야
+            // Path.Combine(destPath, "Build", file) 이 실제 파일 위치와 일치합니다.
+            // Vite 가 public/ 을 정적 루트로 서빙하므로 호스트는 /ait-warm-manifest.json 으로 취득합니다.
+            inlinePrefetchJson = AITWarmManifestEmitter.WriteManifest(config, publicPath, loaderFile, dataFile, frameworkFile, wasmFile, symbolsFile);
+            AITWarmPageEmitter.WritePage(config, publicPath);
+
             Debug.Log("[AIT] Unity WebGL 빌드 복사 완료");
             Debug.Log("[AIT]   - index.html → 프로젝트 루트");
             Debug.Log("[AIT]   - Build, TemplateData, Runtime → public/");
+
+            // 네이티브 에셋 소스 레버 실효값 빌드 요약 + 침묵 열화(silent degradation) 경고.
+            // pageCache 가 ON 일 때만 인터셉터에 신호가 주입되므로 AND 게이트.
+            bool pageCacheEffective = config.pageCache < 0
+                ? AITDefaultSettings.GetDefaultPageCache()
+                : config.pageCache == 1;
+            bool nativeSourceEffective = config.nativeAssetSource < 0
+                ? AITDefaultSettings.GetDefaultNativeAssetSource()
+                : config.nativeAssetSource == 1;
+            if (pageCacheEffective && nativeSourceEffective)
+            {
+                Debug.Log("[AIT]   - 네이티브 에셋 소스 우선: 활성 (호스트 window.__aitResolveAsset 주입 시 native→CacheStorage→network)");
+
+                // 네이티브가 프리페치 대상 목록을 얻으려면 ait-warm-manifest.json 이 필요하다.
+                // warmManifest 가 OFF 면 매니페스트가 없어 네이티브 우선 경로가 사실상 무력화(폴백)된다 → 경고.
+                bool warmManifestEffective = config.warmManifest < 0
+                    ? AITDefaultSettings.GetDefaultWarmManifest()
+                    : config.warmManifest == 1;
+                if (!warmManifestEffective)
+                {
+                    Debug.LogWarning(
+                        "[AIT] 네이티브 에셋 소스가 활성이지만 Warm Manifest 가 비활성입니다. " +
+                        "호스트 네이티브가 프리페치 대상 목록(ait-warm-manifest.json)을 얻을 수 없어 " +
+                        "네이티브 우선 경로가 사실상 동작하지 않고 CacheStorage/network 로 폴백됩니다. " +
+                        "Warm Manifest 를 활성화하세요."
+                    );
+                }
+            }
 
             return AITConvertCore.AITExportError.SUCCEED;
         }
@@ -481,6 +553,38 @@ namespace AppsInToss.Editor.Package
 
             File.Copy(srcPath, destPath, true);
             UnityUtil.EnsureFileReadable(destPath);
+            return true;
+        }
+
+        /// <summary>
+        /// 텍스트를 대상 경로에 쓰되, 이미 같은 내용이 들어 있으면 쓰기를 스킵합니다
+        /// (<see cref="CopyFileIfChanged"/>의 텍스트 산출물 판(版)).
+        ///
+        /// public/ 안에 파일을 산출하는 코드는 반드시 이 헬퍼를 써야 한다:
+        /// <see cref="Package.PackageBuildStateMarker.ComputePublicManifestHash"/>가 public/ 트리를
+        /// (경로, 길이, mtimeTicks)로만 해시하며 "mtime 불변 == 내용 불변"을 전제하기 때문이다
+        /// (PackageBuildStateMarker 클래스 주석 참조). 내용이 같은데도 무조건 재작성하면 mtime이
+        /// 매번 전진해 패키징 스킵이 영원히 발동하지 않는다.
+        ///
+        /// 인코딩은 호출부가 넘긴 것을 그대로 쓴다(BOM 유무 등 기존 산출물과 byte-identical 유지).
+        /// 비교는 <see cref="File.ReadAllText(string)"/>의 디코딩 결과로 하므로 BOM 차이에 영향받지 않는다.
+        /// </summary>
+        /// <returns>실제로 썼으면 true, 내용이 같아 스킵했으면 false</returns>
+        internal static bool WriteAllTextIfChanged(string destPath, string content, System.Text.Encoding encoding)
+        {
+            try
+            {
+                if (File.Exists(destPath) && File.ReadAllText(destPath) == content)
+                {
+                    return false;
+                }
+            }
+            catch (System.Exception)
+            {
+                // 비교 실패(락·인코딩 이상 등)는 fail-open — 그냥 새로 쓴다.
+            }
+
+            File.WriteAllText(destPath, content, encoding);
             return true;
         }
 
@@ -697,6 +801,29 @@ namespace AppsInToss.Editor.Package
             return config.playerPrefsPersistence >= 0
                 ? config.playerPrefsPersistence == 1
                 : AITDefaultSettings.GetDefaultPlayerPrefsPersistence();
+        }
+
+        /// <summary>
+        /// brotli q11 재인코딩 실효 활성 여부. 우선순위: AIT_BROTLI_RECOMPRESS 환경 변수 &gt;
+        /// config.brotliRecompressMode(0 끔 / 1 켬) &gt; 레거시 config.brotliRecompress==true &gt; 자동(-1 → 빠른 빌드가 아니면 ON).
+        /// 환경 변수 값은 1/true=활성, 0/false=비활성(AIT_COMPRESSION_FORMAT 오버라이드와 동일 패턴),
+        /// 이상하면 경고 후 설정값으로 폴백. config==null 이면 안전하게 false.
+        /// </summary>
+        internal static bool EffectiveBrotliRecompress(AITEditorScriptObject config, bool fastBuild = false)
+        {
+            string env = System.Environment.GetEnvironmentVariable("AIT_BROTLI_RECOMPRESS");
+            if (!string.IsNullOrEmpty(env))
+            {
+                string v = env.Trim().ToLowerInvariant();
+                if (v == "1" || v == "true") return true;
+                if (v == "0" || v == "false") return false;
+                Debug.LogWarning($"[AIT] AIT_BROTLI_RECOMPRESS 환경 변수 값이 올바르지 않습니다: '{env}' (1/0/true/false 필요) — 설정값 사용");
+            }
+
+            if (config == null) return false;
+            if (config.brotliRecompressMode >= 0) return config.brotliRecompressMode == 1;
+            if (config.brotliRecompress) return true;
+            return !fastBuild;
         }
 
     }

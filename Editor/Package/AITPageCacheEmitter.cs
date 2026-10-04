@@ -275,7 +275,7 @@ namespace AppsInToss.Editor.Package
             window.__aitNativeSourceEnabled = NATIVE_SOURCE;
 
             // 통계 훅(perf CI/검증용, 운영 무영향).
-            window.__aitCacheStats = { hits: [], misses: [], puts: [], errors: [], workerPuts: [] };
+            window.__aitCacheStats = { hits: [], misses: [], puts: [], errors: [] };
             // 레거시(2021/2022) early-fetch 가 같은 바이트를 별도 캐시에 한 번 더 저장하지 않도록 노출하는 판정 훅.
             // 이 URL 은 아래 cacheFirst 가 put 하므로(통계 puts 에도 기록됨) 호출자는 중복 저장을 건너뛴다.
             window.__aitPageCacheCovers = function (url) {
@@ -584,82 +584,6 @@ namespace AppsInToss.Editor.Package
                 } catch (e) { return null; }
             };
 
-            // ---- 워커 put: 본문 읽기와 CacheStorage 쓰기를 메인 스레드 밖에서 한다 ----
-            // 스트림/버퍼 put 은 어느 쪽이든 메인 스레드 태스크가 필요해, 첫 프레임 뒤 게임 루프가 메인 스레드를 채우면 수십 초 밀린다
-            // (6000.0 CI 실측 43~65s). 응답의 clone 본문(ReadableStream)을 전용 워커로 transfer 하면 워커가 직접 읽어
-            // 디코드된 본문을 put 한다(네트워크 추가 0, HTTP 캐시 헤더와 무관). ReadableStream transfer·Worker 를 못 쓰는 환경
-            // (WebKit 일부, CSP 로 blob 워커 차단 등)은 워커 준비 확인 단계에서 걸러 페이지 안 arrayBuffer put 으로 폴백한다.
-            var WORKER_READY_MS = 3000;
-            var putWorker = null, putWorkerState = 0, putWorkerWaiters = [], putJobSeq = 0, putJobs = {}; // state: 0 미시작 1 준비중 2 준비됨 3 사용불가
-            function workerPutMain() {
-                self.onmessage = function (e) {
-                    var d = e.data;
-                    function done(ok, err) { self.postMessage({ id: d.id, ok: ok, err: err ? String(err && err.message || err) : '' }); }
-                    try {
-                        new Response(d.stream).arrayBuffer().then(function (buf) {
-                            return caches.open(d.cacheName).then(function (c) {
-                                return c.put(d.url, new Response(buf, { status: 200, headers: { 'Content-Type': d.ct, 'Content-Length': String(buf.byteLength) } }));
-                            });
-                        }).then(function () { done(true); }, function (err) { done(false, err); });
-                    } catch (err) { done(false, err); }
-                };
-                self.postMessage({ ready: true });
-            }
-            function settlePutWorker(ok) {
-                if (putWorkerState === 2 || putWorkerState === 3) { return; }
-                putWorkerState = ok ? 2 : 3;
-                if (!ok) {
-                    try { if (putWorker) { putWorker.terminate(); } } catch (e) {}
-                    putWorker = null;
-                    var pending = putJobs; putJobs = {};
-                    for (var id in pending) { pending[id](false, 'worker lost'); }
-                }
-                var ws = putWorkerWaiters; putWorkerWaiters = [];
-                for (var i = 0; i < ws.length; i++) { ws[i](ok); }
-            }
-            // 워커가 준비되면 cb(true), 불가하면 cb(false). Worker 가 없는 환경은 동기로 cb(false).
-            function whenPutWorkerReady(cb) {
-                if (putWorkerState === 2) { cb(true); return; }
-                if (putWorkerState === 3) { cb(false); return; }
-                putWorkerWaiters.push(cb);
-                if (putWorkerState === 1) { return; }
-                putWorkerState = 1;
-                try {
-                    var blobUrl = URL.createObjectURL(new Blob(['(' + workerPutMain.toString() + ')()'], { type: 'text/javascript' }));
-                    var w = new Worker(blobUrl);
-                    putWorker = w;
-                    w.onmessage = function (e) {
-                        var m = e.data || {};
-                        if (m.ready) { settlePutWorker(true); return; }
-                        var job = putJobs[m.id]; delete putJobs[m.id];
-                        if (job) { job(m.ok === true, m.err); }
-                    };
-                    w.onerror = function () { settlePutWorker(false); };
-                    w.onmessageerror = function () { settlePutWorker(false); };
-                    setTimeout(function () { settlePutWorker(false); }, WORKER_READY_MS);
-                } catch (e) { putWorkerState = 1; settlePutWorker(false); }
-            }
-            // 이 환경에서 워커 put 을 시도할 수 있는가(동기 판정). false 면 호출자가 곧바로 페이지 put 한다.
-            function workerPutPossible() {
-                try {
-                    return putWorkerState !== 3 && !window.__aitDisableWorkerPut && BACKEND_KIND === 'caches'
-                        && typeof Worker === 'function' && typeof Blob === 'function' && typeof ReadableStream === 'function'
-                        && !!window.URL && typeof URL.createObjectURL === 'function';
-                } catch (e) { return false; }
-            }
-            // clone 본문을 워커로 넘겨 저장한다. cb(true) 저장 성공, cb(false, err) 저장 실패,
-            // cb(null) 워커를 못 써서 본문을 넘기지 않았다(호출자가 페이지 put 으로 폴백).
-            function workerPut(url, ct, body, cb) {
-                whenPutWorkerReady(function (ready) {
-                    if (!ready || !putWorker) { cb(null); return; }
-                    var id = ++putJobSeq;
-                    try {
-                        putJobs[id] = cb;
-                        putWorker.postMessage({ id: id, url: url, cacheName: CACHE_NAME, ct: ct, stream: body }, [body]);
-                    } catch (e) { delete putJobs[id]; cb(null); } // transfer 불가(DataCloneError) → 본문은 그대로 남아 있다.
-                });
-            }
-
             // cache-first 체인: CacheStorage/IndexedDB 히트 → 단락, 미스 → priorFetch 후 비차단 put.
             // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
             function cacheFirst(resource, init, url) {
@@ -706,27 +630,18 @@ namespace AppsInToss.Editor.Package
                                     // 디코드된 본문이므로 Content-Encoding/Length 는 싣지 않는다(레거시 완결 버퍼 put 과 같은 계약).
                                     var ct = 'application/octet-stream';
                                     try { ct = clone.headers.get('Content-Type') || ct; } catch (e) {}
-                                    function putOk() { putDone = true; clearTimeout(putTimer); window.__aitCacheStats.puts.push(url); markPopulated(url); }
-                                    function putFail(e) {
-                                        putDone = true; clearTimeout(putTimer);
-                                        // QuotaExceededError 포함 모든 put 실패 흡수(부팅 무영향).
-                                        // 공간 회복은 다음 부팅의 allowlist 정리에 위임.
-                                        window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
-                                    }
-                                    function pagePut() {
-                                        getCache().then(function (c) {
-                                            return clone.arrayBuffer().then(function (buf) {
-                                                return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
-                                            });
-                                        }).then(putOk).catch(putFail);
-                                    }
-                                    if (workerPutPossible() && clone.body) {
-                                        workerPut(url, ct, clone.body, function (ok, err) {
-                                            if (ok === null) { pagePut(); }
-                                            else if (ok) { window.__aitCacheStats.workerPuts.push(url); putOk(); }
-                                            else { putFail(err); }
+                                    getCache().then(function (c) {
+                                        return clone.arrayBuffer().then(function (buf) {
+                                            return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
                                         });
-                                    } else { pagePut(); }
+                                    })
+                                        .then(function () { putDone = true; clearTimeout(putTimer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
+                                        .catch(function (e) {
+                                            putDone = true; clearTimeout(putTimer);
+                                            // QuotaExceededError 포함 모든 put 실패 흡수(부팅 무영향).
+                                            // 공간 회복은 다음 부팅의 allowlist 정리에 위임.
+                                            window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
+                                        });
                                 }
                             } catch (e) {
                                 window.__aitCacheStats.errors.push('clone ' + url + ': ' + (e && e.message || e));

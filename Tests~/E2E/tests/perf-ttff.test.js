@@ -197,10 +197,20 @@ const TTFF_INIT_SCRIPT = `
         return origCreateBuffer.apply(this, arguments);
       };
     }
-    if (AC && AC.prototype.createMediaElementSource) {
-      var origMes = AC.prototype.createMediaElementSource;
-      AC.prototype.createMediaElementSource = function () { window.__aitAudioMediaEls++; return origMes.apply(this, arguments); };
-    }
+    // createMediaElementSource 는 BaseAudioContext 가 아니라 AudioContext(webkit 접두 포함) 프로토타입에 있다.
+    // BaseAudioContext 만 보면 래퍼가 안 붙어 압축 재생(media element) 경로가 항상 0 으로 찍힌다.
+    var mesSeen = [];
+    [window.AudioContext, window.webkitAudioContext, AC].forEach(function (C) {
+      try {
+        var P = C && C.prototype;
+        if (!P || mesSeen.indexOf(P) >= 0 || typeof P.createMediaElementSource !== 'function' || P.createMediaElementSource.__aitWrapped) return;
+        mesSeen.push(P);
+        var origMes = P.createMediaElementSource;
+        var wrappedMes = function () { window.__aitAudioMediaEls++; return origMes.apply(this, arguments); };
+        wrappedMes.__aitWrapped = true;
+        P.createMediaElementSource = wrappedMes;
+      } catch (e) {}
+    });
   } catch (e) { /* 오디오 API 미지원 환경 — 계측만 생략 */ }
   // wasm 힙 크기: 오디오 로그 시점의 메모리 규모(압축 재생 전환의 효과 비교용). Unity 인스턴스 전역에 기대지 않고 Memory 생성자를 감싼다.
   window.__aitWasmMemories = [];
@@ -214,6 +224,14 @@ const TTFF_INIT_SCRIPT = `
       };
       WrappedMemory.prototype = OrigMemory.prototype;
       WebAssembly.Memory = WrappedMemory;
+      // 생성자를 거치지 않는 경로(모듈이 직접 만든 메모리를 export 로 받는 경우)는 grow 호출에서 잡는다.
+      var origGrowH = OrigMemory.prototype.grow;
+      if (typeof origGrowH === 'function') {
+        OrigMemory.prototype.grow = function () {
+          try { if (window.__aitWasmMemories.indexOf(this) < 0) window.__aitWasmMemories.push(this); } catch (e) {}
+          return origGrowH.apply(this, arguments);
+        };
+      }
     }
   } catch (e) { /* 계측만 생략 */ }
   // 로딩 오버레이가 사라진 시각. 첫 draw 뒤에도 오버레이가 덮고 있으면 사용자는 게임 화면을 보지 못한다.
@@ -437,7 +455,19 @@ async function logAudioDecode(page, label, consoleLines) {
   const audio = await page.evaluate(() => ({
     pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls,
     calls: window.__aitAudioDecodeCalls || 0, inBytes: window.__aitAudioDecodeInBytes || 0, errors: window.__aitAudioDecodeErrors || 0,
-    heap: (window.__aitWasmMemories || []).reduce((mx, m) => { try { return Math.max(mx, m.buffer.byteLength); } catch (e) { return mx; } }, 0),
+    heap: (() => {
+      let mx = (window.__aitWasmMemories || []).reduce((a, m) => { try { return Math.max(a, m.buffer.byteLength); } catch (e) { return a; } }, 0);
+      // 폴백: Unity 인스턴스 Module 의 힙/메모리 객체.
+      try {
+        const M = window.unityInstance && window.unityInstance.Module;
+        if (M) {
+          if (M.wasmMemory && M.wasmMemory.buffer) mx = Math.max(mx, M.wasmMemory.buffer.byteLength);
+          const h = M.HEAPU8 || M.HEAP8;
+          if (h && h.buffer) mx = Math.max(mx, h.buffer.byteLength);
+        }
+      } catch (e) { /* 폴백 실패 무시 */ }
+      return mx;
+    })(),
   })).catch(() => null);
   if (audio && typeof audio.pcm === 'number') {
     console.log(`  오디오 디코드${tag}: PCM=${(audio.pcm / 1048576).toFixed(2)}MB mediaElement=${audio.media}` +

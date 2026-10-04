@@ -158,11 +158,19 @@ public class AITPerfFlagsTests
                      "\"audioForceCompressed\":false",
                      "\"audioForceCompressedMinSeconds\":10",
                      "\"unityweb\":false",
+                     "\"audioPatched\":false",
                      "\"raw\":{",
                  })
         {
             StringAssert.Contains(expected, json);
         }
+    }
+
+    [Test]
+    public void ToJson_AudioPatched_ReflectsArgument()
+    {
+        StringAssert.Contains("\"audioPatched\":true", AITPerfFlags.ToJson(_config, -1, false, true));
+        StringAssert.Contains("\"audioPatched\":false", AITPerfFlags.ToJson(_config, -1, false, false));
     }
 
     [Test]

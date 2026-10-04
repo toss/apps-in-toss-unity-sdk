@@ -458,8 +458,12 @@ public class AITFrameworkPatcherTests
         int n = AITFrameworkPatcher.Apply(_tempDir, NewConfig(1), renames);
 
         Assert.AreEqual(1, n);
-        string expectedName = AITPatchedFileNaming.GetPatchedName(name);
-        Assert.AreEqual("abc123.aitp1.framework.js" + (kind == "none" ? string.Empty : "." + kind), expectedName);
+        string expectedName = renames[name];
+        StringAssert.IsMatch(
+            @"^abc123\.aitp1-[0-9a-f]{8}\.framework\.js" + (kind == "none" ? string.Empty : "\\." + kind) + "$",
+            expectedName);
+        Assert.IsTrue(AITPatchedFileNaming.TryParseConfigHash(expectedName, out _), "설정 해시가 이름에 들어간다");
+        Assert.IsTrue(AITFrameworkPatcher.LastApplyClipMetaApplied, "clip-meta 그룹이 적용됐음을 기록한다");
         Assert.IsFalse(File.Exists(Path.Combine(_tempDir, name)), "원본 이름은 남지 않아야 한다");
         Assert.IsTrue(File.Exists(Path.Combine(_tempDir, expectedName)));
         Assert.AreEqual(expectedName, renames[name]);
@@ -476,11 +480,35 @@ public class AITFrameworkPatcherTests
         RequireNode(out string node);
         string name = WriteFramework(node, "x.framework.js", "none", SyntheticFramework());
 
-        int n = AITFrameworkPatcher.Apply(_tempDir, NewConfig(-1), new Dictionary<string, string>());
-
-        Assert.AreEqual(1, n);
-        string patched = File.ReadAllText(Path.Combine(_tempDir, AITPatchedFileNaming.GetPatchedName(name)));
+        var renames = new Dictionary<string, string>();
+        Assert.AreEqual(1, AITFrameworkPatcher.Apply(_tempDir, NewConfig(-1), renames));
+        string patched = File.ReadAllText(Path.Combine(_tempDir, renames[name]));
         StringAssert.Contains("WEBAudio.aitCfg={force:0,minSec:10};", patched, "자동(-1)은 정확성 수정만 적용하고 강제 압축 재생은 꺼 둔다");
+    }
+
+    [Test]
+    public void Apply_ConfigChange_ChangesPatchedName()
+    {
+        RequireNode(out string node);
+        string source = SyntheticFramework();
+        string name = WriteFramework(node, "c.framework.js", "none", source);
+        var forced = new Dictionary<string, string>();
+        Assert.AreEqual(1, AITFrameworkPatcher.Apply(_tempDir, NewConfig(1), forced));
+
+        File.Delete(Path.Combine(_tempDir, forced[name]));
+        WriteFramework(node, "c.framework.js", "none", source);
+        var auto = new Dictionary<string, string>();
+        Assert.AreEqual(1, AITFrameworkPatcher.Apply(_tempDir, NewConfig(-1), auto));
+
+        Assert.AreNotEqual(forced[name], auto[name], "강제 압축 여부가 다르면 패치 바이트가 달라지므로 이름도 달라야 한다");
+    }
+
+    [Test]
+    public void Apply_NothingApplied_ReportsClipMetaNotApplied()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "n.framework.js"), "var stock=1;");
+        AITFrameworkPatcher.Apply(_tempDir, NewConfig(0), null);
+        Assert.IsFalse(AITFrameworkPatcher.LastApplyClipMetaApplied);
     }
 
     [Test]

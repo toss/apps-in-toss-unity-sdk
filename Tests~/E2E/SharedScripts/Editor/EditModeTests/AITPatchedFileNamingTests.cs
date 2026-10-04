@@ -77,6 +77,54 @@ public class AITPatchedFileNamingTests
         Assert.AreEqual("h.aitp3.framework.js.br", AITPatchedFileNaming.GetPatchedName(once, 3), "다른 버전이면 접미사를 교체한다");
     }
 
+    [Test]
+    public void ComputeConfigHash_IsStable8Hex_AndSensitiveToEachInput()
+    {
+        string a = AITPatchedFileNaming.ComputeConfigHash("1", "10", "payload", "g1,g2");
+        StringAssert.IsMatch("^[0-9a-f]{8}$", a);
+        Assert.AreEqual(a, AITPatchedFileNaming.ComputeConfigHash("1", "10", "payload", "g1,g2"));
+        Assert.AreNotEqual(a, AITPatchedFileNaming.ComputeConfigHash("0", "10", "payload", "g1,g2"));
+        Assert.AreNotEqual(a, AITPatchedFileNaming.ComputeConfigHash("1", "12.5", "payload", "g1,g2"));
+        Assert.AreNotEqual(a, AITPatchedFileNaming.ComputeConfigHash("1", "10", "payload2", "g1,g2"));
+        Assert.AreNotEqual(a, AITPatchedFileNaming.ComputeConfigHash("1", "10", "payload", "g1"));
+        Assert.AreNotEqual(
+            AITPatchedFileNaming.ComputeConfigHash("ab", "c"),
+            AITPatchedFileNaming.ComputeConfigHash("a", "bc"), "입력 경계가 모호하지 않다");
+    }
+
+    [Test]
+    public void GetPatchedName_WithConfigHash_RoundTripsAndParses()
+    {
+        string patched = AITPatchedFileNaming.GetPatchedName("abc.framework.js.br", 1, "1a2b3c4d");
+        Assert.AreEqual("abc.aitp1-1a2b3c4d.framework.js.br", patched);
+        Assert.AreEqual("abc.framework.js.br", AITPatchedFileNaming.GetOriginalName(patched));
+        Assert.IsTrue(AITPatchedFileNaming.IsPatched(patched));
+        Assert.IsTrue(AITPatchedFileNaming.TryParsePatchVersion(patched, out int v));
+        Assert.AreEqual(1, v);
+        Assert.IsTrue(AITPatchedFileNaming.TryParseConfigHash("Build/" + patched, out string hash));
+        Assert.AreEqual("1a2b3c4d", hash);
+        Assert.AreEqual(patched, AITPatchedFileNaming.GetPatchedName(patched, 1, "1a2b3c4d"), "멱등");
+        Assert.AreEqual("abc.aitp1-99999999.framework.js.br", AITPatchedFileNaming.GetPatchedName(patched, 1, "99999999"), "해시 교체");
+        Assert.AreEqual("abc.aitp1.framework.js.br", AITPatchedFileNaming.GetPatchedName(patched, 1), "해시 없이 다시 부르면 옛 형식");
+    }
+
+    [Test]
+    public void LegacyPlainSuffix_StillParses()
+    {
+        Assert.IsTrue(AITPatchedFileNaming.TryParsePatchVersion("h.aitp3.data.br", out int v));
+        Assert.AreEqual(3, v);
+        Assert.IsFalse(AITPatchedFileNaming.TryParseConfigHash("h.aitp3.data.br", out _));
+        Assert.AreEqual("h.data.br", AITPatchedFileNaming.GetOriginalName("h.aitp3.data.br"));
+        Assert.IsFalse(AITPatchedFileNaming.IsPatched("h.aitp1-XYZ.data"), "해시 형식이 아니면 접미사가 아니다");
+    }
+
+    [Test]
+    public void GetPatchedName_Throws_OnInvalidConfigHash()
+    {
+        Assert.Throws<ArgumentException>(() => AITPatchedFileNaming.GetPatchedName("a.data", 1, "XYZ"));
+        Assert.Throws<ArgumentException>(() => AITPatchedFileNaming.GetPatchedName("a.data", 1, "1A2B3C4D"));
+    }
+
     [TestCase("abc.framework.js.br")]
     [TestCase("abc.loader.js")]
     [TestCase("abc.data.br")]

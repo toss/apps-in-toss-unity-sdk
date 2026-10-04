@@ -330,6 +330,7 @@ namespace AppsInToss.Editor
         /// <returns>패치를 적용한 파일 수.</returns>
         internal static int Apply(string buildDir, AITEditorScriptObject config, IDictionary<string, string> renames = null)
         {
+            LastApplyClipMetaApplied = false;
             try
             {
                 return ApplyCore(buildDir, config, renames);
@@ -340,6 +341,13 @@ namespace AppsInToss.Editor
                 return 0;
             }
         }
+
+        /// <summary>
+        /// 가장 최근 <see cref="Apply"/> 에서 압축 클립 메타(compressed-clip-meta) 그룹이 하나라도 적용됐는지.
+        /// 이 패치가 없는 빌드에서 압축 재생 경로를 타면 clip.length 가 0 이 되므로, 빌드 후 단계가
+        /// __AIT_PERF.audioPatched 로 런타임에 알린다.
+        /// </summary>
+        internal static bool LastApplyClipMetaApplied { get; private set; }
 
         private static int ApplyCore(string buildDir, AITEditorScriptObject config, IDictionary<string, string> renames)
         {
@@ -447,8 +455,14 @@ namespace AppsInToss.Editor
 
             if (outcome.AlreadyPatched)
             {
+                LastApplyClipMetaApplied = true; // 이전 패치 마커가 이미 있다.
                 Debug.Log($"[AIT-Audio] {name}: 이미 패치됨 — 건너뜁니다.");
                 return false;
+            }
+
+            if (outcome.Applied.Contains(GroupClipMeta))
+            {
+                LastApplyClipMetaApplied = true;
             }
 
             if (outcome.Applied.Count == 0)
@@ -480,7 +494,10 @@ namespace AppsInToss.Editor
             }
 
             // 새 바이트를 patch-set 이름으로 먼저 쓰고 나서 원본을 지운다 — 중간에 실패해도 원본은 남는다.
-            string newName = AITPatchedFileNaming.GetPatchedName(name);
+            // 설정에 따라 패치 바이트가 달라지므로(강제 여부·최소 길이·payload·적용 그룹) 그 입력의 해시를 이름에 넣는다.
+            string configHash = AITPatchedFileNaming.ComputeConfigHash(
+                force ? "1" : "0", FormatSeconds(minSeconds), payload, string.Join(",", outcome.Applied));
+            string newName = AITPatchedFileNaming.GetPatchedName(name, AITPatchedFileNaming.PatchSetVersion, configHash);
             string dest = Path.Combine(buildDir, newName);
             File.Copy(encoded, dest, true);
             if (!string.Equals(newName, name, StringComparison.Ordinal))

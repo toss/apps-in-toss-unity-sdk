@@ -117,11 +117,14 @@ public class AITStreamingAudioTests
 
     // DecideLoadMode — 압축 대상은 stream 을 꺼야 엔진이 압축 재생(mode 512)을 고른다(stream 이 compressed 보다 우선).
     // stream=false 일 때는 항상 compressed=true 여야 PCM 전개 회귀가 없다.
-    [TestCase(true, false, true)]
-    [TestCase(false, true, false)]
-    public void DecideLoadMode_CompressedEntryDisablesStream(bool entryCompressed, bool expectStream, bool expectCompressed)
+    // framework 패치가 적용되지 않은 빌드(unityweb, 강제 압축 재생 0, Node 없음, 앵커 불일치)는 압축 경로를 쓰지 않는다.
+    [TestCase(true, true, false, true)]
+    [TestCase(false, true, true, false)]
+    [TestCase(true, false, true, false)]
+    [TestCase(false, false, true, false)]
+    public void DecideLoadMode_CompressedEntryDisablesStream(bool entryCompressed, bool patched, bool expectStream, bool expectCompressed)
     {
-        AITStreamingAudio.DecideLoadMode(entryCompressed, out bool stream, out bool compressed);
+        AITStreamingAudio.DecideLoadMode(entryCompressed, patched, out bool stream, out bool compressed);
         Assert.AreEqual(expectStream, stream);
         Assert.AreEqual(expectCompressed, compressed);
         Assert.IsTrue(stream || compressed, "stream=false 이면 compressed=true 여야 한다");

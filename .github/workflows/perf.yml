@@ -1,5 +1,5 @@
 name: Perf (WebGL load-time TTFF)
-run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}${{ inputs.pair_run_id && format(' [pair #{0}]', inputs.pair_run_id) || '' }}"
+run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}${{ inputs.variant && format(' [variant={0}]', inputs.variant) || '' }}${{ inputs.pair_run_id && format(' [pair #{0}]', inputs.pair_run_id) || '' }}"
 
 # WebGL 로드타임 최적화 레버(L2~L12) PR별 효과(Δ)를 격리 측정하는 perf CI.
 #
@@ -29,6 +29,7 @@ on:
       - 'Tests~/E2E/tests/perf-ttff.test.js'
       - 'Tests~/E2E/tests/playwright.perf.config.ts'
       - 'Tests~/E2E/SharedScripts/Editor/HeavyBuildRunner.cs'
+      - 'Tests~/E2E/SharedScripts/Editor/HeavyBuildVariants.cs'
       - '.github/workflows/perf.yml'
       - '.github/workflows/unity-build.yml'
       - '.github/scripts/generate-perf-report.js'
@@ -53,6 +54,12 @@ on:
           - default
           - mobile
         default: default
+      variant:
+        description: >-
+          heavy 픽스처 변형(쉼표 구분). 빌드 시 AIT_PERF_VARIANT 로 전달돼 HeavyBuildRunner 가 등록된 변형을 순서대로 적용한다
+          (예: all0 = 모바일 런타임 최적화 레버 전부 비활성 A/B 빌드). 미지정 시 기존 동작과 동일.
+        type: string
+        default: ''
       pair_run_id:
         description: >-
           페어 A/B: 이 run id 의 heavy 아티팩트를 B 로 받아 같은 measure 잡에서 A 와 인터리브 측정한다
@@ -170,6 +177,7 @@ jobs:
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
       compression-format: ${{ inputs.compression_format || '1' }} # fast-build 가 표현 못 하는 유일 노브: gzip/brotli 로 현실적 on-wire 측정 (dispatch 로 브로틀리 등 선택 가능)
       perf-posture: ${{ (inputs.posture == 'full' || inputs.posture == 'fullmesh' || inputs.posture == 'speed' || inputs.posture == 'minimal' || endsWith(inputs.posture, '-explicit') || endsWith(inputs.posture, '-nostack')) && inputs.posture || '' }} # dispatch 에서 posture=full/fullmesh 면 opt-in 레버(HeavyBuildRunner) 활성 — fullmesh 는 full+meshCompression
+      perf-variant: ${{ inputs.variant || '' }} # dispatch 의 variant 입력 → AIT_PERF_VARIANT (HeavyBuildRunner 변형 레지스트리). 빈 값이면 변형 없음
       # net_profile(measure-ttff 스로틀 축)은 의도적으로 여기서 참조하지 않는다 — 네트워크/CPU
       # 스로틀은 브라우저 측 CDP 에뮬레이션(Emulation.setCPUThrottlingRate / Network.emulateNetworkConditions)
       # 이라 빌드 산출물(wasm/data/js 바이트)에 아무 영향이 없다. 즉 build-heavy 는 net_profile 값과
@@ -309,6 +317,8 @@ jobs:
           AIT_DEVELOPMENT_BUILD: "false"
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression_format || '1' }}
           AIT_PERF_POSTURE: ${{ inputs.posture || 'default' }}
+          # 빌드와 동일 값으로 전파 — 측정 스크립트가 결과에 변형 이름을 스탬프할 수 있게 한다(빈 값이면 변형 없음)
+          AIT_PERF_VARIANT: ${{ inputs.variant || '' }}
           # net_profile 스로틀 매핑(값/근거는 build-heavy 잡의 perf-posture 옆 주석 참조).
           # default 분기 값은 perf-ttff.test.js 의 기존 하드코딩 기본값과 동일 — dispatch 없이
           # 실행되는 pull_request/push 는 inputs.net_profile 이 비어(non-dispatch 이벤트) 항상

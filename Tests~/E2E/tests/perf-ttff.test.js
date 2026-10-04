@@ -178,10 +178,13 @@ const TTFF_INIT_SCRIPT = `
     var AC = window.BaseAudioContext || window.AudioContext || window.webkitAudioContext;
     if (AC && AC.prototype.decodeAudioData) {
       var origDecode = AC.prototype.decodeAudioData;
-      AC.prototype.decodeAudioData = function () {
+      AC.prototype.decodeAudioData = function (data) {
+        window.__aitAudioDecodeCalls = (window.__aitAudioDecodeCalls || 0) + 1;
+        try { window.__aitAudioDecodeInBytes = (window.__aitAudioDecodeInBytes || 0) + (data && data.byteLength || 0); } catch (e) {}
         var r = origDecode.apply(this, arguments);
         if (r && typeof r.then === 'function') {
-          r.then(function (b) { try { window.__aitAudioPcmBytes += b.length * b.numberOfChannels * 4; } catch (e) {} }, function () {});
+          r.then(function (b) { try { window.__aitAudioPcmBytes += b.length * b.numberOfChannels * 4; } catch (e) {} },
+            function () { window.__aitAudioDecodeErrors = (window.__aitAudioDecodeErrors || 0) + 1; });
         }
         return r;
       };
@@ -409,12 +412,16 @@ async function logAudioDecode(page, label, consoleLines) {
     await page.waitForFunction(() => window.__aitAudioPcmBytes > 1048576 || window.__aitAudioMediaEls > 0,
       undefined, { timeout: AUDIO_REHYDRATE_WAIT_MS }).catch(() => {});
   }
-  const audio = await page.evaluate(() => ({ pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls })).catch(() => null);
+  const audio = await page.evaluate(() => ({
+    pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls,
+    calls: window.__aitAudioDecodeCalls || 0, inBytes: window.__aitAudioDecodeInBytes || 0, errors: window.__aitAudioDecodeErrors || 0,
+  })).catch(() => null);
   if (audio && typeof audio.pcm === 'number') {
     console.log(`  오디오 디코드${tag}: PCM=${(audio.pcm / 1048576).toFixed(2)}MB mediaElement=${audio.media}` +
+      ` decode호출=${audio.calls}(입력 ${(audio.inBytes / 1048576).toFixed(2)}MB, 실패 ${audio.errors})` +
       (probed ? ` (재수화 대기 ${Date.now() - t0}ms)` : ''));
   }
-  for (const l of consoleLines.slice(0, 8)) console.log(`    console${tag}: ${l.slice(0, 200)}`);
+  for (const l of consoleLines.slice(0, 16)) console.log(`    console${tag}: ${l.slice(0, 200)}`);
 }
 
 /** 외부화 BGM 재수화를 기다리는 상한(첫 iter 에서만). */
@@ -453,7 +460,7 @@ async function measureIteration(browser, url, iter, label) {
   if (iter === 0) {
     page.on('console', (m) => {
       const t = m.text();
-      if (/AIT-StreamingAudio|HeavyAudioProbe/.test(t)) audioConsole.push(t);
+      if (/AIT-StreamingAudio|HeavyAudioProbe|Decode error/.test(t)) audioConsole.push(t);
     });
   }
 

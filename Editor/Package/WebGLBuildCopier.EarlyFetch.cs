@@ -344,8 +344,16 @@ namespace AppsInToss.Editor.Package
         // 대조하면 완결 본문도 short read 로 오판 → 성공할 수 없는 재다운로드 루프(콜드 부트
         // data+wasm 2회 전송 실측). 잘린 CE 스트림은 디코더가 arrayBuffer 를 reject 하므로
         // 재시도 방어는 길이 대조 없이도 유지된다.
+        function pcAtomic(url) {{
+            try {{
+                return typeof window.__aitPageCachePutBuffer === 'function' && typeof window.__aitPageCachePriorFetch === 'function'
+                    && typeof window.__aitPageCacheCovers === 'function' && window.__aitPageCacheCovers(url) === true;
+            }} catch (e) {{ return false; }}
+        }}
         function bufferedFetch(url, left) {{
-            return originalFetch(url, {{ method: 'GET' }}).then(function(r) {{
+            // 페이지 캐시 대상은 래퍼(cacheFirst: 선시작+clone put)를 건너뛰고 네이티브 fetch 로 받아 완결 버퍼를 직접 put 한다.
+            var viaPc = cacheOK && pcAtomic(url);
+            return (viaPc ? window.__aitPageCachePriorFetch : originalFetch)(url, {{ method: 'GET' }}).then(function(r) {{
                 if (!r || !r.ok) throw new Error('bad status ' + (r && r.status));
                 var ct = r.headers.get('Content-Type') || 'application/octet-stream';
                 var expected = r.headers.get('Content-Encoding') ? -1 : parseInt(r.headers.get('Content-Length') || '-1', 10);
@@ -355,13 +363,15 @@ namespace AppsInToss.Editor.Package
                         throw new Error('short read ' + buf.byteLength + '/' + expected);
                     }}
                     if (cacheOK) {{
-                        // 페이지 캐시가 이 URL 을 이미 put 한다(originalFetch 가 그 래퍼). 같은 디코드 바이트를 이 캐시에 한 번 더
-                        // 저장하면 저장소 사용량이 두 배가 되어, 메모리 기반 저장소(시크릿/자동화 컨텍스트, 상한 ~100MB)에서
-                        // QuotaExceededError 로 data put 이 실패한다(2021.3 heavy 실측: wasm 46MB x2 + data 30MB).
-                        var pcCovered = false;
-                        try {{ pcCovered = typeof window.__aitPageCacheCovers === 'function' && window.__aitPageCacheCovers(url) === true; }} catch (e) {{}}
-                        if (pcCovered) {{ try {{ console.log('[AIT] cache: delegated to page cache ' + url); }} catch (e) {{}} }}
-                        else {{ storeBuffer(url, buf, ct); }}
+                        // 페이지 캐시가 맡는 URL 은 완결 버퍼를 페이지 캐시에 원자적으로 put 한다(같은 바이트를 두 캐시에 저장하면
+                        // 메모리 기반 저장소 상한에서 QuotaExceeded). tee 된 clone 으로 put 하는 cacheFirst 경로는 CI 에서 wasm put 이
+                        // 끝나지 않고 멈추는 경우가 있어(오류도 기록 없음) 이 경로에서는 쓰지 않는다.
+                        if (viaPc) {{
+                            try {{ console.log('[AIT] cache: delegated to page cache ' + url); }} catch (e) {{}}
+                            window.__aitPageCachePutBuffer(url, buf, ct);
+                        }} else {{
+                            storeBuffer(url, buf, ct);
+                        }}
                     }}
                     // 재합성 Response 는 URL 이 없어 index.html 이 직접 경로를 판정할 수 없다. 네트워크 응답의 Content-Type 이
                     // application/wasm 이고 no-store 가 아니면 여기서 플래그를 켠다(이후 방문의 직접 경로 실패는 index.html 이 플래그를 지운다).

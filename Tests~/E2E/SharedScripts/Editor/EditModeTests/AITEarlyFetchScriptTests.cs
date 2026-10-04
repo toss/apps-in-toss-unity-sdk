@@ -49,9 +49,12 @@ public class AITEarlyFetchScriptTests
 
         // 페이지 캐시가 같은 URL 을 put 하면 레거시 저장을 건너뛴다(저장소 이중 사용 → 메모리 기반 저장소 QuotaExceededError 방지).
         StringAssert.Contains("window.__aitPageCacheCovers(url) === true", js);
+        // 페이지 캐시 대상은 래퍼의 clone-tee put 대신 네이티브 fetch + 완결 버퍼 원자 put 으로 저장한다.
+        StringAssert.Contains("window.__aitPageCachePriorFetch", js);
+        StringAssert.Contains("window.__aitPageCachePutBuffer(url, buf, ct);", js);
         StringAssert.Contains("cache: delegated to page cache", js);
         // 훅이 없거나 false 면 기존 저장 경로를 유지한다.
-        StringAssert.Contains("else { storeBuffer(url, buf, ct); }", js);
+        StringAssert.Contains("storeBuffer(url, buf, ct);", js);
         // 재방문은 페이지 캐시 히트를 버퍼링 없이 스트림 그대로 서빙한다(kickoff 와 fetch 오버라이드 양쪽).
         StringAssert.Contains("function warmLookup(url)", js);
         StringAssert.Contains("window.__aitPageCacheLookup(url)", js);

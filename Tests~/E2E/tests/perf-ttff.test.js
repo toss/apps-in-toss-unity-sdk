@@ -189,6 +189,14 @@ const TTFF_INIT_SCRIPT = `
         return r;
       };
     }
+    if (AC && AC.prototype.createBuffer) {
+      // _JS_Sound_Load_PCM 경로: wasm(FMOD)이 디코드한 PCM 을 AudioBuffer 로 복사한다(decodeAudioData 를 거치지 않음).
+      var origCreateBuffer = AC.prototype.createBuffer;
+      AC.prototype.createBuffer = function (channels, length) {
+        try { window.__aitAudioPcmBytes += (channels | 0) * (length | 0) * 4; } catch (e) {}
+        return origCreateBuffer.apply(this, arguments);
+      };
+    }
     if (AC && AC.prototype.createMediaElementSource) {
       var origMes = AC.prototype.createMediaElementSource;
       AC.prototype.createMediaElementSource = function () { window.__aitAudioMediaEls++; return origMes.apply(this, arguments); };

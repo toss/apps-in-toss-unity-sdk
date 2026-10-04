@@ -101,6 +101,20 @@ const DIST_WEB = path.resolve(AIT_BUILD, 'dist/web');
 const PAIR_AIT_BUILD = PAIR_MODE ? path.resolve(PAIR_PROJECT, 'ait-build') : null;
 const PAIR_DIST_WEB = PAIR_MODE ? path.resolve(PAIR_AIT_BUILD, 'dist/web') : null;
 
+/**
+ * 산출물의 압축 포맷을 Build/ 파일 확장자로 판정한다(brotli | gzip | none | unknown).
+ * 페어 A/B 는 두 산출물의 압축이 같아야 한다 — 압축이 다르면 on-wire 바이트(gzip 은 brotli 보다 data+wasm 이 ~10MB 크다)와
+ * 디코드 비용 차이가 ΔTTFF 에 그대로 섞인다(run 37224587514: A=brotli all0 vs B=gzip 기본 → +631ms, 같은 압축으로 다시 재면 ~0).
+ */
+function detectCompression(distWeb) {
+  try {
+    const files = fs.readdirSync(path.resolve(distWeb, 'Build')).filter((f) => /\.(data|wasm)(\.|$)/.test(f));
+    if (!files.length) return 'unknown';
+    const kinds = new Set(files.map((f) => (/\.br$/.test(f) ? 'brotli' : /\.gz$/.test(f) ? 'gzip' : /\.unityweb$/.test(f) ? 'unityweb' : 'none')));
+    return kinds.size === 1 ? [...kinds][0] : 'mixed';
+  } catch { return 'unknown'; }
+}
+
 function detectVersion(projectPath) {
   if (process.env.PERF_UNITY_VERSION) return process.env.PERF_UNITY_VERSION;
   const m = projectPath.match(/(?:Heavy)?SampleUnityProject-(\d+\.\d+)/);
@@ -646,6 +660,14 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   expect(directoryExists(DIST_WEB), `dist/web/ should exist for perf measurement: ${DIST_WEB}`).toBe(true);
   if (PAIR_MODE) {
     expect(directoryExists(PAIR_DIST_WEB), `페어(B) 산출물이 필요합니다: ${PAIR_DIST_WEB}`).toBe(true);
+    // 압축 포맷이 다른 쌍의 ΔTTFF 는 레버 효과가 아니라 전송 크기·디코드 차이다. 조용히 통과시키지 않는다.
+    const compA = detectCompression(DIST_WEB);
+    const compB = detectCompression(PAIR_DIST_WEB);
+    if (compA !== compB) {
+      const msg = `페어 A/B 압축 포맷 불일치: A=${compA} B=${compB}. 같은 compression_format 으로 다시 빌드하세요(1=Gzip, 2=Brotli).`;
+      if (process.env.PERF_ALLOW_COMPRESSION_MISMATCH === '1') console.warn(`⚠️  ${msg} (PERF_ALLOW_COMPRESSION_MISMATCH=1 로 계속 진행)`);
+      else expect(compA, msg).toBe(compB);
+    }
   }
 
   // 두 서버 모두 측정 시작 전에 기동 + HEAD 워밍 → OS 페이지 캐시/서버 웜업 상태를 대칭화.

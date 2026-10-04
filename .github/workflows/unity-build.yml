@@ -87,6 +87,11 @@ on:
         type: string
         required: false
         default: ''
+      perf-variant:
+        description: 'perf heavy 픽스처 변형(쉼표 구분). 빌드 시 AIT_PERF_VARIANT 로 주입 (HeavyBuildRunner 변형 레지스트리가 읽음). 빈 값이면 변형 없음'
+        type: string
+        required: false
+        default: ''
       leg-suffix:
         description: '같은 (os, unity-version) 조합의 병행 레그 구분자 (예: "-brotli"). 잡 표시명·concurrency 그룹·모든 아티팩트 이름에 붙어 이름 충돌을 막는다. 기본 빈 값 = 기존 이름 그대로.'
         type: string
@@ -856,6 +861,7 @@ jobs:
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
           # perf 벤치 posture: 'full'이면 HeavyBuildRunner가 opt-in 레버(폰트 subset/오디오·텍스처 스트리밍) 활성화.
           AIT_PERF_POSTURE: ${{ inputs.perf-posture }}
+          AIT_PERF_VARIANT: ${{ inputs.perf-variant }}
           # Development Build / IL2CPP 프로필: fast-build 단일 스위치가 담당(main PR #551).
           #   fast-build=true(E2E) → dev build + Debug(Link_WebGL_wasm -O3 단축, wallclock 절감).
           #   fast-build=false(preview·perf) → ''(SDK 기본 release 프로필 = 배포와 동일한 wasm).
@@ -899,6 +905,7 @@ jobs:
           # macOS step의 동일 주석 참조 (compression-format 명시 우선, dev/il2cpp 는 fast-build 단일 스위치).
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
           AIT_PERF_POSTURE: ${{ inputs.perf-posture }}
+          AIT_PERF_VARIANT: ${{ inputs.perf-variant }}
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

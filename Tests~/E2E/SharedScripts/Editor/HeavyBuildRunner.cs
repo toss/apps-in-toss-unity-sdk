@@ -116,6 +116,7 @@ public class HeavyBuildRunner
             AssetDatabase.DeleteAsset("Assets/link.xml");
             System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
             Debug.Log("[heavy] minimal posture: 생성 콘텐츠·픽스처·Sentry 없이 빈 씬 + SDK 로 빌드");
+            if (!ApplyPerfVariants()) return;
             E2EBuildRunner.BuildWithSDK(minimal: true);
             return;
         }
@@ -188,9 +189,41 @@ public class HeavyBuildRunner
         System.Environment.SetEnvironmentVariable(ExtraSceneEnvVar, GalleryScenePath);
         Debug.Log($"[heavy] 갤러리 씬을 scenes[1] 로 추가 예약: {GalleryScenePath} (E2EBuildRunner 훅 재사용)");
 
+        // perf 변형(AIT_PERF_VARIANT): posture 레버까지 적용한 뒤 마지막에 얹는다. 미등록 이름이면 exit 1.
+        if (!ApplyPerfVariants()) return;
+
         // 생성 콘텐츠가 임포트된 상태에서 검증된 E2E 빌드 파이프라인을 그대로 재사용.
         // (씬/SDK 설정/포트 오프셋/산출물 검증/exit code 처리 전부 E2EBuildRunner 소유)
         E2EBuildRunner.BuildWithSDK();
+    }
+
+    /// <summary>
+    /// 환경 변수 <see cref="HeavyBuildVariants.EnvVar"/>(AIT_PERF_VARIANT)에 적힌 fixture 변형을 SDK 설정에 적용한다.
+    /// 변수가 비어 있으면 아무것도 하지 않고 true(기존 동작 그대로). 변형 이름 오타·적용 중 예외는
+    /// CI 가 명확히 검출하도록 exit 1 후 false 를 돌려준다. 등록 방법은 <see cref="HeavyBuildVariants"/> 참조.
+    /// </summary>
+    private static bool ApplyPerfVariants()
+    {
+        string raw = System.Environment.GetEnvironmentVariable(HeavyBuildVariants.EnvVar);
+        if (string.IsNullOrWhiteSpace(raw)) return true;
+
+        try
+        {
+            var config = UnityUtil.GetEditorConf();
+            var applied = HeavyBuildVariants.Apply(HeavyBuildVariants.ParseNames(raw), config);
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[heavy] perf variant 적용 완료: {string.Join(", ", applied)}");
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError("========================================");
+            Debug.LogError($"[heavy] {HeavyBuildVariants.EnvVar}='{raw}' 적용 실패: {ex}");
+            Debug.LogError("========================================");
+            EditorApplication.Exit(1);
+            return false;
+        }
     }
 
     /// <summary>커맨드라인 진입점 (perf CI / run-local-tests.sh --heavy 에서 호출).</summary>

@@ -159,7 +159,7 @@ namespace AppsInToss.Editor.Package
             bool unitywebBuild = IsUnitywebBuild(decompressionFallback, loaderFile, dataFile, frameworkFile, wasmFile);
             ApplyBuildPatches(config, buildSrc, unitywebBuild, ref loaderFile, ref dataFile, ref frameworkFile, ref wasmFile, ref symbolsFile);
             long dataRawSize = MeasureDataRawSizeIfEnabled(config, buildSrc, dataFile, unitywebBuild);
-            string perfFlagsJson = AITPerfFlags.ToJson(config, dataRawSize, unitywebBuild);
+            string perfFlagsJson = AITPerfFlags.ToJson(config, dataRawSize, unitywebBuild, !unitywebBuild && AITFrameworkPatcher.LastApplyClipMetaApplied);
 
             // Early Fetch 캐시명(BuildDataCacheName)의 콘텐츠 버스팅 기준 크기는 재인코딩 훅 실행 '전'에
             // 스냅숏한다. brotli q11 재인코딩은 콘텐츠가 그대로여도 산출 .br 바이트 크기를 바꾸므로, 훅

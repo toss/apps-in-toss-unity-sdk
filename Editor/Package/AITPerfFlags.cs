@@ -22,6 +22,7 @@
 //   audioForceCompressed bool   긴 클립 강제 압축 재생(framework 패치로 적용; 런타임은 로그용)               기본 false
 //   audioForceCompressedMinSeconds number  강제 대상 최소 길이(초)                                           기본 10
 //   unityweb           bool     Decompression Fallback(.unityweb) 빌드 여부 — true 면 data/framework 훅 비활성
+//   audioPatched       bool     framework 패치의 compressed-clip-meta 가 적용됐는지. false 면 런타임이 압축 재생 경로를 쓰지 않는다   기본 false
 //   raw                object   설정의 원본 tri-state 값(-1/0/1). 디버깅·로그 전용
 // -----------------------------------------------------------------------
 
@@ -114,7 +115,8 @@ namespace AppsInToss.Editor.Package
         /// <param name="config">null 이면 전부 자동 기본값으로 직렬화한다.</param>
         /// <param name="dataRawSize">AITDataRawSize.Measure 결과. 측정 안 했거나 실패면 -1.</param>
         /// <param name="unityweb">Decompression Fallback(.unityweb) 빌드 여부.</param>
-        internal static string ToJson(AITEditorScriptObject config, long dataRawSize, bool unityweb)
+        /// <param name="audioPatched">framework 패치(compressed-clip-meta)가 실제로 적용됐는지. 키가 없거나 false 면 런타임은 압축 재생 경로를 피한다.</param>
+        internal static string ToJson(AITEditorScriptObject config, long dataRawSize, bool unityweb, bool audioPatched = false)
         {
             var sb = new StringBuilder(512);
             sb.Append('{');
@@ -134,6 +136,7 @@ namespace AppsInToss.Editor.Package
             sb.Append(",\"audioForceCompressedMinSeconds\":")
               .Append(EffectiveAudioForceCompressedMinSeconds(config).ToString("0.###", CultureInfo.InvariantCulture));
             AppendBool(sb, "unityweb", unityweb);
+            AppendBool(sb, "audioPatched", audioPatched);
 
             sb.Append(",\"raw\":{");
             AppendInt(sb, "webglAntialiasOpt", config != null ? config.webglAntialiasOpt : -1, first: true);

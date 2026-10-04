@@ -13,6 +13,17 @@ mergeInto(LibraryManager.library, {
             console.warn('[AIT] debugLog failed', e);
         }
     },
+    /**
+     * 빌드 후 framework 패치(compressed-clip-meta)가 적용됐는지. window.__AIT_PERF.audioPatched === true 일 때만 1.
+     * 키가 없거나 읽기 실패면 0(미적용으로 간주해 압축 재생 경로를 피한다 — clip.length 가 0 이 되는 회귀 방지).
+     */
+    __AITDebugLog_AudioPatched: function() {
+        try {
+            return (window.__AIT_PERF && window.__AIT_PERF.audioPatched === true) ? 1 : 0;
+        } catch (e) {
+            return 0;
+        }
+    },
     __AITDebugLog_FirstInteractiveEnabled: function() {
         try {
             return (window.__AIT_FIRST_INTERACTIVE_LOG === false) ? 0 : 1; // 부재/미치환 → 기본 활성(fail-open)

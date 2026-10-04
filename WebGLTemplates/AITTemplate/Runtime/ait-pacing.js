@@ -51,7 +51,6 @@
         if (qs.get('aitcap') === '0') capFps = 0;
     } catch (e) { /* URLSearchParams 미지원 — 플래그 값만 쓴다 */ }
 
-    var CAP_REFRESH_RATIO = 1.6;      // 주사율이 상한의 이 배수 이상일 때만 건너뛴다(60 상한 → 96Hz 이상).
     var ADAPTIVE_FPS = 30;
     var PROBE_WINDOW = 30;            // 주사율 판정에 쓰는 최근 rAF 간격 수
     var PROBE_MAX_CALLBACKS = 360;    // 이 안에 100Hz 급이 안 보이면 그 값으로 확정하고 멈춘다
@@ -276,7 +275,7 @@
         applied = false;
         st.hidden = false;
         st.lastHiddenMs = hiddenAt ? Date.now() - hiddenAt : 0;
-        capDue = 0; // 숨어 있던 사이의 시간 때문에 상한 계산이 틀어지지 않게
+        capCounter = 0; // 숨어 있던 사이의 시간 때문에 상한 계산이 틀어지지 않게
         var a = resumeAudioContexts();
         var m = resumeMedia();
         log('visible(' + source + '): ' + st.lastHiddenMs + 'ms 뒤 재개, AudioContext ' + a + '개 resume, 미디어 ' + m + '개 play');
@@ -304,9 +303,16 @@
 
     // ------------------------------------------------------------------ 프레임 governor
     var hints = {};
-    var capDue = 0;
     var capInterval = 0;     // ms. 0 이면 상한 없음
-    var capSlack = 0;
+    var capDivisor = 1;      // 매 N 번째 rAF 만 실행(프레임 수 기준). 1 이면 상한 없음
+    var capCounter = 0;
+
+    // 패널 주사율의 정수 분주만 쓴다. 비정수 비율(144Hz→60fps 등)은 13.9/20.8ms 로 번갈아 들쭉날쭉해진다.
+    // 주사율 측정 오차(약 5%)를 허용해 119Hz 도 120Hz 로 본다. 분주가 2 미만이면 상한을 적용하지 않는다.
+    function divisorFor(hz, fps) {
+        if (!(hz > 0) || !(fps > 0)) return 1;
+        return Math.max(1, Math.floor(hz * 1.05 / fps));
+    }
 
     function adaptiveWantsLow() {
         var m = hints.memory, b = hints.battery, t = hints.thermal;
@@ -320,24 +326,28 @@
     }
 
     function recomputeCap() {
-        var caps = [];
-        // 기본 상한은 주사율을 알고, 충분히 높을 때만.
-        if (capFps > 0 && st.hz > 0 && st.hz >= capFps * CAP_REFRESH_RATIO) caps.push(capFps);
+        var div = 1;
         var why = '';
+        var base = 0;
+        if (capFps > 0 && st.hz > 0) {
+            var d0 = divisorFor(st.hz, capFps);
+            if (d0 >= 2) { div = d0; base = capFps; }
+        }
         if (adaptiveOn) {
             why = adaptiveWantsLow();
-            if (why && (st.hz || 60) >= ADAPTIVE_FPS * CAP_REFRESH_RATIO) caps.push(ADAPTIVE_FPS);
+            if (why) {
+                var d1 = divisorFor(st.hz || 60, ADAPTIVE_FPS);
+                if (d1 >= 2 && d1 > div) { div = d1; base = ADAPTIVE_FPS; }
+            }
         }
-        var next = 0;
-        for (var i = 0; i < caps.length; i++) if (!next || caps[i] < next) next = caps[i];
-        if (next !== st.capFps) {
+        var next = div >= 2 ? Math.round((st.hz || 60) / div * 10) / 10 : 0;
+        if (next !== st.capFps || div !== capDivisor) {
             st.capFps = next;
+            capDivisor = div;
+            capCounter = 0;
             capInterval = next > 0 ? 1000 / next : 0;
-            var refreshMs = st.hz > 0 ? 1000 / st.hz : 16.7;
-            capSlack = next > 0 ? Math.min(refreshMs * 0.5, capInterval * 0.25) : 0;
-            capDue = 0;
-            if (next === ADAPTIVE_FPS && why) log('적응형 프레임 상한 ' + next + 'fps 적용 (' + why + ')');
-            else if (next > 0) log('프레임 상한 ' + next + 'fps 적용 (주사율 ' + st.hz + 'Hz)');
+            if (base === ADAPTIVE_FPS && why) log('적응형 프레임 상한 ' + next + 'fps 적용 (' + why + ', 분주 ' + div + ', 주사율 ' + st.hz + 'Hz)');
+            else if (next > 0) log('프레임 상한 ' + next + 'fps 적용 (주사율 ' + st.hz + 'Hz, 분주 ' + div + ')');
             else log('프레임 상한 해제');
         }
     }
@@ -358,7 +368,7 @@
             st.hzMedianMs = Math.round(med * 100) / 100;
             st.hz = hz;
             log('주사율 감지: ' + hz + 'Hz (rAF 간격 중앙값 ' + st.hzMedianMs + 'ms, ' + reason + ')' +
-                (hz >= capFps * CAP_REFRESH_RATIO ? ' → ' + capFps + 'fps 상한 적용' : ' → 상한 불필요'));
+                (divisorFor(hz, capFps) >= 2 ? ' → 주사율 ' + hz + 'Hz 의 ' + divisorFor(hz, capFps) + ' 분주로 상한 적용' : ' → 상한 불필요'));
             recomputeCap();
         }
         function step(ts) {
@@ -406,10 +416,10 @@
                 if (h !== applied) sync('frame'); // 이벤트를 놓쳤을 때의 자가 치유
                 if (h) { st.skippedHidden++; return false; }
             }
-            if (capInterval > 0) {
-                var now = performance.now();
-                if (now + capSlack < capDue) { st.skippedCap++; return false; }
-                capDue = (capDue + capInterval > now) ? capDue + capInterval : now + capInterval;
+            if (capDivisor > 1) {
+                var run = capCounter === 0;
+                capCounter = (capCounter + 1) % capDivisor;
+                if (!run) { st.skippedCap++; return false; }
             }
             st.frames++;
             return true;

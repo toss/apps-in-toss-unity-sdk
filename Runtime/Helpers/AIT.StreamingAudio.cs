@@ -227,7 +227,7 @@ namespace AppsInToss
                 // 긴 클립은 압축 상태(브라우저 미디어 요소 재생)로 둔다. WebGL 은 비압축 클립을 float32 PCM AudioBuffer 로 통째 풀어 두지만
                 // 압축 클립은 PCM 을 상주시키지 않는다. 다만 엔진이 stream 을 compressed 보다 먼저 보므로(stream → FMOD 가 wasm 안에서
                 // 디코드한 PCM 을 _JS_Sound_Load_PCM 으로 넘김) compressed 만 켜서는 효과가 없다 — 압축 재생은 stream 을 꺼야 선택된다.
-                DecideLoadMode(entry.compressed, out bool streamAudio, out bool compressedClip);
+                DecideLoadMode(entry.compressed, IsFrameworkAudioPatched(), out bool streamAudio, out bool compressedClip);
                 audioHandler.streamAudio = streamAudio;
                 audioHandler.compressed = compressedClip;
                 yield return req.SendWebRequest();
@@ -305,9 +305,12 @@ namespace AppsInToss
         /// stream=false 일 때는 항상 compressed=true 다 — compressed=false 로 두면 WebGL 이 클립을 PCM 으로 통째 풀어
         /// (짧은 클립까지) 메모리가 늘어나는 회귀가 생긴다.
         /// </summary>
-        internal static void DecideLoadMode(bool entryCompressed, out bool streamAudio, out bool compressed)
+        /// <param name="entryCompressed">빌드가 정한 압축 재생 대상 여부.</param>
+        /// <param name="frameworkPatched">framework 오디오 패치(compressed-clip-meta)가 적용된 빌드인가. 미적용 빌드의 압축 클립은
+        /// length 가 0 이 되므로 이 경우 압축 경로를 쓰지 않는다.</param>
+        internal static void DecideLoadMode(bool entryCompressed, bool frameworkPatched, out bool streamAudio, out bool compressed)
         {
-            if (entryCompressed)
+            if (entryCompressed && frameworkPatched)
             {
                 streamAudio = false;
                 compressed = true;
@@ -317,6 +320,31 @@ namespace AppsInToss
                 streamAudio = true;
                 compressed = false;
             }
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern int __AITDebugLog_AudioPatched();
+#endif
+
+        /// <summary>
+        /// 이 빌드의 framework 가 오디오 패치를 받았는지(__AIT_PERF.audioPatched). 에디터·WebGL 이 아닌 곳은 true.
+        /// 읽기에 실패하면 false(압축 경로를 피하는 안전한 쪽).
+        /// </summary>
+        internal static bool IsFrameworkAudioPatched()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try
+            {
+                return __AITDebugLog_AudioPatched() != 0;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+#else
+            return true;
+#endif
         }
 
         /// <summary>name 의 실패 횟수를 1 올리고 누적값을 반환한다.</summary>

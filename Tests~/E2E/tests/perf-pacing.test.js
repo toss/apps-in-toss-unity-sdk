@@ -184,20 +184,39 @@ test.describe('프레임 governor', () => {
     await openHarness(page, { frameRateCap: 60, mobileLifecycle: false });
     await configurePacing(page);
     await page.evaluate(() => { /* @ts-ignore */ window.__tick(60, 1000 / 120, 1); });
-    expect((await pacingState(page)).capFps).toBe(60);
+    const capNoisy = (await pacingState(page)).capFps; // 측정 주사율 잡음 때문에 hz/2 가 60 근처 값
+    expect(capNoisy).toBeGreaterThanOrEqual(55);
+    expect(capNoisy).toBeLessThanOrEqual(65);
     const ran = await ranDuring(page, 480, 1000 / 120, 1); // 4초 분량
     expect(ran / 4).toBeGreaterThanOrEqual(57);
     expect(ran / 4).toBeLessThanOrEqual(63);
   });
 
-  test('144Hz 에서도 60 으로 수렴', async ({ page }) => {
+  test('144Hz 에서는 매 2번째 rAF 만 실행해 72fps(정수 분주)', async ({ page }) => {
     await openHarness(page, { frameRateCap: 60, mobileLifecycle: false });
     await configurePacing(page);
     await page.evaluate(() => { /* @ts-ignore */ window.__tick(60, 1000 / 144); });
-    expect((await pacingState(page)).capFps).toBe(60);
+    expect((await pacingState(page)).capFps).toBeGreaterThanOrEqual(71);
+    expect((await pacingState(page)).capFps).toBeLessThanOrEqual(73);
     const ran = await ranDuring(page, 576, 1000 / 144); // 4초 분량
-    expect(ran / 4).toBeGreaterThanOrEqual(58);
-    expect(ran / 4).toBeLessThanOrEqual(62);
+    expect(ran).toBe(288); // 정확히 절반(프레임 수 기준)
+  });
+
+  test('100Hz 는 분주 1(상한 없음), 240Hz 는 4 분주 60fps', async ({ page }) => {
+    await openHarness(page, { frameRateCap: 60, mobileLifecycle: false });
+    await configurePacing(page);
+    await page.evaluate(() => { /* @ts-ignore */ window.__tick(60, 1000 / 100); });
+    expect((await pacingState(page)).capFps).toBe(0);
+    expect(await ranDuring(page, 200, 1000 / 100)).toBe(200);
+
+    const page2 = await page.context().newPage();
+    await openHarness(page2, { frameRateCap: 60, mobileLifecycle: false });
+    await configurePacing(page2);
+    await page2.evaluate(() => { /* @ts-ignore */ window.__tick(60, 1000 / 240); });
+    const st = await pacingState(page2);
+    expect(st.capFps).toBeGreaterThanOrEqual(59);
+    expect(st.capFps).toBeLessThanOrEqual(61);
+    expect(await ranDuring(page2, 480, 1000 / 240)).toBe(120);
   });
 
   test('frameRateCap=0 이면 120Hz 그대로(상한 없음)', async ({ page }) => {

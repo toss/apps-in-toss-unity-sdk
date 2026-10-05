@@ -59,7 +59,7 @@ namespace AppsInToss.Editor.Package
             // 순단에 노출된다. 따라서 Cache-Storage 워밍은 레거시에만 적용하고 6000.x는 기존 스크립트를 유지한다.
             if (!IsLegacyUnityLoader())
             {
-                return GenerateEarlyFetchScriptModern(kickUrlsJson);
+                return GenerateEarlyFetchScriptModern(kickUrlsJson, string.IsNullOrEmpty(dataFile) ? null : $"Build/{dataFile}");
             }
 
             string cacheName = BuildDataCacheName(dataFile, cacheDataSize, cacheWasmSize, bundleVersion);
@@ -127,8 +127,11 @@ namespace AppsInToss.Editor.Package
         /// 6000.x 에서도 &lt;script src&gt; 로 소비되어 prefetch 응답이 소진되지 않고 이중 다운로드가 된다
         /// (2026-07 베타 E2E CE 테스트에서 실측 적발, 디스패처가 kickUrlsJson 을 전달).
         /// </summary>
-        internal static string GenerateEarlyFetchScriptModern(string urlsJson)
+        internal static string GenerateEarlyFetchScriptModern(string urlsJson, string dataUrl = null)
         {
+            // 저메모리 tier(부팅 사망 후, window.__aitPeekLowTier >= 1)에서는 data 선시작을 하지 않는다. 선시작하면 data 본문이 wasm 컴파일과
+            // 같은 시점에 도착해 피크가 겹치므로, 로더의 fetch(ait-databuf.js 가 wasm 컴파일 완료까지 보류)가 그때 받게 한다.
+            string dataUrlJs = "'" + (dataUrl ?? "").Replace("\\", "\\\\").Replace("'", "\\'") + "'";
             return $@"<script>
     // Early Fetch: HTML 파싱과 동시에 리소스 다운로드를 시작하고,
     // Unity loader가 같은 URL을 요청할 때 이미 받은 Response를 반환합니다.
@@ -148,11 +151,25 @@ namespace AppsInToss.Editor.Package
         }} catch (e) {{}}
         var earlyFetchMap = {{}};
         var urls = {urlsJson};
+        var DATA_URL = {dataUrlJs};
+        var DATA_ABS = '';
+        try {{ if (DATA_URL) DATA_ABS = new URL(DATA_URL, location.href).href; }} catch (e) {{}}
+        {AITPageCacheEmitter.PeekLowTierJs}
+        var lowTierSkipData = false;
+        try {{ lowTierSkipData = !!DATA_ABS && (window.__aitPeekLowTier() | 0) >= 1; }} catch (e) {{}}
         for (var i = 0; i < urls.length; i++) {{
+            var absHref = new URL(urls[i], location.href).href;
+            if (lowTierSkipData && absHref === DATA_ABS) {{
+                try {{ console.log('[AIT] early-fetch: 저메모리 tier — data 선시작 생략(로더 요청 때 받음)'); }} catch (e) {{}}
+                // 자리만 잡아 둔다(값 null → 래퍼가 원본 fetch 로 위임). 맵이 비어 래퍼가 복원되면 그 뒤 로더의 data 요청이
+                // ait-databuf.js 의 보류 래퍼를 거치지 못할 수 있어, 이 tier 에서는 래퍼를 상주시킨다.
+                earlyFetchMap[absHref] = null;
+                continue;
+            }}
             (function(href, fetchUrl) {{
                 var p = fetch(fetchUrl).catch(function() {{ delete earlyFetchMap[href]; return null; }});
                 earlyFetchMap[href] = p;
-            }})(new URL(urls[i], location.href).href, urls[i]);
+            }})(absHref, urls[i]);
         }}
         var originalFetch = window.fetch;
         window.fetch = function(resource, init) {{
@@ -241,6 +258,24 @@ namespace AppsInToss.Editor.Package
         try {{
             var ua0 = navigator.userAgent || '';
             IS_CHROMIUM = /Chrome\/|Chromium\/|Android/.test(ua0) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua0);
+        }} catch (e) {{}}
+        {AITPageCacheEmitter.BootSharedJs}
+        // 저메모리 tier(부팅 사망 후, ait-mem.js 가 정함 — 이 스크립트는 그 앞에서 실행되므로 같은 규칙의 동기 조회를 쓴다)와
+        // WebKit 지연 put 게이트. 지연 put 은 페이지 캐시 스니펫(window.__aitCacheDeferred)이 이미 정했으면 그 결정을 그대로 따른다.
+        var LOW_TIER = 0;
+        try {{ LOW_TIER = window.__aitPeekLowTier() | 0; }} catch (e) {{}}
+        var DEFER_DELAY_MS = 10000;
+        var DEFERRED_PUT = false;
+        try {{
+            var dpf = window.__AIT_PERF;
+            if (dpf && typeof dpf.pageCacheDeferDelayMs === 'number' && dpf.pageCacheDeferDelayMs >= 0) DEFER_DELAY_MS = dpf.pageCacheDeferDelayMs;
+            var dst = window.__aitCacheDeferred;
+            if (dst && typeof dst.enabled === 'boolean') {{
+                DEFERRED_PUT = dst.enabled;
+            }} else {{
+                var dflag = (dpf && typeof dpf.pageCacheDeferredPut === 'number') ? dpf.pageCacheDeferredPut : -1;
+                DEFERRED_PUT = dflag === 1 ? true : (dflag === 0 ? false : (!IS_CHROMIUM && /AppleWebKit\/|iPhone|iPad|iPod/.test(navigator.userAgent || '')));
+            }}
         }} catch (e) {{}}
         var WASM_ABS = '';
         try {{ if (WASM_URL) WASM_ABS = new URL(WASM_URL, location.href).href; }} catch (e) {{}}
@@ -378,6 +413,38 @@ namespace AppsInToss.Editor.Package
             }} catch (e) {{}}
         }}
 
+        // 지연 put(WebKit 기본): 부팅 중에는 저장하지 않고, 첫 프레임 + DEFER_DELAY_MS 뒤 HTTP 캐시(only-if-cached: 네트워크 요청 없음)에서
+        // 다시 읽어 저장한다. 미스/미지원이면 저장을 생략한다(재다운로드 금지). 페이지 캐시가 담당하는 URL 은 그쪽 큐에 맡기고
+        // (본문은 네이티브 Response 그대로 put), 아닌 URL(페이지 캐시 꺼짐 등)만 여기서 완결 버퍼(plain ArrayBuffer)로 storeBuffer 한다
+        // — JS ReadableStream 본문 put 은 쓰지 않는다. wasm 은 저장하지 않는다(JSC 에는 wasm code cache 이득이 없고 재방문은 HTTP 캐시 304).
+        var deferLocal = [];
+        var deferScheduled = false;
+        function drainLocal() {{
+            var rawFetch = window.__aitPageCachePriorFetch || originalFetch;
+            function next() {{
+                var url = deferLocal.shift();
+                if (!url) return;
+                Promise.resolve().then(function() {{
+                    return rawFetch(url, {{ cache: 'only-if-cached', mode: 'same-origin' }});
+                }}).then(function(r) {{
+                    if (!r || !r.ok || r.status !== 200) return;
+                    var ct = r.headers.get('Content-Type') || 'application/octet-stream';
+                    return r.arrayBuffer().then(function(ab) {{ storeBuffer(url, new Uint8Array(ab), ct); }});
+                }}).catch(function() {{}}).then(next);
+            }}
+            next();
+        }}
+        function deferStore(url) {{
+            if (WASM_ABS && url === WASM_ABS) return;
+            try {{ if (typeof window.__aitPageCacheDeferPut === 'function' && window.__aitPageCacheDeferPut(url) === true) return; }} catch (e) {{}}
+            if (deferLocal.indexOf(url) >= 0) return;
+            deferLocal.push(url);
+            if (deferScheduled) return;
+            deferScheduled = true;
+            try {{ console.log('[AIT] cache: 지연 put — 부팅 중 저장 생략, 첫 프레임+' + DEFER_DELAY_MS + 'ms 뒤 HTTP 캐시에서 다시 읽어 저장'); }} catch (e) {{}}
+            if (typeof window.__aitAfterFirstFrame === 'function') window.__aitAfterFirstFrame(drainLocal, DEFER_DELAY_MS);
+        }}
+
         // 버퍼링 다운로드(재시도): 본문을 끝까지 받고 Content-Length와 대조.
         // 스트림 중단(ERR_CONNECTION_CLOSED) → arrayBuffer reject, 길이 불일치 → 재시도.
         // 성공 시 (cacheOK면) 캐시에 저장하고 로더에는 완결 Response(body 스트림 + Content-Length 보유)를 반환한다.
@@ -409,7 +476,12 @@ namespace AppsInToss.Editor.Package
                         // 페이지 캐시가 맡는 URL 은 완결 버퍼를 페이지 캐시에 원자적으로 put 한다(같은 바이트를 두 캐시에 저장하면
                         // 메모리 기반 저장소 상한에서 QuotaExceeded). tee 된 clone 으로 put 하는 cacheFirst 경로는 CI 에서 wasm put 이
                         // 끝나지 않고 멈추는 경우가 있어(오류도 기록 없음) 이 경로에서는 쓰지 않는다.
-                        if (viaPc) {{
+                        if (LOW_TIER >= 1) {{
+                            // 저메모리 tier: 저장하지 않는다(부팅이 메모리로 죽은 기기 — put 임시 버퍼가 피크를 올린다).
+                            try {{ console.log('[AIT] cache: lowMemTier=' + LOW_TIER + ' — put 생략 ' + url); }} catch (e) {{}}
+                        }} else if (DEFERRED_PUT) {{
+                            deferStore(url);
+                        }} else if (viaPc) {{
                             try {{ console.log('[AIT] cache: delegated to page cache ' + url); }} catch (e) {{}}
                             window.__aitPageCachePutBuffer(url, buf, ct);
                         }} else {{
@@ -456,6 +528,12 @@ namespace AppsInToss.Editor.Package
         if (!isReload) {{
             for (var ki = 0; ki < kickUrls.length; ki++) (function(url) {{
                 var p, pcl;
+                // 저메모리 tier: data 는 선시작하지 않는다 — 본문이 wasm 컴파일과 같은 시점에 도착해 피크가 겹친다.
+                // 로더의 fetch(ait-databuf.js 가 wasm 컴파일 완료까지 보류)가 이 오버라이드를 거쳐 그때 받는다.
+                if (LOW_TIER >= 1 && DATA_ABS && url === DATA_ABS) {{
+                    try {{ console.log('[AIT] cache: lowMemTier=' + LOW_TIER + ' — data 선시작 생략 ' + url); }} catch (e) {{}}
+                    return;
+                }}
                 if (isPlainWasm(url)) {{
                     // Chromium wasm: 단일 네이티브 fetch(HTTP 캐시 경유) — 로더가 이 Response 를 그대로 받는다(이중 다운로드 없음).
                     p = originalFetch(url, {{ method: 'GET' }});

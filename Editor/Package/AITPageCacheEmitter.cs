@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -50,6 +51,18 @@ namespace AppsInToss.Editor.Package
     /// (loader.js 는 &lt;script src&gt; 라 fetch API 를 안 거치므로 캐시 대상이 아니며 allowlist 에서도 제외.)
     /// 이 콘텐츠 버전 정합(sweep)은 백엔드와 무관하게 동일 코드로 동작하며, IndexedDB 자체의 스키마 버전
     /// (IDB_VERSION)은 이와 독립적인 축입니다(스키마 변경 시에만 bump).
+    ///
+    /// === 지연 put (pageCacheDeferredPut, 자동 = WebKit 만) ===
+    ///  · iOS WKWebView(WebKit)에서는 부팅 중 resp.clone() 도 Cache.put 도 하지 않는다. tee 분기가 소비되지 않는 동안
+    ///    본문 전체가 버퍼에 남고, WebKit 의 Cache.put 은 본문을 WebContent 에서 다 모은 뒤 Network 프로세스로 넘기므로
+    ///    wasm 컴파일 피크와 겹친다(put 만 미루면 메모리는 그대로라서 clone 자체를 하지 않는다).
+    ///  · 첫 프레임 + 10초 뒤 파일 하나씩 fetch(url, { cache: 'only-if-cached', mode: 'same-origin' }) 로 HTTP 캐시에서 다시 읽어
+    ///    put 한다. 미지원이거나 미스면 put 을 생략한다(재다운로드 금지: only-if-cached 는 네트워크를 타지 않는다).
+    ///  · WebKit 에서는 wasm 을 put 대상(ALLOW_ABS)에서 뺀다. JSC 에는 V8 같은 code cache 이득이 없고, CDN 이 ETag 와 max-age=0 을
+    ///    주므로 재방문은 HTTP 캐시 재검증(304)으로 받는다.
+    ///  · Chromium 경로는 그대로다. 단 저메모리 tier(window.AITMemory.lowMemTier &gt;= 1, ait-mem.js 가 부팅 사망 횟수로 정함)에서는
+    ///    엔진과 무관하게 put 을 건너뛴다.
+    ///  · ait-mem.js 는 이 스니펫 '뒤'에 로드되므로 tier 는 같은 규칙의 동기 조회(window.__aitPeekLowTier)로 읽는다.
     ///
     /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
@@ -197,6 +210,10 @@ namespace AppsInToss.Editor.Package
                 : config.nativeAssetSource == 1;
             string nativeEnabledJs = nativeEnabled ? "true" : "false";
 
+            // 지연 put tri-state 원본(-1 자동=WebKit 만 / 0 끔 / 1 모든 엔진). 엔진별 자동 해석은 런타임이 UA 로 한다.
+            // window.__AIT_PERF.pageCacheDeferredPut 이 있으면 그 값이 우선하고, 이 값은 __AIT_PERF 가 없을 때의 기본이다.
+            int deferFlag = AITPerfFlags.EffectivePageCacheDeferredPut(config);
+
             // 주의: 이 스니펫에는 %대문자_퍼센트% 토큰을 포함하지 않습니다(ValidatePlaceholderSubstitution 안전).
             // 설치 순서: index.html 에서 본 스니펫은 %AIT_EARLY_FETCH_SCRIPT% 보다 '앞'에 위치합니다.
             // 따라서 priorFetch 캡처 시점의 window.fetch 는 native 이며, 그 위를 이후 Early Fetch 가 래핑합니다.
@@ -212,6 +229,8 @@ namespace AppsInToss.Editor.Package
                  + "\n            var ALLOWLIST = " + allowlistJson + ";"
                  + "\n            var WASM_LIST = " + wasmListJson + ";"
                  + "\n            var NATIVE_SOURCE = " + nativeEnabledJs + ";"
+                 + "\n            var DEFER_FLAG_BAKED = " + deferFlag.ToString(CultureInfo.InvariantCulture) + ";"
+                 + BootSharedJs
                  + BakedTailJs
                  + IdbBackendJs
                  + CacheCoreJs
@@ -235,6 +254,122 @@ namespace AppsInToss.Editor.Package
         // JS 조각 (const, 보간 없음). GenerateInterceptorScript 가 문자열 연결로 최종 스니펫을 조립합니다.
         // 각 조각은 이름 있는 관심사 블록으로 분리되어 diff/리뷰가 쉽고, %[A-Z0-9_]+% 토큰 스캔이 안전합니다.
         // ================================================================
+
+        /// <summary>
+        /// 페이지 캐시 스니펫과 레거시 early-fetch 스니펫이 공유하는 부트 헬퍼(둘 다 ait-mem.js 보다 먼저 실행되므로 인라인으로 들고 간다).
+        /// 먼저 실행된 쪽이 window 에 한 번 설치하고 뒤따르는 쪽은 건너뛴다.
+        ///  · window.__aitPeekLowTier(): 0|1|2 — ait-mem.js 의 저사양 tier 규칙(부팅 마커 '__ait_boot_v1' 의 사망 횟수 + 24시간 저장값
+        ///    '__ait_lowmem_v1')과 같은 계산을 localStorage 읽기만으로 한다(부작용 없음). ait-mem.js 가 이미 로드됐으면 그 값을 그대로 쓴다.
+        ///    규칙을 바꾸면 ait-mem.js 의 bootStageMarker 와 함께 고쳐야 한다(perf-lowmem-tier.test.js 가 둘의 일치를 단언한다).
+        ///  · window.__aitAfterFirstFrame(cb, delayMs): 첫 프레임이 지난 시점부터 delayMs 뒤에 cb 를 1회 부른다. 첫 프레임 신호는
+        ///    'ait:firstframe' 이벤트(ait-mem.js markFirstFrame) 또는 500ms 폴링(AITMemory.bootStage != boot-start, window.unityInstance 존재)이다.
+        /// 주의: 이 조각에는 %대문자_퍼센트% 토큰을 넣지 않는다(ValidatePlaceholderSubstitution 안전).
+        /// </summary>
+        internal const string PeekLowTierJs = @"
+
+            // ===== 부트 공유 헬퍼: 저메모리 tier 동기 조회 =====
+            if (!window.__aitPeekLowTier) {
+                window.__aitPeekLowTier = (function () {
+                    var cached = -1;
+                    function readLocal(key) {
+                        try {
+                            var raw = window.localStorage.getItem(key);
+                            var v = raw ? JSON.parse(raw) : null;
+                            return v && typeof v === 'object' ? v : null;
+                        } catch (e) { return null; }
+                    }
+                    function compute() {
+                        var pf = window.__AIT_PERF;
+                        if (pf && typeof pf === 'object' && (pf.lowMemoryTier === false || pf.memoryTelemetry === false)) { return 0; }
+                        var now = Date.now();
+                        var WINDOW_MS = 600000;
+                        var TTL_MS = 86400000;
+                        var prev = readLocal('__ait_boot_v1');
+                        var fails = 0;
+                        var prevDied = false;
+                        if (prev) {
+                            var list = Array.isArray(prev.fails) ? prev.fails : [];
+                            for (var i = 0; i < list.length; i++) {
+                                var ts = Number(list[i]);
+                                if (ts > 0 && ts <= now + 60000 && now - ts < WINDOW_MS) { fails++; }
+                            }
+                            if (prev.stage === 'stable') {
+                                fails = 0;
+                            } else if (prev.end === 'exit' || prev.end === 'bg') {
+                                // 정상 종료/백그라운드: 사망이 아니다.
+                            } else if (prev.stage === 'boot-start' || prev.stage === 'first-frame') {
+                                prevDied = true;
+                                var diedAt = Number(prev.t) > 0 ? Number(prev.t) : now;
+                                if (now - diedAt < WINDOW_MS) { fails++; }
+                            }
+                        }
+                        var stored = readLocal('__ait_lowmem_v1');
+                        var storedTier = 0;
+                        if (stored && Number(stored.tier) > 0 && Number(stored.ts) > 0 && now - Number(stored.ts) < TTL_MS && Number(stored.ts) <= now + 60000) {
+                            storedTier = Math.min(2, Number(stored.tier) | 0);
+                        }
+                        var failTier = fails >= 2 ? 2 : (fails >= 1 ? 1 : 0);
+                        return Math.max(failTier, prevDied ? Math.min(2, storedTier + 1) : storedTier);
+                    }
+                    return function () {
+                        try {
+                            // ait-mem.js 가 이미 정했으면 그 값이 정답이다(같은 스크립트 실행 안에서 정해지므로 중간 상태가 없다).
+                            var m = window.AITMemory;
+                            if (m && typeof m.lowMemTier === 'number') { return m.lowMemTier | 0; }
+                            if (cached < 0) { cached = compute(); }
+                            return cached;
+                        } catch (e) { return 0; }
+                    };
+                })();
+            }";
+
+        /// <summary>
+        /// window.__aitAfterFirstFrame(cb, delayMs) 헬퍼. <see cref="BootSharedJs"/> 설명 참고.
+        /// </summary>
+        internal const string AfterFirstFrameJs = @"
+            if (!window.__aitAfterFirstFrame) {
+                window.__aitAfterFirstFrame = (function () {
+                    var waiters = [];
+                    var firstAt = 0;
+                    var pollTimer = null;
+                    var polls = 0;
+                    function seen() {
+                        try {
+                            var m = window.AITMemory;
+                            if (m && m.bootStage && m.bootStage !== 'boot-start') { return true; }
+                            return !!window.unityInstance;
+                        } catch (e) { return false; }
+                    }
+                    function schedule(w) {
+                        var wait = Math.max(0, firstAt + w.delay - Date.now());
+                        setTimeout(function () { try { w.cb(); } catch (e) {} }, wait);
+                    }
+                    function onFirstFrame() {
+                        if (firstAt) { return; }
+                        firstAt = Date.now();
+                        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                        for (var i = 0; i < waiters.length; i++) { schedule(waiters[i]); }
+                    }
+                    function arm() {
+                        if (pollTimer || firstAt) { return; }
+                        try { window.addEventListener('ait:firstframe', onFirstFrame); } catch (e) {}
+                        pollTimer = setInterval(function () {
+                            if (seen()) { onFirstFrame(); return; }
+                            if (++polls > 1800) { clearInterval(pollTimer); pollTimer = null; } // 15분 넘게 첫 프레임이 없으면 포기(지연 작업은 하지 않는다).
+                        }, 500);
+                    }
+                    return function (cb, delayMs) {
+                        var w = { cb: cb, delay: delayMs >= 0 ? delayMs : 0 };
+                        waiters.push(w);
+                        if (firstAt) { schedule(w); }
+                        else if (seen()) { onFirstFrame(); }
+                        else { arm(); }
+                    };
+                })();
+            }";
+
+        /// <summary>두 헬퍼 모두(페이지 캐시 스니펫과 레거시 early-fetch 가 쓴다). modern early-fetch 는 <see cref="PeekLowTierJs"/> 만 쓴다.</summary>
+        internal const string BootSharedJs = PeekLowTierJs + AfterFirstFrameJs;
 
         /// <summary>
         /// &lt;script&gt; 오프닝 + IIFE/try 오프닝 + 설치 가드(보안 컨텍스트) + 백엔드 선택
@@ -300,6 +435,25 @@ namespace AppsInToss.Editor.Package
                 var _ua = navigator.userAgent || '';
                 IS_CHROMIUM = /Chrome\/|Chromium\/|Android/.test(_ua) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(_ua);
             } catch (e) {}
+            // WebKit 전용 엔진 판정(Chromium 이 아니면서 AppleWebKit/iOS 계열 UA). UA 를 알 수 없는 환경(Node 하네스 등)은 어느 쪽도 아니다.
+            var IS_WEBKIT = false;
+            try { IS_WEBKIT = !IS_CHROMIUM && /AppleWebKit\/|iPhone|iPad|iPod/.test(navigator.userAgent || ''); } catch (e) {}
+            // 지연 put 게이트: window.__AIT_PERF.pageCacheDeferredPut(-1 자동 / 0 끔 / 1 모든 엔진)이 있으면 그것, 없으면 빌드가 박은 값.
+            // 자동(-1)은 WebKit 만 켠다. 켜지면 부팅 중 clone/put 이 없고(아래 deferPut), wasm 은 put 대상에서 빠진다.
+            var DEFER_FLAG = DEFER_FLAG_BAKED;
+            try {
+                var _pf = window.__AIT_PERF;
+                if (_pf && typeof _pf.pageCacheDeferredPut === 'number') { DEFER_FLAG = _pf.pageCacheDeferredPut; }
+            } catch (e) {}
+            var DEFERRED_PUT = DEFER_FLAG === 1 ? true : (DEFER_FLAG === 0 ? false : IS_WEBKIT);
+            // 첫 프레임 뒤 지연(ms). 진단/테스트용 오버라이드: __AIT_PERF.pageCacheDeferDelayMs (C# 이 내보내지 않는 실험 키).
+            var DEFER_DELAY_MS = 10000;
+            try {
+                var _dd = window.__AIT_PERF && window.__AIT_PERF.pageCacheDeferDelayMs;
+                if (typeof _dd === 'number' && _dd >= 0) { DEFER_DELAY_MS = _dd; }
+            } catch (e) {}
+            // 진단 훅(perf CI/검증용, 운영 무영향): 큐에 넣은 URL, put 성공, HTTP 캐시 미스(put 생략), 건너뜀(wasm/저메모리 tier), 오류.
+            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, state: 'idle', queued: [], put: [], miss: [], skipped: [], errors: [] };
             var WASM_ABS = {};
             for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
                 try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
@@ -322,6 +476,8 @@ namespace AppsInToss.Editor.Package
                 try {
                     var _abs = new URL(ALLOWLIST[_ai], location.href).href;
                     if (WASM_BYPASS && WASM_ABS[_abs]) { continue; }
+                    // 지연 put 이 켜진 엔진(WebKit 기본)은 wasm 을 put/서빙/힌트 대상에서 뺀다(JSC 에는 wasm code cache 이득이 없고 재방문은 HTTP 캐시 304).
+                    if (DEFERRED_PUT && WASM_ABS[_abs]) { continue; }
                     ALLOW_ABS[_abs] = true;
                 } catch (e) {}
             }
@@ -531,6 +687,7 @@ namespace AppsInToss.Editor.Package
             var putChain = Promise.resolve();
             window.__aitPageCachePutBuffer = function (url, buf, ct) {
                 window.__aitCacheStats.misses.push(url);
+                if (skipPutForLowMem(url)) { return; } // 저메모리 tier: 호출자가 놓친 경우의 방어(레거시 early-fetch 도 먼저 거른다).
                 var prev = putChain;
                 var gateTimer = null;
                 var gate = Promise.race([
@@ -604,6 +761,91 @@ namespace AppsInToss.Editor.Package
                 } catch (e) { return null; }
             };
 
+            // ===== 저메모리 tier 와 지연 put =====
+            // tier(ait-mem.js 가 부팅 사망 횟수로 정함) 1 이상이면 엔진과 무관하게 put 을 건너뛴다(부팅이 메모리로 죽은 기기).
+            var lowTierLogged = false;
+            function skipPutForLowMem(url) {
+                var t = 0;
+                try { t = window.__aitPeekLowTier() | 0; } catch (e) {}
+                if (t < 1) { return false; }
+                window.__aitCacheDeferred.skipped.push('lowmem:' + url);
+                if (!lowTierLogged) {
+                    lowTierLogged = true;
+                    try { console.log('[AIT-PageCache] lowMemTier=' + t + ': 페이지 캐시 put 생략'); } catch (e) {}
+                }
+                return true;
+            }
+
+            // 지연 put(WebKit 기본): 부팅 중에는 clone 도 put 도 하지 않고 URL 만 큐에 넣는다. 첫 프레임 + DEFER_DELAY_MS 뒤 파일 하나씩
+            // HTTP 캐시에서 다시 읽어(only-if-cached: 네트워크 요청 없음) put 한다. 미지원/미스/비정상 응답이면 put 을 생략한다(재다운로드 금지).
+            // put 본문은 fetch 가 돌려준 네이티브 Response 그대로다(JS 가 만든 ReadableStream 이 아니므로 메인 스레드 pull 이 없다).
+            var deferQueue = [];
+            var deferScheduled = false;
+            function deferPut(url) {
+                var info = window.__aitCacheDeferred;
+                if (WASM_ABS[url]) { info.skipped.push('wasm:' + url); return; }
+                if (info.queued.indexOf(url) >= 0) { return; }
+                deferQueue.push(url);
+                info.queued.push(url);
+                if (deferScheduled) { return; }
+                deferScheduled = true;
+                info.state = 'armed';
+                try { console.log('[AIT-PageCache] 지연 put: 부팅 중 clone/put 없음, 첫 프레임+' + DEFER_DELAY_MS + 'ms 뒤 HTTP 캐시에서 다시 읽어 put'); } catch (e) {}
+                if (typeof window.__aitAfterFirstFrame === 'function') { window.__aitAfterFirstFrame(drainDeferred, DEFER_DELAY_MS); }
+                else { info.state = 'unavailable'; }
+            }
+            function deferPutIfEnabled(url) {
+                if (!DEFERRED_PUT) { return false; }
+                deferPut(url);
+                return true;
+            }
+            function deferredPutOne(url) {
+                var info = window.__aitCacheDeferred;
+                if (skipPutForLowMem(url)) { return Promise.resolve(); }
+                var timer = null;
+                var giveUp = new Promise(function (resolve) {
+                    timer = setTimeout(function () { info.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); resolve(); }, PUT_TIMEOUT_MS);
+                });
+                var work = Promise.resolve().then(function () {
+                    return priorFetch(url, { cache: 'only-if-cached', mode: 'same-origin' });
+                }).then(function (r) {
+                    // 미스는 네트워크 오류(reject)이거나 비정상 상태(504 등)로 온다. 어느 쪽이든 put 하지 않는다.
+                    if (!r || !r.ok || r.status !== 200 || r.body === undefined) { info.miss.push(url); return; }
+                    return getCache().then(function (c) { return c.put(url, r); }).then(function () {
+                        info.put.push(url);
+                        window.__aitCacheStats.puts.push(url);
+                        markPopulated(url);
+                    });
+                }, function () {
+                    info.miss.push(url);
+                }).catch(function (e) {
+                    info.errors.push('deferred-put ' + url + ': ' + (e && e.message || e));
+                });
+                return Promise.race([work, giveUp]).then(function () { clearTimeout(timer); });
+            }
+            function drainDeferred() {
+                var info = window.__aitCacheDeferred;
+                info.state = 'draining';
+                function next() {
+                    var url = deferQueue.shift();
+                    if (!url) {
+                        info.state = 'done';
+                        try { console.log('[AIT-PageCache] 지연 put 완료: put=' + info.put.length + ' miss=' + info.miss.length + ' skip=' + info.skipped.length + ' error=' + info.errors.length); } catch (e) {}
+                        return Promise.resolve();
+                    }
+                    return deferredPutOne(url).then(next, next);
+                }
+                return next();
+            }
+            // 레거시 early-fetch 가 부팅 중 완결 버퍼 put 대신 호출하는 훅: 이 스니펫이 담당하는 URL 만 true(큐 등록).
+            window.__aitPageCacheDeferPut = function (url) {
+                try {
+                    if (!DEFERRED_PUT || !isCacheable(url)) { return false; }
+                    deferPut(url);
+                    return true;
+                } catch (e) { return false; }
+            };
+
             // cache-first 체인: CacheStorage/IndexedDB 히트 → 단락, 미스 → priorFetch 후 비차단 put.
             // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
             function cacheFirst(resource, init, url) {
@@ -636,7 +878,8 @@ namespace AppsInToss.Editor.Package
                         return (spec || priorFetch(resource, init)).then(function (resp) {
                             // put 은 절대 await 하지 않음 → 부트 fetch 무지연(비차단).
                             try {
-                                if (resp && resp.ok && resp.body !== undefined) {
+                                // 저메모리 tier 는 put 을 건너뛰고, 지연 put(WebKit 기본)은 clone 없이 큐에만 넣는다(둘 다 resp 는 그대로 반환).
+                                if (resp && resp.ok && resp.body !== undefined && !skipPutForLowMem(url) && !deferPutIfEnabled(url)) {
                                     // decode-free 계약: 응답을 가공 없이 그대로 저장/반환.
                                     var clone = resp.clone();
                                     // 멈춘 put 이 조용히 남지 않도록 감시 타이머를 둔다(통계 errors 에 기록 → 진단 가능).

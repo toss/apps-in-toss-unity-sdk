@@ -28,6 +28,12 @@
  *      스트리밍 동시성 등)은 읽는 쪽이 정한다: JS 는 window.AITMemory.lowMemTier, C# 은 AITMemoryBridge.LowMemTier(jslib __AITMemoryBridge_GetLowMemTier).
  *      값은 부팅 때 한 번 정해지고 세션 중 바뀌지 않는다.
  *  - window.AITMemory.markFirstFrame(): index.html 의 첫 프레임 콜백이 1회 부른다(멱등). boot-start → first-frame 전이 + stable 타이머 시작.
+ *      전이 때 window 'ait:firstframe' 이벤트를 1회 발행한다(페이지 캐시 지연 put 이 "첫 프레임 + 10초"를 재는 기준. 이 파일이 꺼져 있으면(memoryTelemetry=false)
+ *      그쪽이 AITMemory.bootStage / window.unityInstance 폴링으로 대신한다).
+ *  - lowMemTier 소비자: 페이지 캐시 put 생략(Chromium 포함 tier>=1), early-fetch 의 data 선시작 생략과 ait-databuf.js 의 data 요청 보류(tier>=1),
+ *      ait-gl.js DPR 상한(tier 1 → 1.5, tier 2 → 1.0), C# AITLowMemoryTier(tier 2 → 텍스처 mip 제한 1, tier>=1 → 스트리밍 동시성 1).
+ *      페이지 캐시/early-fetch 인라인 스크립트는 이 파일보다 먼저 실행되므로 같은 규칙을 window.__aitPeekLowTier 로 동기 계산한다
+ *      (AITPageCacheEmitter.PeekLowTierJs — 규칙을 바꾸면 양쪽을 함께 고친다).
  *  - 로그 태그: [AIT-Memory] 부팅 마커 줄(부팅 시 1회, 첫 프레임 1회).
  *  - window.__AIT_HEAP_GROW: { count, failures, totalMs, maxMs, peakBytes, initialBytes, sequenceMB:[...], events:[...] }
  *      grow 호출마다 갱신된다. events 항목: { n, t(ms, performance.now()), ms, from, to, ok, err? }. 최근 128개만 보관.
@@ -201,6 +207,7 @@
                 ' lowMemTier=' + mem.lowMemTier + (mem.lowMemReason ? '(' + mem.lowMemReason + ')' : '') +
                 ' prevBoot=' + mem.prevBoot);
         } catch (e) { /* 로그 실패 무시 */ }
+        try { window.dispatchEvent(new Event('ait:firstframe')); } catch (e) { /* 리스너 예외/미지원 무시 */ }
         try {
             stableTimer = setTimeout(function () {
                 stableTimer = null;

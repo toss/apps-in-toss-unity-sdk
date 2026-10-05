@@ -41,7 +41,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -98,6 +98,38 @@ namespace AppsInToss.Editor
 
             /// <summary>linear(sRGB=false) 또는 NormalMap 으로 제외된 개수.</summary>
             public int ExcludedColorSpace;
+
+            /// <summary>auto 모드에서 메모리 예산(textureStreamingMemoryBudgetMB)을 넘어 제외된 개수.</summary>
+            public int ExcludedBudget;
+
+            /// <summary>원본 ASTC 블록(raw)을 스트림 사본으로 내보낸 텍스처 수(GPU 포맷 보존).</summary>
+            public int RawCount;
+        }
+
+        /// <summary>외부화 후보 1건의 메모리 영향 산출 결과(빌드 리포트·예산 선택·raw 적격 판정에 쓴다).</summary>
+        private sealed class CandidateInfo
+        {
+            /// <summary>임포트된(=빌드에 실리는) 텍스처의 TextureFormat 이름/정수값.</summary>
+            public string FormatName;
+            public int FormatInt;
+
+            /// <summary>임포트된 mip 레벨 수(스텁도 같은 임포터 설정이라 같다).</summary>
+            public int Mips;
+
+            /// <summary>원본 임포터의 isReadable(스텁은 항상 readable 이라 이 값을 매니페스트에 기록한다).</summary>
+            public bool WasReadable;
+
+            /// <summary>원본 ASTC 블록을 그대로 스트리밍할 수 있는지(GPU 포맷 보존이 켜져 있고 포맷이 적격).</summary>
+            public bool RawEligible;
+
+            public long GpuBytes;
+            public long StubBytes;
+
+            /// <summary>PNG/JPG 복원 경로의 메모리 증가(스텁 RGBA32 − 원본 GPU).</summary>
+            public long PngDelta;
+
+            /// <summary>예산 판정에 쓰는 증가량. raw 적격이면 같은 포맷 스텁이라 0(중립).</summary>
+            public long Delta;
         }
 
         static AITLargeTextureExternalizer()
@@ -157,6 +189,11 @@ namespace AppsInToss.Editor
                 // 경로 → (guid, w, h) 후보 목록(제외 게이트 통과 + minBytes 충족).
                 var candidates = new List<(string guid, string path, int w, int h, long size)>();
 
+                // 후보별 메모리 영향(스텁 RGBA32 − 원본 GPU)·raw 적격. 키 = guid.
+                var infoByGuid = new Dictionary<string, CandidateInfo>();
+                bool explicitOn = config.textureStreaming == 1;
+                bool keepGpu = ResolveKeepGpuFormat(config);
+
                 foreach (var g in guids)
                 {
                     string path = AssetDatabase.GUIDToAssetPath(g);
@@ -177,7 +214,7 @@ namespace AppsInToss.Editor
 
                     // 제외 게이트: 사유별 카운터 갱신.
                     if (!PassesExclusionGatesWithCount(path, bootSet, atlasPaths, atlasFolders, excludeDirs,
-                            ref cntBoot, ref cntResources, ref cntAtlas, ref cntColorSpace, out _))
+                            ref cntBoot, ref cntResources, ref cntAtlas, ref cntColorSpace, out var gateImporter))
                     {
                         continue;
                     }
@@ -206,6 +243,7 @@ namespace AppsInToss.Editor
                     }
 
                     candidates.Add((g, path, w, h, size));
+                    infoByGuid[g] = BuildCandidateInfo(imported, gateImporter, w, h, keepGpu);
                 }
 
                 // ─── 2단계: 동명·동차원 충돌 검사 ────────────────────────────────
@@ -245,21 +283,74 @@ namespace AppsInToss.Editor
                     }
                 }
 
+                // ─── 2-1단계: 메모리 예산 게이트(auto 한정) ───────────────────────
+                //    스텁은 원본과 같은 차원의 RGBA32 라, 원본이 ASTC/DXT 같은 압축 포맷이면 복원 뒤에도 GPU 가 RGBA32 로 팽창한다
+                //    (2048² ASTC 6x6: 약 1.9MB → 16MB). 텍스처마다 (스텁 RGBA32 − 원본 GPU) 를 리포트에 찍고,
+                //    auto(-1)는 그 합계가 textureStreamingMemoryBudgetMB 이내가 되는 텍스처만 외부화한다(작은 증가부터).
+                //    명시 1 은 지금까지처럼 전부 외부화한다. 예산 0 이하는 제한 없음.
+                var budgetSkipped = new HashSet<int>();
+                {
+                    var liveIdx = new List<int>();
+                    var liveDelta = new List<long>();
+                    for (int i = 0; i < candidates.Count; i++)
+                    {
+                        if (duplicateIndices.Contains(i))
+                        {
+                            continue;
+                        }
+
+                        liveIdx.Add(i);
+                        liveDelta.Add(infoByGuid[candidates[i].guid].Delta);
+                    }
+
+                    long budgetBytes = (long)Package.AITPerfFlags.EffectiveTextureStreamingMemoryBudgetMB(config) * 1048576L;
+                    bool[] pick = explicitOn
+                        ? AITTextureStreamPlanner.SelectWithinBudget(liveDelta, 0)
+                        : AITTextureStreamPlanner.SelectWithinBudget(liveDelta, budgetBytes);
+
+                    var memLines = new List<string>();
+                    long sumPicked = 0;
+                    for (int k = 0; k < liveIdx.Count; k++)
+                    {
+                        var (cg, cpath, cw, ch, _) = candidates[liveIdx[k]];
+                        var ci = infoByGuid[cg];
+                        string verdict = pick[k] ? "외부화" : "제외(예산 초과)";
+                        if (!pick[k])
+                        {
+                            budgetSkipped.Add(liveIdx[k]);
+                        }
+                        else if (ci.Delta > 0)
+                        {
+                            sumPicked += ci.Delta;
+                        }
+
+                        memLines.Add($"  {Path.GetFileNameWithoutExtension(cpath)} ({cw}x{ch}, {ci.FormatName}, mip {ci.Mips}): 원본 GPU {ci.GpuBytes / 1048576f:0.00}MB, 스텁 RGBA32 {ci.StubBytes / 1048576f:0.00}MB, 증가 {ci.Delta / 1048576f:+0.00;-0.00;0.00}MB{(ci.RawEligible ? " [GPU 포맷 보존]" : string.Empty)} → {verdict}");
+                    }
+
+                    if (liveIdx.Count > 0)
+                    {
+                        string modeText = explicitOn ? "명시(전부 외부화)" : (budgetBytes > 0 ? $"auto, 예산 {budgetBytes / 1048576L}MB" : "auto, 예산 제한 없음");
+                        Debug.Log($"[AIT-StreamingTexture] 메모리 영향 리포트(스텁 RGBA32 − 원본 GPU) — {modeText}: 외부화 대상 증가 합계 {sumPicked / 1048576f:0.00}MB, 예산 제외 {budgetSkipped.Count}개\n{string.Join("\n", memLines)}");
+                    }
+                }
+
                 // ─── 3단계: 외부화 실행(스텁 치환 + 스트리밍 소스 복사) ──────────────
                 //    엔트리 문자열은 4단계의 brotli 채택 판정 후 확정하므로, 여기서는 레코드만 수집.
                 var records = new List<(string g, string streamFile, string texName, int w, int h, long size)>();
+                var rawFiles = new Dictionary<string, string>(); // guid → raw 스트림 사본 파일명(<guid>.astc, brotli 채택 전)
                 int n = 0;
                 long stubbedBytes = 0;
                 var detailLines = new List<string>();
 
                 for (int i = 0; i < candidates.Count; i++)
                 {
-                    if (duplicateIndices.Contains(i))
+                    if (duplicateIndices.Contains(i) || budgetSkipped.Contains(i))
                     {
-                        continue; // 동명·동차원 충돌 → 제외
+                        continue; // 동명·동차원 충돌 / 메모리 예산 초과 → 제외
                     }
 
                     var (g, path, w, h, size) = candidates[i];
+                    var ci = infoByGuid[g];
                     string srcFull = Path.Combine(projectRoot, path);
                     string ext = Path.GetExtension(path).ToLowerInvariant(); // ".png" 등(점 포함)
                     string texName = Path.GetFileNameWithoutExtension(path);
@@ -284,6 +375,22 @@ namespace AppsInToss.Editor
                         File.Copy(metaFull, metaBak, true);
                     }
 
+                    // 2-1) GPU 포맷 보존: 원본(이미 ASTC 로 임포트된) 블록을 스텁으로 덮기 전에 읽어 둔다.
+                    //      읽기에 실패하면 PNG/JPG 경로로 내려가고, 그 경우 메모리 증가가 예산 판정(0 으로 가정)과 달라지므로
+                    //      auto 모드에서는 이 텍스처를 외부화하지 않는다(예산 계약 유지).
+                    byte[] rawBytes = null;
+                    if (ci.RawEligible)
+                    {
+                        rawBytes = TryReadOriginalRaw(path, w, h, ci);
+                        if (rawBytes == null && !explicitOn && ci.PngDelta > 0)
+                        {
+                            RevertSingle(srcFull, metaFull, srcBak, metaBak, projectRoot);
+                            SafeDelete(Path.Combine(projectRoot, StreamRootAssets, streamFile));
+                            Debug.LogWarning($"[AIT-StreamingTexture] 원본 블록 읽기 실패 → 예산 계약 유지를 위해 외부화 제외: {path}");
+                            continue;
+                        }
+                    }
+
                     // 3) 동일 차원 단색 스텁 PNG 를 소스에 덮어쓴다(leak-safe: temp Texture2D 는 finally 에서 파괴).
                     if (!WriteStubPng(srcFull, w, h))
                     {
@@ -294,22 +401,56 @@ namespace AppsInToss.Editor
                         continue;
                     }
 
-                    // 4) 스텁 서브셋만 런타임 writable 로 reimport: isReadable + non-crunch + Uncompressed.
+                    // 4) 스텁 서브셋만 런타임 writable 로 reimport: isReadable + non-crunch (+ PNG 경로는 Uncompressed).
                     //    sprite mode/spritesheet/pivot/border/sRGB 등은 건드리지 않아 Sprite rect 동일 유지.
+                    //    raw 경로(원본 ASTC 블록 보존)는 원본과 같은 압축 포맷을 그대로 둔다 — 스텁이 같은 ASTC 포맷·mip 이어야
+                    //    런타임 LoadRawTextureData 가 정확한 크기로 들어간다.
                     AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
                     var ti2 = AssetImporter.GetAtPath(path) as TextureImporter;
                     if (ti2 != null)
                     {
                         ti2.isReadable = true;
                         ti2.crunchedCompression = false;
-                        ti2.textureCompression = TextureImporterCompression.Uncompressed;
+                        if (rawBytes == null)
+                        {
+                            ti2.textureCompression = TextureImporterCompression.Uncompressed;
+                        }
+
                         ti2.SaveAndReimport();
+                    }
+
+                    if (rawBytes != null && !StubMatchesOriginal(path, w, h, ci))
+                    {
+                        Debug.LogWarning($"[AIT-StreamingTexture] 스텁 포맷/mip 이 원본({ci.FormatName}, mip {ci.Mips})과 달라 GPU 포맷 보존을 포기하고 PNG/JPG 로 내립니다: {path}");
+                        if (!explicitOn && ci.PngDelta > 0)
+                        {
+                            RevertSingle(srcFull, metaFull, srcBak, metaBak, projectRoot);
+                            SafeDelete(Path.Combine(projectRoot, StreamRootAssets, streamFile));
+                            Debug.LogWarning($"[AIT-StreamingTexture] 예산 계약 유지를 위해 외부화 제외: {path}");
+                            continue;
+                        }
+
+                        var tiFallback = AssetImporter.GetAtPath(path) as TextureImporter;
+                        if (tiFallback != null)
+                        {
+                            tiFallback.textureCompression = TextureImporterCompression.Uncompressed;
+                            tiFallback.SaveAndReimport();
+                        }
+
+                        rawBytes = null;
+                    }
+
+                    if (rawBytes != null)
+                    {
+                        string rawName = g + AITTextureStreamPlanner.RawExtension;
+                        File.WriteAllBytes(Path.Combine(projectRoot, StreamRootAssets, rawName), rawBytes);
+                        rawFiles[g] = rawName;
                     }
 
                     records.Add((g, streamFile, texName, w, h, size));
                     n++;
                     stubbedBytes += size;
-                    detailLines.Add($"  {texName} ({w}x{h}, {size / 1048576f:0.00}MB) → {streamFile}");
+                    detailLines.Add($"  {texName} ({w}x{h}, {size / 1048576f:0.00}MB) → {streamFile}{(rawBytes != null ? " + " + g + AITTextureStreamPlanner.RawExtension + " (" + ci.FormatName + " 원본 블록)" : string.Empty)}");
                 }
 
                 // ─── 3-1단계: 스트림 사본 다운스케일(HiDPI 캡, lossy, 기본 ON) ───────────
@@ -415,12 +556,18 @@ namespace AppsInToss.Editor
                 //    커서, ShouldKeep(≥10%) 채택 파일만 <guid><ext>.br 로 대체하고 원본은 제거한다.
                 //    런타임 AITStreamingCodec 이 encoding="br" 를 매직 스니핑으로 해제(서버 해제 포함).
                 var texBr = new Dictionary<string, string>(); // streamFile → streamFile+".br"
+                var rawBr = new HashSet<string>();            // brotli 채택된 raw 사본 파일명(<guid>.astc → <guid>.astc.br)
                 if (records.Count > 0 && AITBrotliCompressor.TryResolveNode(out _))
                 {
                     var brSources = new List<string>();
                     foreach (var rec in records)
                     {
                         brSources.Add(Path.Combine(projectRoot, StreamRootAssets, rec.streamFile));
+                    }
+
+                    foreach (var rawName in rawFiles.Values)
+                    {
+                        brSources.Add(Path.Combine(projectRoot, StreamRootAssets, rawName));
                     }
 
                     var brResults = AITBrotliCompressor.Compress(brSources);
@@ -439,6 +586,22 @@ namespace AppsInToss.Editor
                             SafeDelete(abs + ".br");    // 이득 미달/실패 → 무압축 원본 유지.
                         }
                     }
+
+                    foreach (var rawName in rawFiles.Values)
+                    {
+                        string abs = Path.Combine(projectRoot, StreamRootAssets, rawName);
+                        if (brResults.TryGetValue(abs, out var r) && r.Ok
+                            && AITBrotliCompressor.ShouldKeep(r.raw, r.br, AITBrotliCompressor.DefaultMinGainPercent))
+                        {
+                            SafeDelete(abs);
+                            SafeDelete(abs + ".meta");
+                            rawBr.Add(rawName);
+                        }
+                        else
+                        {
+                            SafeDelete(abs + ".br");
+                        }
+                    }
                 }
 
                 var entries = new List<string>();
@@ -453,20 +616,39 @@ namespace AppsInToss.Editor
                     // width/height 는 스텁=원본 차원(FindStub 매칭 계약, 절대 축소본으로 바꾸지 않음).
                     // 다운스케일된 경우에만 sw/sh(스트림 실제 차원)를 추가 — 런타임이 LoadImage 후 기대 차원으로 사용.
                     bool isDs = downscaledDims.TryGetValue(rec.streamFile, out var dsd);
-                    entries.Add("{\"guid\":\"" + rec.g + "\",\"name\":" + JsonStr(rec.texName)
-                                + ",\"file\":" + JsonStr(fileName)
-                                + (isBr ? ",\"encoding\":\"br\"" : string.Empty)
-                                + ",\"width\":" + rec.w + ",\"height\":" + rec.h
-                                + (isDs ? ",\"sw\":" + dsd.w + ",\"sh\":" + dsd.h : string.Empty) + "}");
+                    var ci = infoByGuid[rec.g];
+                    var spec = new AITTextureStreamPlanner.EntrySpec
+                    {
+                        guid = rec.g,
+                        name = rec.texName,
+                        file = fileName,
+                        fileBrotli = isBr,
+                        width = rec.w,
+                        height = rec.h,
+                        sw = isDs ? dsd.w : 0,
+                        sh = isDs ? dsd.h : 0,
+                        // 원본이 non-readable 이면 복원 후에도 non-readable(스텁이 readable 이라 LoadImage 가 CPU 사본을 남기는 회귀 차단).
+                        nonReadable = !ci.WasReadable,
+                    };
+                    if (rawFiles.TryGetValue(rec.g, out string rawName))
+                    {
+                        bool rawIsBr = rawBr.Contains(rawName);
+                        spec.rawFile = rawIsBr ? rawName + ".br" : rawName;
+                        spec.rawBrotli = rawIsBr;
+                        spec.rawFormat = ci.FormatInt;
+                        spec.rawMips = ci.Mips;
+                        spec.rawSize = AITTextureStreamPlanner.ExpectedRawBytes(ci.FormatName, rec.w, rec.h, ci.Mips);
+                    }
+
+                    entries.Add(AITTextureStreamPlanner.BuildEntryJson(spec));
                 }
 
                 // ─── 4단계: 매니페스트 동봉 ─────────────────────────────────────
                 // 런타임 AITStreamingTexture 가 읽는 계약: maxConcurrent + entries.
-                int maxConcurrent = config.textureStreamingMaxConcurrent > 0 ? config.textureStreamingMaxConcurrent : 3;
-                var sb = new StringBuilder();
-                sb.Append("{\"maxConcurrent\":").Append(maxConcurrent)
-                  .Append(",\"entries\":[").Append(string.Join(",", entries)).Append("]}");
-                File.WriteAllText(Path.Combine(projectRoot, StreamRootAssets, "manifest.json"), sb.ToString());
+                // 저사양 티어에서는 런타임이 이 값과 무관하게 1 로 강제한다.
+                int maxConcurrent = AITTextureStreamPlanner.ResolveMaxConcurrent(config.textureStreamingMaxConcurrent);
+                File.WriteAllText(Path.Combine(projectRoot, StreamRootAssets, "manifest.json"),
+                    AITTextureStreamPlanner.BuildManifestJson(maxConcurrent, entries));
                 AssetDatabase.Refresh();
 
                 handle.Active = n > 0;
@@ -477,6 +659,8 @@ namespace AppsInToss.Editor
                 handle.ExcludedAtlas = cntAtlas;
                 handle.ExcludedDuplicate = cntDuplicate;
                 handle.ExcludedColorSpace = cntColorSpace;
+                handle.ExcludedBudget = budgetSkipped.Count;
+                handle.RawCount = rawFiles.Count;
 
                 if (!handle.Active)
                 {
@@ -487,7 +671,9 @@ namespace AppsInToss.Editor
                 // ─── 5단계: 빌드 리포트 ──────────────────────────────────────────
                 if (n == 0)
                 {
-                    Debug.Log("[AIT-StreamingTexture] 텍스처 스트리밍: 외부화 대상 없음.");
+                    Debug.Log(budgetSkipped.Count > 0
+                        ? $"[AIT-StreamingTexture] 텍스처 스트리밍: 외부화 대상 없음(메모리 예산 초과로 {budgetSkipped.Count}개 제외). 전부 외부화하려면 textureStreaming=1 또는 textureStreamingMemoryBudgetMB=0."
+                        : "[AIT-StreamingTexture] 텍스처 스트리밍: 외부화 대상 없음.");
                 }
                 else
                 {
@@ -498,8 +684,10 @@ namespace AppsInToss.Editor
                     if (cntAtlas > 0) excParts.Add($"아틀라스 {cntAtlas}");
                     if (cntDuplicate > 0) excParts.Add($"동명 충돌 {cntDuplicate}");
                     if (cntColorSpace > 0) excParts.Add($"linear/NormalMap {cntColorSpace}");
+                    if (budgetSkipped.Count > 0) excParts.Add($"메모리 예산 {budgetSkipped.Count}");
                     string excSummary = excParts.Count > 0 ? $" | 제외: {string.Join(", ", excParts)}" : "";
-                    Debug.Log($"[AIT-StreamingTexture] ✓ 외부화 {n}개 / {stubbedBytes / 1048576f:0.0}MB 절감{excSummary}");
+                    string rawSummary = rawFiles.Count > 0 ? $" | GPU 포맷 보존 {rawFiles.Count}개" : string.Empty;
+                    Debug.Log($"[AIT-StreamingTexture] ✓ 외부화 {n}개 / {stubbedBytes / 1048576f:0.0}MB 절감{rawSummary}{excSummary}");
 
                     // 상세 목록
                     Debug.Log($"[AIT-StreamingTexture] 외부화 상세 목록:\n{string.Join("\n", detailLines)}");
@@ -541,6 +729,110 @@ namespace AppsInToss.Editor
             {
                 Debug.LogError($"[AIT-StreamingTexture] 복원 예외: {e}");
             }
+        }
+
+        // ─────────────────────────── 메모리 영향 / GPU 포맷 보존 ───────────────────────────
+
+        /// <summary>
+        /// GPU 포맷 보존(원본 ASTC 블록 스트리밍) 사용 여부. 설정 필드(<c>textureStreamKeepGpuFormat</c>, tri-state)가 있으면 그 값,
+        /// 환경 변수 <c>AIT_TEXTURE_STREAM_KEEP_GPU_FORMAT</c>(1/0)가 있으면 그것이 우선한다. 자동(-1)은 꺼짐
+        /// — 실기기 검증 전이다. 필드는 리플렉션으로 읽어 설정 클래스에 필드가 추가되기 전에도 컴파일된다.
+        /// </summary>
+        internal static bool ResolveKeepGpuFormat(AITEditorScriptObject config)
+        {
+            int stored = -1;
+            try
+            {
+                var f = typeof(AITEditorScriptObject).GetField(AITTextureStreamPlanner.KeepGpuFormatFieldName,
+                    BindingFlags.Public | BindingFlags.Instance);
+                if (f != null && f.FieldType == typeof(int) && config != null)
+                {
+                    stored = (int)f.GetValue(config);
+                }
+            }
+            catch (Exception)
+            {
+                // 필드를 못 읽으면 자동으로 본다.
+            }
+
+            stored = AITTextureStreamPlanner.ParseTriStateEnv(
+                Environment.GetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar), stored);
+            return AITTextureStreamPlanner.ResolveTriState(stored, false);
+        }
+
+        /// <summary>후보의 포맷·mip·메모리 영향·raw 적격을 산출한다(임포트된 텍스처 기준 — 빌드에 실리는 상태).</summary>
+        private static CandidateInfo BuildCandidateInfo(Texture2D imported, TextureImporter ti, int w, int h, bool keepGpu)
+        {
+            string fmt = imported.format.ToString();
+            int mips = Math.Max(1, imported.mipmapCount);
+            var ci = new CandidateInfo
+            {
+                FormatName = fmt,
+                FormatInt = (int)imported.format,
+                Mips = mips,
+                WasReadable = ti != null && ti.isReadable,
+                GpuBytes = AITTextureStreamPlanner.EstimateGpuBytes(fmt, w, h, mips),
+                StubBytes = AITTextureStreamPlanner.EstimateStubBytes(w, h, mips),
+            };
+            ci.PngDelta = AITTextureStreamPlanner.ComputeMemoryDelta(ci.StubBytes, ci.GpuBytes);
+            ci.RawEligible = keepGpu && ti != null && AITTextureStreamPlanner.IsRawEligible(
+                fmt, ti.crunchedCompression, ti.streamingMipmaps, ti.textureShape == TextureImporterShape.Texture2D, w, h, mips);
+            ci.Delta = ci.RawEligible ? 0 : ci.PngDelta;
+            return ci;
+        }
+
+        /// <summary>
+        /// 임포트된 원본 텍스처의 GPU 블록 바이트(전체 mip 체인)를 읽는다. non-readable 이면 임시로 readable 로 reimport 해야
+        /// GetRawTextureData 가 열리는데, 원본 .meta 는 호출 전에 백업돼 있어 빌드 종료 시 복원된다.
+        /// 차원·포맷·mip 수·바이트 길이가 하나라도 기대와 다르면 null(호출부가 PNG/JPG 경로로 내려간다).
+        /// </summary>
+        private static byte[] TryReadOriginalRaw(string path, int w, int h, CandidateInfo ci)
+        {
+            try
+            {
+                var ti = AssetImporter.GetAtPath(path) as TextureImporter;
+                if (ti == null)
+                {
+                    return null;
+                }
+
+                if (!ti.isReadable)
+                {
+                    ti.isReadable = true;
+                    ti.SaveAndReimport();
+                }
+
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (tex == null || tex.width != w || tex.height != h
+                    || tex.format.ToString() != ci.FormatName || tex.mipmapCount != ci.Mips)
+                {
+                    Debug.LogWarning($"[AIT-StreamingTexture] 원본 블록 읽기 skip(임포트 상태 불일치): {path}");
+                    return null;
+                }
+
+                byte[] raw = tex.GetRawTextureData();
+                long expected = AITTextureStreamPlanner.ExpectedRawBytes(ci.FormatName, w, h, ci.Mips);
+                if (raw == null || expected <= 0 || raw.Length != expected)
+                {
+                    Debug.LogWarning($"[AIT-StreamingTexture] 원본 블록 길이 불일치(기대 {expected}B, 실제 {(raw != null ? raw.Length : 0)}B): {path}");
+                    return null;
+                }
+
+                return raw;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT-StreamingTexture] 원본 블록 읽기 실패({path}): {e.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>스텁 임포트 결과가 원본과 같은 차원·포맷·mip 수의 readable 텍스처인지(raw 복원의 전제).</summary>
+        private static bool StubMatchesOriginal(string path, int w, int h, CandidateInfo ci)
+        {
+            var stub = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            return stub != null && stub.width == w && stub.height == h && stub.isReadable
+                && stub.format.ToString() == ci.FormatName && stub.mipmapCount == ci.Mips;
         }
 
         // ─────────────────────────── 제외 게이트 ───────────────────────────
@@ -1115,9 +1407,6 @@ namespace AppsInToss.Editor
 
             return false;
         }
-
-        private static string JsonStr(string s)
-            => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
         // 존재하지 않는 경로에 대해 조용히 no-op(brotli 채택/폐기 정리용).
         private static void SafeDelete(string full)

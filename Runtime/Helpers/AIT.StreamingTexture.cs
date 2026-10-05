@@ -49,10 +49,13 @@ namespace AppsInToss
         /// <summary>스캔 주기(초). 너무 잦으면 FindObjectsOfTypeAll 비용, 너무 느리면 텍스처 복원 지연.</summary>
         private const float ScanIntervalSeconds = 0.25f;
 
-        /// <summary>동시 스트리밍 다운로드/디코드 기본 상한(매니페스트에 값이 없을 때). LoadImage 가 메인스레드 디코드라 hitch 제한용.</summary>
-        private const int DefaultMaxConcurrent = 3;
+        /// <summary>
+        /// 동시 스트리밍 다운로드/디코드 기본 상한(매니페스트에 값이 없을 때). LoadImage 가 메인스레드 디코드라 hitch 를 제한하고,
+        /// 디코드 버퍼(2048² 하나에 RGBA32 16MB)가 겹쳐 힙 high-water 를 올리지 않도록 1 로 둔다. 복원은 TTFF 뒤라 체감 비용이 작다.
+        /// </summary>
+        private const int DefaultMaxConcurrent = 1;
 
-        // --- 진단 카운터(P0-1): 복원에 성공한 텍스처의 CPU 사본 추정 바이트(w*h*4, LoadImage 가 RGBA32 로 풀므로). AITUnityMemReporter 가 읽는다.
+        // --- 진단 카운터(P0-1): 복원에 성공한 텍스처의 CPU 사본 추정 바이트(readable 로 남긴 것만: LoadImage 는 w*h*4, raw 는 블록 바이트). non-readable 로 복원하면 0. AITUnityMemReporter 가 읽는다.
         internal static long HeldBytes;
         internal static int HeldCount;
 
@@ -78,6 +81,30 @@ namespace AppsInToss
             /// </summary>
             public int sw;
             public int sh;
+
+            /// <summary>
+            /// 1 = 원본이 non-readable 이었다(복원 후에도 non-readable 로 되돌려 CPU 사본을 남기지 않는다).
+            /// 0 = 원본이 readable 이었거나 구 매니페스트(필드 없음) — 기존처럼 readable 로 복원.
+            /// </summary>
+            public int nonReadable;
+
+            /// <summary>
+            /// GPU 포맷 보존(raw) 사본: 원본 ASTC 블록 전체 mip 체인(필요하면 brotli). 비어 있으면 PNG/JPG(file)만 쓴다.
+            /// file 은 raw 를 쓸 수 없는 환경(ASTC 미지원 등)의 폴백으로 항상 함께 실린다.
+            /// </summary>
+            public string rawFile;
+
+            /// <summary>raw 페이로드 인코딩("br" = brotli). 비어 있으면 무압축.</summary>
+            public string rawEncoding;
+
+            /// <summary>raw 사본의 TextureFormat 정수값(스텁 포맷과 일치해야 한다).</summary>
+            public int rawFormat;
+
+            /// <summary>raw 사본의 mip 수(스텁 mipmapCount 와 일치해야 한다).</summary>
+            public int rawMips;
+
+            /// <summary>raw 사본의 해제 후 바이트(LoadRawTextureData 가 요구하는 정확한 크기).</summary>
+            public int rawSize;
         }
 
         [System.Serializable]
@@ -107,6 +134,9 @@ namespace AppsInToss
 
         /// <summary>결정적(같은 페이로드 → 같은 결과) 디코드/적용 실패의 시도 상한.</summary>
         private const int MaxApplyAttempts = 2;
+
+        /// <summary>raw 복원에 실패한(포맷·mip 불일치, 크기 불일치, 예외) 엔트리 guid. 이후 시도는 PNG/JPG 폴백으로 간다.</summary>
+        private readonly HashSet<string> rawFailed = new HashSet<string>();
 
         private int maxConcurrent = DefaultMaxConcurrent;
         private int loadingCount;
@@ -174,10 +204,17 @@ namespace AppsInToss
                 try
                 {
                     var m = JsonUtility.FromJson<Manifest>(req.downloadHandler.text);
-                    if (m.maxConcurrent > 0)
+                    int tier = 0;
+                    try
                     {
-                        maxConcurrent = m.maxConcurrent;
+                        tier = AITMemoryBridge.LowMemTier;
                     }
+                    catch (System.Exception)
+                    {
+                        // 티어를 못 읽으면 정상 기기로 본다.
+                    }
+
+                    maxConcurrent = ResolveMaxConcurrent(m.maxConcurrent, tier);
 
                     if (m.entries != null)
                     {
@@ -191,7 +228,7 @@ namespace AppsInToss
                     }
 
                     ready = true;
-                    Debug.Log($"[AIT-StreamingTexture] 매니페스트 로드: {pending.Count}개 외부화 텍스처 (동시 {maxConcurrent})");
+                    Debug.Log($"[AIT-StreamingTexture] 매니페스트 로드: {pending.Count}개 외부화 텍스처 (동시 {maxConcurrent}, lowMemTier={tier})");
                 }
                 catch (System.Exception ex)
                 {
@@ -267,53 +304,102 @@ namespace AppsInToss
         private IEnumerator LoadAndApply(Entry e, Texture2D tex)
         {
 #if AIT_HAS_UNITYWEBREQUEST && AIT_HAS_IMAGECONVERSION
-            string url = ResolveStreamingUrl(StreamDirRelativePath + e.file);
+            // raw(GPU 포맷 보존) 사본은 스텁 포맷·mip 이 매니페스트와 정확히 같고 기기가 그 포맷을 지원할 때만 쓴다.
+            // 그렇지 않으면 PNG/JPG 사본(file)으로 폴백 — 사본 선택은 다운로드 전에 정해 불필요한 쪽을 받지 않는다.
+            bool useRaw = tex != null && IsRawUsable(
+                e.rawFile, rawFailed.Contains(e.guid), e.rawFormat, e.rawMips, e.rawSize,
+                SupportsRawFormat(e.rawFormat), (int)tex.format, tex.mipmapCount);
+            string url = ResolveStreamingUrl(StreamDirRelativePath + (useRaw ? e.rawFile : e.file));
+
+            bool ok;
+            string error;
+            byte[] data = null;
             using (var req = UnityWebRequest.Get(url))
             {
                 yield return req.SendWebRequest();
                 loadingCount--;
                 inflight.Remove(e.guid);
 
-                if (!IsSuccess(req))
+                ok = IsSuccess(req);
+                error = req.error;
+                if (ok)
                 {
-                    // 실패 → 인스턴스 예약 해제 후 다음 스캔에서 재시도(다른 인스턴스 포함).
-                    // 일시적 네트워크 실패일 수 있어 재시도하되, 상한 초과 시 포기(스텁 유지)해
-                    // 250ms 간격 무한 재다운로드(배터리/네트워크 소모)를 차단한다.
-                    restoredInstanceIds.Remove(tex != null ? tex.GetInstanceID() : 0);
-                    int dlFails = IncrementFailure(downloadFailCounts, e.guid);
-                    if (dlFails >= MaxDownloadAttempts)
+                    // 응답 본문을 managed 로 한 번 옮긴 뒤 using 를 닫아 UWR 의 네이티브 버퍼를 바로 해제한다
+                    // (아래 디코드와 네이티브 사본·managed 사본이 겹치지 않게).
+                    data = req.downloadHandler.data;
+                }
+            }
+
+            if (!ok)
+            {
+                // 실패 → 인스턴스 예약 해제 후 다음 스캔에서 재시도(다른 인스턴스 포함).
+                // 일시적 네트워크 실패일 수 있어 재시도하되, 상한 초과 시 포기(스텁 유지)해
+                // 250ms 간격 무한 재다운로드(배터리/네트워크 소모)를 차단한다.
+                restoredInstanceIds.Remove(tex != null ? tex.GetInstanceID() : 0);
+                int dlFails = IncrementFailure(downloadFailCounts, e.guid);
+                string failedFile = useRaw ? e.rawFile : e.file;
+                if (dlFails >= MaxDownloadAttempts)
+                {
+                    pending.RemoveAll(x => x.guid == e.guid);
+                    Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {failedFile}: {error} — {dlFails}회 누적, 포기(스텁 유지)");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {failedFile}: {error} (재시도 {dlFails}/{MaxDownloadAttempts})");
+                }
+
+                yield break;
+            }
+
+            if (tex == null)
+            {
+                // 대상 텍스처가 그 사이 언로드됨 — 복원 불필요로 간주하고 pending 에서 제거.
+                pending.RemoveAll(x => x.guid == e.guid);
+                yield break;
+            }
+
+            bool markNonReadable = ShouldMarkNonReadable(e.nonReadable);
+            bool applied = false;
+            long heldBytes = 0;
+            try
+            {
+                if (useRaw)
+                {
+                    // .br 정규화: 서버가 Content-Encoding 으로 이미 풀었으면 길이가 rawSize 와 같다.
+                    int expectedRaw = e.rawSize;
+                    byte[] raw = AITStreamingCodec.DecodePayload(
+                        e.rawEncoding, data, d => d != null && d.Length == expectedRaw, e.name);
+                    data = null;
+                    if (raw != null && raw.Length == expectedRaw)
                     {
-                        pending.RemoveAll(x => x.guid == e.guid);
-                        Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {e.file}: {req.error} — {dlFails}회 누적, 포기(스텁 유지)");
+                        // 같은 ASTC 포맷의 스텁에 원본 블록을 그대로 올린다 — RGBA32 로 팽창하지 않는다.
+                        tex.LoadRawTextureData(raw);
+                        tex.Apply(false, markNonReadable);
+                        applied = true;
+                        heldBytes = markNonReadable ? 0 : expectedRaw;
                     }
                     else
                     {
-                        Debug.LogWarning($"[AIT-StreamingTexture] 로드 실패 {e.file}: {req.error} (재시도 {dlFails}/{MaxDownloadAttempts})");
+                        Debug.LogWarning($"[AIT-StreamingTexture] raw 크기 불일치 {e.name}: 기대 {expectedRaw}B, 수신 {(raw != null ? raw.Length : 0)}B → PNG/JPG 폴백");
                     }
-
-                    yield break;
                 }
-
-                if (tex == null)
-                {
-                    // 대상 텍스처가 그 사이 언로드됨 — 복원 불필요로 간주하고 pending 에서 제거.
-                    pending.RemoveAll(x => x.guid == e.guid);
-                    yield break;
-                }
-
-                bool applied = false;
-                try
+                else
                 {
                     // .br 외부화 페이로드 정규화: 서버가 Content-Encoding 으로 이미 해제했으면
                     // 그대로, raw brotli 면 여기서 해제(PNG/JPG 매직으로 판별). 무압축 엔트리는 no-op.
                     byte[] payload = AITStreamingCodec.DecodePayload(
-                        e.encoding, req.downloadHandler.data, AITStreamingCodec.LooksLikeImage, e.name);
+                        e.encoding, data, AITStreamingCodec.LooksLikeImage, e.name);
+                    data = null;
 
-                    // 동일 차원 스텁(readable+uncompressed)에 실 픽셀을 in-place 업로드.
+                    // 동일 차원 스텁(readable)에 실 픽셀을 in-place 업로드.
                     // LoadImage 는 PNG/JPG 디코드 후 GPU 업로드까지 수행 → 참조하는 Sprite/Material 자동 갱신.
-                    applied = tex.LoadImage(payload, false);
+                    // 원본이 non-readable 이었으면 markNonReadable 로 CPU 사본(w*h*4)을 남기지 않는다.
+                    applied = tex.LoadImage(payload, markNonReadable);
+                    payload = null;
                     if (applied)
                     {
+                        heldBytes = markNonReadable ? 0 : (long)tex.width * tex.height * 4;
+
                         // 기대 차원: 의도적 다운스케일(sw/sh>0)이면 스트림 이미지 차원, 아니면 스텁=원본 차원.
                         // 균일 배율 다운스케일은 Sprite 의 정규화 UV(비율)를 보존하므로 렌더는 정상(저해상도일 뿐).
                         int expW = e.sw > 0 ? e.sw : e.width;
@@ -326,35 +412,105 @@ namespace AppsInToss
                         }
                     }
                 }
-                catch (System.Exception ex)
-                {
-                    Debug.LogWarning($"[AIT-StreamingTexture] 복원 예외 {e.name}: {ex.Message}");
-                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[AIT-StreamingTexture] 복원 예외 {e.name}: {ex.Message}");
+            }
 
-                if (applied)
+            data = null;
+
+            if (applied)
+            {
+                HeldBytes += heldBytes;
+                HeldCount++;
+                pending.RemoveAll(x => x.guid == e.guid);
+                Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {tex.width}x{tex.height} path={(useRaw ? "raw" : "image")} fmt={tex.format} readable={(markNonReadable ? 0 : 1)}");
+            }
+            else if (useRaw && !string.IsNullOrEmpty(e.file))
+            {
+                // raw 복원 실패 → 이 엔트리는 이후 PNG/JPG 폴백으로만 시도한다(다음 스캔). 스텁은 손대지 않은 상태라 안전하다.
+                rawFailed.Add(e.guid);
+                restoredInstanceIds.Remove(tex.GetInstanceID());
+                Debug.LogWarning($"[AIT-StreamingTexture] raw 복원 실패 {e.name} → PNG/JPG 폴백으로 재시도");
+            }
+            else
+            {
+                // 적용 실패 → 인스턴스 예약 해제. 같은 페이로드는 재시도해도 같게 실패하므로
+                // (예: 영구 해독 불가 브로틀리, 손상 이미지) 소수 시도 후 포기(스텁 유지)해
+                // 250ms 간격 무한 재다운로드 루프를 차단한다.
+                restoredInstanceIds.Remove(tex.GetInstanceID());
+                int apFails = IncrementFailure(applyFailCounts, e.guid);
+                if (apFails >= MaxApplyAttempts)
                 {
-                    HeldBytes += (long)tex.width * tex.height * 4;
-                    HeldCount++;
                     pending.RemoveAll(x => x.guid == e.guid);
-                }
-                else
-                {
-                    // 적용 실패 → 인스턴스 예약 해제. 같은 페이로드는 재시도해도 같게 실패하므로
-                    // (예: 영구 해독 불가 브로틀리, 손상 이미지) 소수 시도 후 포기(스텁 유지)해
-                    // 250ms 간격 무한 재다운로드 루프를 차단한다.
-                    restoredInstanceIds.Remove(tex.GetInstanceID());
-                    int apFails = IncrementFailure(applyFailCounts, e.guid);
-                    if (apFails >= MaxApplyAttempts)
-                    {
-                        pending.RemoveAll(x => x.guid == e.guid);
-                        Debug.LogWarning($"[AIT-StreamingTexture] 복원 적용 실패 {e.name} — {apFails}회(디코드 불가/손상 페이로드), 포기(스텁 유지)");
-                    }
+                    Debug.LogWarning($"[AIT-StreamingTexture] 복원 적용 실패 {e.name} — {apFails}회(디코드 불가/손상 페이로드), 포기(스텁 유지)");
                 }
             }
 #else
             // AIT_HAS_UNITYWEBREQUEST/AIT_HAS_IMAGECONVERSION 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
             yield return null;
 #endif
+        }
+
+        // ─────────────────────── 순수 판정(EditMode 테스트 대상) ───────────────────────
+
+        /// <summary>
+        /// 실제 동시 상한. 저사양 티어(1 이상)에서는 매니페스트 값과 무관하게 1 로 강제한다
+        /// (디코드 버퍼·페이로드가 겹치는 힙 high-water 를 막는다). 그 외는 매니페스트 값, 없으면 기본값.
+        /// </summary>
+        internal static int ResolveMaxConcurrent(int manifestValue, int lowMemTier)
+        {
+            if (lowMemTier >= 1)
+            {
+                return 1;
+            }
+
+            return manifestValue > 0 ? manifestValue : DefaultMaxConcurrent;
+        }
+
+        /// <summary>원본이 non-readable 이었으면(nonReadable=1) 복원 후에도 non-readable 로 되돌린다. 필드 없음(0)은 기존 동작(readable).</summary>
+        internal static bool ShouldMarkNonReadable(int nonReadableFlag)
+        {
+            return nonReadableFlag != 0;
+        }
+
+        /// <summary>
+        /// raw(GPU 포맷 보존) 사본을 쓸 수 있는지. 매니페스트에 raw 가 있고, 이전에 실패하지 않았고, 기기가 그 포맷을 지원하며,
+        /// 스텁의 실제 포맷·mip 수가 raw 와 같을 때만 true — 하나라도 어긋나면 PNG/JPG 폴백.
+        /// </summary>
+        internal static bool IsRawUsable(
+            string rawFile, bool failedBefore, int expectedFormat, int expectedMips, int expectedSize,
+            bool supportsFormat, int actualFormat, int actualMips)
+        {
+            if (string.IsNullOrEmpty(rawFile) || failedBefore)
+            {
+                return false;
+            }
+
+            if (expectedFormat <= 0 || expectedMips <= 0 || expectedSize <= 0)
+            {
+                return false;
+            }
+
+            return supportsFormat && actualFormat == expectedFormat && actualMips == expectedMips;
+        }
+
+        private static bool SupportsRawFormat(int format)
+        {
+            if (format <= 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                return SystemInfo.SupportsTextureFormat((TextureFormat)format);
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>guid 의 실패 횟수를 1 올리고 누적값을 반환한다.</summary>

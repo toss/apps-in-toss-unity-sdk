@@ -500,6 +500,8 @@
     <script>
         // 에러 표시 함수
         function showLoadError(title, message, hints, debugInfo) {
+            // 오류 화면은 로드의 끝이다. 정체 워치독·.catch 가 이후에 다시 reload 하지 않게 한다.
+            window._aitLoadAborted = true;
             console.error('[AIT] ' + title);
             console.error('[AIT] ' + message);
             if (hints) {
@@ -514,6 +516,9 @@
             // 로딩 화면을 에러 화면으로 변경
             var wrapper = document.getElementById('ait-loading-wrapper');
             if (wrapper) {
+                // 래퍼는 일반 흐름에 있어 position:fixed 인 #unity-container(캔버스) 뒤에 가려진다. 오류 화면은 맨 위에 덮는다.
+                wrapper.style.cssText = 'position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2147483647; display: flex; '
+                    + 'align-items: center; justify-content: center; overflow: auto; background: #231F20; color: #fff;';
                 wrapper.innerHTML =
                     '<div style="padding: 20px; text-align: center; max-width: 400px;">' +
                         '<div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>' +
@@ -890,6 +895,9 @@
                 // (dataUrl run dependency 영구 대기 → 무한 로딩). 로더가 남기는 유일한 신호인
                 // console.error('Failed to download file ...')를 감지해 ASM_CONSTS 재시도와
                 // 동일한 예산(__ait_reload_count__, 최대 2회)으로 자동 재시도한다.
+                // 한 번의 로드에서 파일 여러 개가 연달아 실패해도 첫 실패만 처리한다. 실패마다 예산을 쓰면
+                // 같은 로드 안에서 예산이 바닥나 카운터가 초기화되고, 이미 예약된 reload 가 그 0 에서 다시
+                // 시작해 재시도가 끝나지 않는다.
                 (function() {
                     var origConsoleError = console.error;
                     console.error = function() {
@@ -897,35 +905,44 @@
                             var msg = arguments[0];
                             if (typeof msg === 'string'
                                 && msg.indexOf('Failed to download file ') === 0
-                                && !window.unityInstance) {
-                                var retryKey = '__ait_reload_count__';
-                                var maxRetries = 2;
-                                var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
-                                if (retries < maxRetries) {
-                                    sessionStorage.setItem(retryKey, String(retries + 1));
-                                    // 복구 reload는 Cache-Storage(레거시 워밍)를 1회 우회하고 네트워크로 직행한다
-                                    // — 혹시 오염된 캐시 엔트리가 있어도 복구가 그것에 갇히지 않도록.
-                                    try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
-                                    origConsoleError.call(console,
-                                        '[AIT] 다운로드 실패 감지, 자동 재시도 (' + (retries + 1) + '/' + maxRetries + '):', msg);
-                                    location.reload();
-                                } else {
-                                    sessionStorage.removeItem(retryKey);
-                                    showLoadError(
-                                        '게임 로드 실패',
-                                        String(msg),
-                                        [
-                                            '네트워크 연결 상태를 확인해 주세요.',
-                                            '잠시 후 다시 시도해 주세요.',
-                                            '문제가 계속되면 앱을 재시작해 주세요.'
-                                        ],
-                                        { error: String(msg), retryCount: retries, source: 'download-watchdog' }
-                                    );
-                                }
+                                && !window.unityInstance
+                                && !window._aitDownloadFailureHandled) {
+                                window._aitDownloadFailureHandled = true;
+                                retryOrShowDownloadError(msg);
                             }
                         } catch (e) {}
                         return origConsoleError.apply(console, arguments);
                     };
+
+                    function retryOrShowDownloadError(msg) {
+                        try {
+                            var retryKey = '__ait_reload_count__';
+                            var maxRetries = 2;
+                            var retries = parseInt(sessionStorage.getItem(retryKey) || '0', 10);
+                            if (retries < maxRetries) {
+                                sessionStorage.setItem(retryKey, String(retries + 1));
+                                // 복구 reload는 Cache-Storage(레거시 워밍)를 1회 우회하고 네트워크로 직행한다
+                                // — 혹시 오염된 캐시 엔트리가 있어도 복구가 그것에 갇히지 않도록.
+                                try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
+                                origConsoleError.call(console,
+                                    '[AIT] 다운로드 실패 감지, 자동 재시도 (' + (retries + 1) + '/' + maxRetries + '):', msg);
+                                window._aitLoadAborted = true;
+                                location.reload();
+                            } else {
+                                sessionStorage.removeItem(retryKey);
+                                showLoadError(
+                                    '게임 로드 실패',
+                                    String(msg),
+                                    [
+                                        '네트워크 연결 상태를 확인해 주세요.',
+                                        '잠시 후 다시 시도해 주세요.',
+                                        '문제가 계속되면 앱을 재시작해 주세요.'
+                                    ],
+                                    { error: String(msg), retryCount: retries, source: 'download-watchdog' }
+                                );
+                            }
+                        } catch (e) {}
+                    }
                 })();
 
                 // WebGL context 생성 실패 시 브라우저 이벤트 캡처
@@ -952,7 +969,7 @@
                 var _aitLastProgress = 0;
                 var _aitLastProgressTs = Date.now();
                 var _aitStallTimer = setInterval(function() {
-                    if (window.unityInstance) { clearInterval(_aitStallTimer); return; }
+                    if (window.unityInstance || window._aitLoadAborted) { clearInterval(_aitStallTimer); return; }
                     if (_aitLastProgress >= 0.9) return;
                     if (Date.now() - _aitLastProgressTs > 60000) {
                         clearInterval(_aitStallTimer);
@@ -1006,6 +1023,11 @@
                         console.log('[AIT] GLctx 에러는 이미 처리되었습니다.');
                         return;
                     }
+                    // 다운로드 실패는 워치독이 이미 재시도를 맡았다. 여기서 카운터를 지우면 재시도가 끝나지 않는다.
+                    if (window._aitDownloadFailureHandled || window._aitLoadAborted) {
+                        console.log('[AIT] 다운로드 실패는 워치독이 처리합니다.');
+                        return;
+                    }
 
                     var errorStr = typeof message === 'object' ? (message.message || String(message)) : String(message);
                     console.error('[AIT] ✗ Unity 로드 실패:', errorStr);
@@ -1038,6 +1060,7 @@
 
                     if (isAsmConstsError && currentRetries < maxRetries) {
                         sessionStorage.setItem(retryKey, String(currentRetries + 1));
+                        window._aitLoadAborted = true;
                         console.warn('[AIT] ASM_CONSTS 초기화 오류 감지, 자동 재시도 (' + (currentRetries + 1) + '/' + maxRetries + ')');
                         location.reload();
                         return;

@@ -473,4 +473,57 @@ public class AITStreamingFontTests
         Assert.IsNotNull(f, $"필드를 찾지 못함: {name}");
         f.SetValue(target, value);
     }
+
+    // =====================================================
+    // P1-2: 번들 Unload(false) 옵트인 + tofu 프로브
+    // =====================================================
+
+    [Test]
+    public void Manifest_UnloadBundle_DefaultsOff_WhenFieldAbsent()
+    {
+        // 구 매니페스트(필드 없음)는 0 = 번들 유지(기존 동작).
+        string json = "{\"maxConcurrent\":2,\"entries\":[{\"guid\":\"g\",\"bundle\":\"g.bundle\",\"fonts\":[\"F\"]}]}";
+        object manifest = UnityEngine.JsonUtility.FromJson(json, ManifestType);
+        Assert.AreEqual(0, ManifestType.GetField("unloadBundle").GetValue(manifest));
+    }
+
+    [Test]
+    public void Manifest_UnloadBundle_ParsesOptIn()
+    {
+        string json = "{\"maxConcurrent\":2,\"unloadBundle\":1,\"entries\":[]}";
+        object manifest = UnityEngine.JsonUtility.FromJson(json, ManifestType);
+        Assert.AreEqual(1, ManifestType.GetField("unloadBundle").GetValue(manifest));
+    }
+
+    [TestCase(7, 7, 7, 7, false)]   // 전후 모두 전부 성공
+    [TestCase(7, 7, 6, 7, false)]   // 한 글자 차이는 폰트 커버리지 차이로 본다
+    [TestCase(7, 7, 4, 7, false)]   // 절반 이상 남음
+    [TestCase(7, 7, 0, 7, true)]    // Unload 뒤 전부 실패 = tofu 위험
+    [TestCase(7, 7, 3, 7, true)]    // 절반 미만
+    [TestCase(0, 7, 0, 7, false)]   // 기준선이 0 이면(폰트가 못 그리거나 Static 아틀라스) 판정 불가
+    [TestCase(7, 0, 0, 7, false)]
+    [TestCase(7, 7, 0, 0, false)]
+    public void IsTofuRisk_ComparesAfterRatioAgainstBaseline(int beforeOk, int beforeTotal, int afterOk, int afterTotal, bool expected)
+    {
+        Assert.AreEqual(expected, AITStreamingFont.IsTofuRisk(beforeOk, beforeTotal, afterOk, afterTotal));
+    }
+
+    [Test]
+    public void FormatProbeLine_HasStableKeysForE2E()
+    {
+        string ok = AITStreamingFont.FormatProbeLine("g.bundle", "NotoKR", 7, 7, 7, 7);
+        Assert.AreEqual("[AIT-StreamingFont] unload-probe bundle=g.bundle font=NotoKR before=7/7 after=7/7 tofuRisk=0", ok);
+
+        string bad = AITStreamingFont.FormatProbeLine("g.bundle", "NotoKR", 7, 7, 0, 7);
+        StringAssert.StartsWith("[AIT-StreamingFont] unload-probe bundle=g.bundle font=NotoKR before=7/7 after=0/7 tofuRisk=1", bad);
+    }
+
+    [Test]
+    public void ProbeCharSets_AreDisjoint_SoAfterProbeCannotPassOnCachedGlyphs()
+    {
+        foreach (char c in AITStreamingFont.ProbeCharsAfter)
+        {
+            Assert.AreEqual(-1, AITStreamingFont.ProbeCharsBefore.IndexOf(c), $"'{c}' 가 두 프로브 집합에 모두 있음");
+        }
+    }
 }

@@ -101,11 +101,18 @@ namespace AppsInToss
         {
             public int maxConcurrent;
             public Entry[] entries;
+
+            /// <summary>1 = 주입 직후 번들을 Unload(false) 한다(번들 사본 해제). 0/부재 = 세션 동안 유지(기본).
+            /// 빌드의 fontStreamingUnloadBundle 설정이 켰을 때만 기록되며, E2E 로 tofu 가 없음을 확인하기 전에는 켜지 않는다.</summary>
+            public int unloadBundle;
         }
 
         private readonly List<Entry> pending = new List<Entry>();
         private int maxConcurrent = DefaultMaxConcurrent;
         private bool ready;
+
+        /// <summary>매니페스트 unloadBundle=1 이면 true. 주입 뒤 bundle.Unload(false) 를 호출한다.</summary>
+        private bool unloadBundleAfterLoad;
 
         // TMP reflection 캐시(주입 1회 해석 후 재사용).
         private Type tmpSettingsType;
@@ -278,6 +285,8 @@ namespace AppsInToss
                         maxConcurrent = m.maxConcurrent;
                     }
 
+                    unloadBundleAfterLoad = m.unloadBundle == 1;
+
                     if (m.entries != null)
                     {
                         foreach (var e in m.entries)
@@ -290,7 +299,7 @@ namespace AppsInToss
                     }
 
                     ready = true;
-                    Debug.Log($"[AIT-StreamingFont] 매니페스트 로드: {pending.Count}개 외부화 폰트 (동시 {maxConcurrent})");
+                    Debug.Log($"[AIT-StreamingFont] 매니페스트 로드: {pending.Count}개 외부화 폰트 (동시 {maxConcurrent}, 번들 해제 {(unloadBundleAfterLoad ? "켬" : "끔")})");
                 }
                 catch (Exception ex)
                 {
@@ -335,7 +344,14 @@ namespace AppsInToss
 
                 // stripping High 가 잘라낸 GetAssetBundle/DownloadHandlerAssetBundle 대신
                 // DownloadHandlerBuffer 로 받은 바이트를 LoadFromMemoryAsync 로 적재(가상 FS 캐시 비의존).
+                int dataLength = data != null ? data.Length : 0;
                 var createReq = AssetBundle.LoadFromMemoryAsync(data);
+
+                // 요청을 넘겼으니 managed 사본의 참조를 놓는다. 코루틴(이터레이터)의 지역 변수는 코루틴이 끝날 때까지 상태 객체에
+                // 남아 있어서, 놓지 않으면 번들 크기만큼의 byte[] 가 LoadAllAssetsAsync·주입이 끝나도록 힙에 상주한다.
+                // 엔진은 요청 시점에 자기 몫(복사 또는 GC 핸들)을 확보하므로 여기서 null 로 만들어도 안전하다. wasm 힙은 줄어들지
+                // 않으므로 GC 로 되찾은 구간은 이후 할당(스트리밍 텍스처 등)이 재사용한다.
+                data = null;
                 yield return createReq;
 
                 var bundle = createReq.assetBundle;
@@ -345,10 +361,11 @@ namespace AppsInToss
                     yield break;
                 }
 
-                HeldBytes += data.Length;
+                HeldBytes += dataLength;
                 HeldCount++;
 
                 bool any = false;
+                var injectedAssets = unloadBundleAfterLoad ? new List<UnityEngine.Object>() : null;
                 var loadReq = bundle.LoadAllAssetsAsync();
                 yield return loadReq;
 
@@ -368,6 +385,7 @@ namespace AppsInToss
                             if (IsTmpFontAsset(a) && InjectFallback(a))
                             {
                                 any = true;
+                                injectedAssets?.Add(a);
                                 Debug.Log($"[AIT-StreamingFont]   fallback 주입: {a.name} ({e.bundle})");
                             }
                         }
@@ -378,8 +396,40 @@ namespace AppsInToss
                     Debug.LogWarning($"[AIT-StreamingFont] 주입 예외 {e.bundle}: {ex.Message}");
                 }
 
-                // 번들은 언로드하지 않는다(unload(true) 는 주입한 폰트를 파괴, unload(false) 도 동적
-                // 래스터화가 번들 자원을 늦게 참조할 위험이 있어 세션 동안 유지). 메모리 비용은 폰트 1~2개분.
+                // 기본은 번들을 언로드하지 않는다. Unload(true) 는 주입한 폰트를 파괴하고, Unload(false) 도 동적 래스터화가
+                // 번들 자원(Font 원본 데이터, .resS 스트림 리소스)을 늦게 참조하면 새 글자가 tofu 로 남을 위험이 있어서다.
+                // 매니페스트 unloadBundle=1(빌드 설정 fontStreamingUnloadBundle, 기본 꺼짐)일 때만 Unload(false) 로 번들 사본을
+                // 되돌리고, 직후 동적 글리프 추가 프로브를 로그로 남겨 E2E 가 tofu 여부를 확인할 수 있게 한다.
+                if (unloadBundleAfterLoad)
+                {
+                    string[] probeFonts = null;
+                    int[] probeBefore = null;
+                    if (injectedAssets != null && injectedAssets.Count > 0)
+                    {
+                        probeFonts = new string[injectedAssets.Count];
+                        probeBefore = new int[injectedAssets.Count];
+                        for (int i = 0; i < injectedAssets.Count; i++)
+                        {
+                            probeFonts[i] = injectedAssets[i] != null ? injectedAssets[i].name : "?";
+                            probeBefore[i] = ProbeAddCharacters(injectedAssets[i], ProbeCharsBefore);
+                        }
+                    }
+
+                    bundle.Unload(false);
+                    Debug.Log($"[AIT-StreamingFont]   번들 Unload(false): {e.bundle} ({dataLength / 1024}KB 사본 해제)");
+
+                    // 언로드가 끝난 뒤의 프레임에서 아직 한 번도 요청하지 않은 글자를 동적 아틀라스에 추가해 본다.
+                    yield return null;
+                    if (probeFonts != null)
+                    {
+                        for (int i = 0; i < injectedAssets.Count; i++)
+                        {
+                            int after = ProbeAddCharacters(injectedAssets[i], ProbeCharsAfter);
+                            Debug.Log(FormatProbeLine(e.bundle, probeFonts[i], probeBefore[i], ProbeCharsBefore.Length, after, ProbeCharsAfter.Length));
+                        }
+                    }
+                }
+
                 result = any;
             }
             finally
@@ -392,6 +442,89 @@ namespace AppsInToss
             yield return null;
             done(false);
 #endif
+        }
+
+        // ─────────────────────────── Unload 후 tofu 프로브 (E2E 용) ───────────────────────────
+
+        /// <summary>Unload 전에 동적 아틀라스에 넣어 보는 글자(기준선).</summary>
+        internal const string ProbeCharsBefore = "가나다라마바사";
+
+        /// <summary>Unload 뒤에 처음 요청하는 글자. 위와 겹치지 않아 아틀라스에 이미 있는 글리프로 통과하는 일이 없다.</summary>
+        internal const string ProbeCharsAfter = "아자차카타파하";
+
+        /// <summary>
+        /// 폰트 에셋에 글자를 동적으로 추가해 본다(TMP_FontAsset.TryAddCharacters, reflection). 추가에 성공한 글자 수를 반환하고,
+        /// 호출할 수 없으면(TMP 버전 불일치·Static 아틀라스 등) 0 이다. 프로브일 뿐이라 예외는 삼킨다.
+        /// </summary>
+        private static int ProbeAddCharacters(UnityEngine.Object fontAsset, string chars)
+        {
+            if (fontAsset == null || string.IsNullOrEmpty(chars))
+            {
+                return 0;
+            }
+
+            try
+            {
+                MethodInfo method = null;
+                foreach (var m in fontAsset.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (m.Name != "TryAddCharacters")
+                    {
+                        continue;
+                    }
+
+                    var ps = m.GetParameters();
+                    if (ps.Length >= 2 && ps[0].ParameterType == typeof(string) && ps[1].IsOut)
+                    {
+                        method = m;
+                        break;
+                    }
+                }
+
+                if (method == null)
+                {
+                    return 0;
+                }
+
+                var parameters = method.GetParameters();
+                var args = new object[parameters.Length];
+                args[0] = chars;
+                for (int i = 2; i < parameters.Length; i++)
+                {
+                    args[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : null;
+                }
+
+                method.Invoke(fontAsset, args);
+                string missing = args[1] as string;
+                return Math.Max(0, chars.Length - (missing != null ? missing.Length : 0));
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Unload 뒤 새 글자 추가 성공률이 Unload 전 기준선에 비해 절반 미만이면 tofu 위험으로 본다(순수 함수).
+        /// 기준선이 0(폰트가 이 글자들을 못 그리거나 Static 아틀라스)이면 판정할 수 없어 위험으로 보지 않는다.
+        /// </summary>
+        internal static bool IsTofuRisk(int beforeOk, int beforeTotal, int afterOk, int afterTotal)
+        {
+            if (beforeOk <= 0 || beforeTotal <= 0 || afterTotal <= 0)
+            {
+                return false;
+            }
+
+            // afterOk/afterTotal < (beforeOk/beforeTotal)/2 를 정수로: afterOk*beforeTotal*2 < beforeOk*afterTotal.
+            return (long)afterOk * beforeTotal * 2 < (long)beforeOk * afterTotal;
+        }
+
+        /// <summary>E2E 가 파싱하는 프로브 로그 한 줄(순수 함수). 형식은 테스트로 고정한다.</summary>
+        internal static string FormatProbeLine(string bundle, string font, int beforeOk, int beforeTotal, int afterOk, int afterTotal)
+        {
+            bool risk = IsTofuRisk(beforeOk, beforeTotal, afterOk, afterTotal);
+            return $"[AIT-StreamingFont] unload-probe bundle={bundle} font={font} before={beforeOk}/{beforeTotal} after={afterOk}/{afterTotal} tofuRisk={(risk ? 1 : 0)}"
+                   + (risk ? " — Unload 뒤 동적 글리프 추가가 막힘: fontStreamingUnloadBundle 을 끄세요" : string.Empty);
         }
 
         // ─────────────────────────── lazy 확장 언어 감지/로드 ───────────────────────────

@@ -16,6 +16,11 @@
 // 없으므로, 매직 바이트 스니핑으로 두 경우를 판별해 필요할 때만 해제한다(brotli 는 포맷
 // 자체에 매직 바이트가 없어 "이미 기대 포맷인지"를 기준으로 역판별한다).
 //
+// 빌드 정책(P0-8): 2)의 managed 해제는 압축본 + MemoryStream 성장분 + ToArray 사본이 wasm 힙 high-water 를 수십 MB 올리고 힙은 줄지 않는다.
+// CDN 의 Content-Encoding 적용이 확인되기 전까지 빌더는 스트리밍 자산을 .br 로 내리지 않는다(AITBrotliCompressor.TryResolveStreamingBrotli,
+// 환경 변수 AIT_STREAMING_BROTLI=1 로 켬). 그래서 이 파일의 해제 경로는 구 빌드/수동 .br 용 안전망이고, 실제로 탔는지는
+// [AIT-Streaming] managed brotli 로그와 [AIT-UnityMem] 의 brotli= 카운터로 확인한다.
+//
 // BrotliStream 은 .NET Standard 2.1 프로파일에만 존재한다. .NET Framework(4.x) API 레벨
 // 프로젝트에서는 컴파일이 불가하므로 조건부 컴파일로 분리하고, 미지원 프로파일에서는 해제
 // 없이 원본을 반환한다(그 경우 서버 Content-Encoding 경로(1)가 유일한 성공 경로 — 경고로

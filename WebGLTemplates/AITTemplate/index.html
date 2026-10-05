@@ -256,6 +256,36 @@
         })();
     </script>
 
+    <!-- Android 토스 앱 WebView 는 캔버스를 탭해도 페이지에 포커스(document.hasFocus())가 오지 않을 수 있다.
+         Unity 가 touchstart·touchend 에서 preventDefault 를 불러 탭 제스처가 만들어지지 않기 때문이다. 포커스가 없는 문서에서는
+         input.focus() 가 activeElement 만 바꿀 뿐 focus 이벤트도 가상 키보드도 없다. 그런 상태의 첫 탭 한 번만 두 이벤트의
+         preventDefault 를 무력화해 탭 제스처가 윈도우 포커스를 가져오게 하고, 그 뒤에 따라오는 호환 마우스 이벤트는 Unity 가
+         탭을 두 번 처리하지 않도록 막는다. 포커스가 있으면 아무것도 하지 않는다. -->
+    <script>
+        (function () {
+            var active = false, swallowUntil = 0;
+            function noop() {}
+            window.addEventListener('touchstart', function (e) {
+                active = !document.hasFocus() && e.cancelable && e.touches.length === 1 && !!e.target && e.target.tagName === 'CANVAS';
+                if (active) e.preventDefault = noop;
+            }, true);
+            window.addEventListener('touchend', function (e) {
+                if (!active) return;
+                active = false;
+                e.preventDefault = noop;
+                swallowUntil = performance.now() + 800;
+            }, true);
+            window.addEventListener('touchcancel', function () { active = false; }, true);
+            ['mousedown', 'mouseup', 'click'].forEach(function (name) {
+                window.addEventListener(name, function (e) {
+                    if (!e.isTrusted || performance.now() >= swallowUntil) return;
+                    if (name === 'mousedown') e.preventDefault();   // 캔버스(tabindex)로 포커스가 넘어가 input 이 blur 되는 것도 막는다
+                    e.stopImmediatePropagation();
+                }, true);
+            });
+        })();
+    </script>
+
     <!-- USER_HEAD_START - 이 영역에 사용자 커스텀 스크립트/스타일을 추가하세요 -->
     <!-- 예: <script src="https://cdn.example.com/library.js"></script> -->
     <!-- 예: <link rel="stylesheet" href="custom.css"> -->

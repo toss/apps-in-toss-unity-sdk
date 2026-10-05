@@ -250,6 +250,24 @@ public class AITKeyboardViewportTemplateWiringTests
             "오버라이드만으로 보이는 영역에 맞추는 전제입니다.");
     }
 
+    [Test]
+    public void IndexHtml_FirstTapWithoutWindowFocus_LetsTapGestureThrough()
+    {
+        string html = ReadIndexHtml();
+
+        int start = html.IndexOf("!document.hasFocus()");
+        Assert.GreaterOrEqual(start, 0,
+            "포커스 없는 문서의 첫 탭을 통과시키는 스크립트가 없습니다. Android WebView 에서 첫 탭에 키보드가 뜨지 않습니다.");
+        int end = html.IndexOf("</script>", start);
+        string script = html.Substring(start, end - start);
+
+        Assert.IsTrue(script.Contains("e.preventDefault = noop"), "첫 탭의 touchstart·touchend preventDefault 를 무력화하지 않습니다.");
+        Assert.IsTrue(script.Contains("'mousedown', 'mouseup', 'click'") && script.Contains("stopImmediatePropagation"),
+            "첫 탭 뒤의 호환 마우스 이벤트를 막지 않아 Unity 가 탭을 두 번 처리합니다.");
+        Assert.Less(start, html.IndexOf("%UNITY_WEBGL_LOADER_URL%"),
+            "Unity 로더보다 먼저 capture 리스너를 걸어야 Unity 의 터치 핸들러보다 앞섭니다.");
+    }
+
     private static string ExtractKeyboardViewportScript()
     {
         string html = ReadIndexHtml();

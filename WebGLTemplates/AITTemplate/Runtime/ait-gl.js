@@ -12,8 +12,8 @@
  *       Unity 캔버스(id=unity-canvas 이거나 DOM 에 붙은 캔버스)는 어떤 경우에도 해제하지 않는다.
  *  2. webglcontextlost 복구(bindContextLoss): preventDefault 없이 페이지를 reload 한다. 120초 안에 2번째 손실이면 루프 가드로
  *     reload 대신 안내 overlay 를 띄운다. 문서가 hidden 이면 visible 이 될 때까지 reload 를 미룬다.
- *  3. DPR tier 상한(tierCap): localStorage __ait_gl_tier(24시간 만료)에 저장된 값과 window.AITMemory.crashCount 에서 구한 값 중
- *     낮은 쪽. 손실이 날 때마다 현재 DPR 한 단계 아래(2 → 1.5 → 1)로 내린다.
+ *  3. DPR tier 상한(tierCap): localStorage __ait_gl_tier(24시간 만료)에 저장된 값, window.AITMemory.crashCount 에서 구한 값,
+ *     window.AITMemory.lowMemTier(부팅 사망 후 저사양 tier: 1 → 1.5, 2 → 1)에서 구한 값 중 가장 낮은 것. 손실이 날 때마다 현재 DPR 한 단계 아래(2 → 1.5 → 1)로 내린다.
  *  4. ?aitglprobe=1 일 때만 RT 인벤토리(renderbufferStorage(Multisample)/texStorage2D/texImage2D(null) 크기)를 window.__AIT_GL.rt 에 모은다.
  *     같은 모드에서 텍스처 업로드 바이트도 센다(P0-1): texImage2D(데이터 있음)/compressedTexImage2D/texSubImage2D(+compressedTexSubImage2D)/
  *     texImage3D·texSubImage3D 의 ArrayBufferView byteLength 합. 데이터 없이 할당만 하는 texImage2D(null)/texStorage2D 크기는 alloc 으로 따로.
@@ -24,11 +24,13 @@
  *  - window.__AIT_PERF (index.html head 맨 위 인라인 스크립트가 정의, 이 파일보다 먼저 실행됨)
  *      읽는 키: glHook(기본 true), glDropAntialias(기본 false), glContextRecovery(기본 true).
  *      객체가 없거나 키가 없으면 위 기본값으로 동작한다(fail-open).
- *      glHook=false 면 getContext 를 건드리지 않는다. glContextRecovery=false 면 bindContextLoss 는 false, tierCap 은 0 이다.
+ *      glHook=false 면 getContext 를 건드리지 않는다. glContextRecovery=false 면 bindContextLoss 는 false, tierCap 은 저장값/crashCount 를 무시하고
+ *      lowMemTier 로 정한 값만 돌려준다(저사양 tier 가 없으면 0).
  *  - window.__AIT_GL.tierCap(): number
  *      부팅 시점 DPR 상한. 0 = 상한 없음, 그 외 2 / 1.5 / 1 중 하나. index.html 의 getOptimalDevicePixelRatio 가
  *      자동 DPR 과 min 을 취한다(명시적 DPR 설정이 있으면 호출하지 않음 — 그래서 이 파일은 명시 설정을 모른다).
- *      근거로 window.AITMemory.crashCount(ait-mem.js)를 읽는다(없으면 0 으로 취급).
+ *      근거로 window.AITMemory.crashCount, window.AITMemory.lowMemTier(ait-mem.js)를 읽는다(없으면 0 으로 취급).
+ *      lowMemTier 는 glContextRecovery 와 무관하게 반영한다(저사양 tier 는 컨텍스트 복구와 별개 레버다).
  *  - window.__AIT_GL.bindContextLoss(canvas): boolean
  *      index.html 이 createUnityInstance 직전에 호출한다. true 를 돌려주면 이 레이어가 webglcontextlost 를
  *      전담하고 index.html 의 기본 핸들러는 설치되지 않는다. false 면 index.html 이 기존 핸들러를 쓴다.
@@ -88,7 +90,7 @@
         lossCount: 0,
         reloadScheduled: false,
         overlayShown: false,
-        tier: { stored: 0, crash: 0, applied: 0 },
+        tier: { stored: 0, crash: 0, lowMem: 0, applied: 0 },
         rt: null,
         tierCap: function () { return 0; },
         bindContextLoss: function () { return false; }
@@ -321,6 +323,15 @@
         } catch (e) {}
         return 0;
     }
+    // 부팅 사망 후 저사양 tier(ait-mem.js): 1 → DPR 상한 1.5, 2 → 1.0. 값은 부팅 때 한 번 정해진다.
+    function lowMemTierCap() {
+        try {
+            var t = Number(window.AITMemory && window.AITMemory.lowMemTier) | 0;
+            if (t >= 2) return 1;
+            if (t >= 1) return 1.5;
+        } catch (e) {}
+        return 0;
+    }
     function lowerPositive(a, b) {
         if (a > 0 && b > 0) return Math.min(a, b);
         return a > 0 ? a : (b > 0 ? b : 0);
@@ -329,14 +340,14 @@
     var tierLogged = false;
     GL.tierCap = function () {
         try {
-            if (!RECOVERY) return 0;
-            var stored = readStoredTier();
-            var crash = crashTier();
-            var cap = lowerPositive(stored, crash);
-            GL.tier = { stored: stored, crash: crash, applied: cap };
+            var lowMem = lowMemTierCap();
+            var stored = RECOVERY ? readStoredTier() : 0;
+            var crash = RECOVERY ? crashTier() : 0;
+            var cap = lowerPositive(lowerPositive(stored, crash), lowMem);
+            GL.tier = { stored: stored, crash: crash, lowMem: lowMem, applied: cap };
             if (cap > 0 && !tierLogged) {
                 tierLogged = true;
-                log(LOG, 'DPR 상한 tier=' + cap + ' (저장값=' + stored + ', crashCount 기준=' + crash + ')');
+                log(LOG, 'DPR 상한 tier=' + cap + ' (저장값=' + stored + ', crashCount 기준=' + crash + ', lowMemTier 기준=' + lowMem + ')');
             }
             return cap;
         } catch (e) {

@@ -15,6 +15,10 @@
  *  3. DPR tier 상한(tierCap): localStorage __ait_gl_tier(24시간 만료)에 저장된 값과 window.AITMemory.crashCount 에서 구한 값 중
  *     낮은 쪽. 손실이 날 때마다 현재 DPR 한 단계 아래(2 → 1.5 → 1)로 내린다.
  *  4. ?aitglprobe=1 일 때만 RT 인벤토리(renderbufferStorage(Multisample)/texStorage2D/texImage2D(null) 크기)를 window.__AIT_GL.rt 에 모은다.
+ *     같은 모드에서 텍스처 업로드 바이트도 센다(P0-1): texImage2D(데이터 있음)/compressedTexImage2D/texSubImage2D(+compressedTexSubImage2D)/
+ *     texImage3D·texSubImage3D 의 ArrayBufferView byteLength 합. 데이터 없이 할당만 하는 texImage2D(null)/texStorage2D 크기는 alloc 으로 따로.
+ *     window.__AIT_GL.rt.upload() → { texImage:{n,bytes}, compressed:{n,bytes}, sub:{n,bytes}, view3d:{n,bytes}, nonView:n, totalBytes, allocBytes }
+ *     (nonView 는 이미지/캔버스/ImageBitmap/PBO 오프셋처럼 byteLength 를 알 수 없는 업로드 호출 수). 로그는 "[AIT-GL] 텍스처 업로드 ..." 한 줄을 4초 디바운스로 남긴다.
  *
  * === 크로스 파일 계약 ===
  *  - window.__AIT_PERF (index.html head 맨 위 인라인 스크립트가 정의, 이 파일보다 먼저 실행됨)
@@ -514,15 +518,81 @@
             return { rows: list, totalBytes: total, rbMSCount: ms };
         }
 
+        // 텍스처 업로드 바이트(P0-1). 래퍼 안에서는 산술만 한다.
+        var up = {
+            texImage: { n: 0, bytes: 0 },
+            compressed: { n: 0, bytes: 0 },
+            sub: { n: 0, bytes: 0 },
+            view3d: { n: 0, bytes: 0 },
+            nonView: 0,
+            allocBytes: 0
+        };
+        var uploadDirty = false;
+
+        function uploadSummary() {
+            var total = up.texImage.bytes + up.compressed.bytes + up.sub.bytes + up.view3d.bytes;
+            return {
+                texImage: { n: up.texImage.n, bytes: up.texImage.bytes },
+                compressed: { n: up.compressed.n, bytes: up.compressed.bytes },
+                sub: { n: up.sub.n, bytes: up.sub.bytes },
+                view3d: { n: up.view3d.n, bytes: up.view3d.bytes },
+                nonView: up.nonView,
+                totalBytes: total,
+                allocBytes: up.allocBytes
+            };
+        }
+
         function flushLog() {
             logTimer = null;
-            if (!dirty) return;
-            dirty = false;
-            try {
-                var s = summary();
-                log(LOG, 'RT 인벤토리 rows=' + s.rows.length + ' 합계=' + (s.totalBytes / 1048576).toFixed(1) + 'MB rbMS=' + s.rbMSCount
-                    + ' top=' + JSON.stringify(s.rows.slice(0, 8)));
-            } catch (e) {}
+            if (dirty) {
+                dirty = false;
+                try {
+                    var s = summary();
+                    log(LOG, 'RT 인벤토리 rows=' + s.rows.length + ' 합계=' + (s.totalBytes / 1048576).toFixed(1) + 'MB rbMS=' + s.rbMSCount
+                        + ' top=' + JSON.stringify(s.rows.slice(0, 8)));
+                } catch (e) {}
+            }
+            if (uploadDirty) {
+                uploadDirty = false;
+                try {
+                    var u = uploadSummary();
+                    var mb = function (b) { return (b / 1048576).toFixed(1); };
+                    log(LOG, '텍스처 업로드 합계=' + mb(u.totalBytes) + 'MB (raw ' + mb(u.texImage.bytes) + 'MB x' + u.texImage.n
+                        + ', compressed ' + mb(u.compressed.bytes) + 'MB x' + u.compressed.n
+                        + ', sub ' + mb(u.sub.bytes) + 'MB x' + u.sub.n
+                        + ', 3d ' + mb(u.view3d.bytes) + 'MB x' + u.view3d.n
+                        + ') 뷰없음=' + u.nonView + ' alloc=' + mb(u.allocBytes) + 'MB');
+                } catch (e) {}
+            }
+        }
+
+        function touchUpload() {
+            uploadDirty = true;
+            if (logTimer === null) logTimer = setTimeout(flushLog, 4000);
+        }
+
+        // 데이터 인자(ArrayBufferView)의 바이트 수. 뷰가 아니면 -1(이미지/캔버스/PBO 오프셋 등). 범위(srcOffset/length) 인자는 원소 단위로 반영한다.
+        function viewBytes(data, srcOffset, length) {
+            if (!data || typeof data.byteLength !== 'number' || !ArrayBuffer.isView(data)) return -1;
+            var per = data.BYTES_PER_ELEMENT || 1;
+            var off = typeof srcOffset === 'number' && srcOffset > 0 ? srcOffset : 0;
+            var n = typeof length === 'number' && length > 0 ? length : (data.byteLength / per - off);
+            return n > 0 ? n * per : 0;
+        }
+        function addUpload(bucket, bytes) {
+            if (bytes < 0) { up.nonView++; }
+            else { bucket.n++; bucket.bytes += bytes; }
+            touchUpload();
+        }
+        // 채널 수 × 채널 크기(또는 패킹 크기)로 픽셀당 바이트 추정. 알 수 없으면 4.
+        var FORMAT_CHANNELS = { 0x1908: 4, 0x1907: 3, 0x190A: 2, 0x1909: 1, 0x1906: 1, 0x1903: 1, 0x8227: 2, 0x8228: 2, 0x8D94: 1, 0x8D98: 3, 0x8D99: 4 };
+        function pixelBytes(format, type) {
+            // 패킹 타입: 4_4_4_4 / 5_5_5_1 / 5_6_5 → 2바이트, 10F_11F_11F_REV / 2_10_10_10_REV → 4바이트
+            if (type === 0x8033 || type === 0x8034 || type === 0x8363) return 2;
+            if (type === 0x8C3B || type === 0x8368 || type === 0x8C3E || type === 0x84FA) return 4;
+            var ch = FORMAT_CHANNELS[format] || 4;
+            var size = type === 0x1406 ? 4 : ((type === 0x8D61 || type === 0x140B) ? 2 : (type === 0x1403 || type === 0x1402) ? 2 : (type === 0x1405 || type === 0x1404) ? 4 : 1);
+            return ch * size;
         }
 
         function record(kind, w, h, format, samples) {
@@ -563,10 +633,32 @@
             // texImage2D(target, level, internalformat, width, height, border, format, type, pixels): 픽셀 없이 할당하는 경우만(RT 후보)
             wrap(p, 'texImage2D', function (a) {
                 if (a.length === 9 && a[1] === 0 && (a[8] === null || a[8] === undefined)) record('texNull', a[3], a[4], a[2], 0);
+                // 업로드 바이트(P0-1). 9인자(+WebGL2 의 srcOffset 10번째): pixels 가 뷰면 byteLength, null 이면 할당만(alloc 추정)
+                if (a.length >= 9) {
+                    if (a[8] === null || a[8] === undefined) {
+                        if (a[3] > 0 && a[4] > 0) { up.allocBytes += a[3] * a[4] * pixelBytes(a[6], a[7]); touchUpload(); }
+                    } else {
+                        addUpload(up.texImage, viewBytes(a[8], a[9], 0));
+                    }
+                } else {
+                    addUpload(up.texImage, -1); // (target, level, internalformat, format, type, source): 이미지/캔버스 소스
+                }
             });
+            // compressedTexImage2D(target, level, internalformat, width, height, border, data[, srcOffset[, srcLengthOverride]])
+            wrap(p, 'compressedTexImage2D', function (a) { addUpload(up.compressed, viewBytes(a[6], a[7], a[8])); });
+            // compressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, data[, srcOffset[, srcLengthOverride]])
+            wrap(p, 'compressedTexSubImage2D', function (a) { addUpload(up.compressed, viewBytes(a[7], a[8], a[9])); });
+            // texSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels) | (…, format, type, source)
+            wrap(p, 'texSubImage2D', function (a) {
+                addUpload(up.sub, a.length >= 9 ? viewBytes(a[8], a[9], 0) : -1);
+            });
+            // WebGL2 3D/배열 텍스처: texImage3D(target, level, internalformat, w, h, d, border, format, type, pixels[, srcOffset])
+            wrap(p, 'texImage3D', function (a) { if (a.length >= 10 && a[9] !== null && a[9] !== undefined) addUpload(up.view3d, viewBytes(a[9], a[10], 0)); });
+            // texSubImage3D(target, level, x, y, z, w, h, d, format, type, pixels[, srcOffset])
+            wrap(p, 'texSubImage3D', function (a) { if (a.length >= 11 && a[10] !== null && a[10] !== undefined) addUpload(up.view3d, viewBytes(a[10], a[11], 0)); });
         }
 
-        GL.rt = { enabled: true, summary: summary };
+        GL.rt = { enabled: true, summary: summary, upload: uploadSummary };
         log(LOG, 'RT 인벤토리 활성 (?aitglprobe=1)');
     }
 

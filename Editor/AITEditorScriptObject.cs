@@ -709,6 +709,26 @@ namespace AppsInToss
                  "이보다 짧은 클립은 기존대로 PCM 으로 풀립니다(짧은 효과음 지연 방지).")]
         public float audioForceCompressedMinSeconds = 10f;
 
+        [Tooltip("저사양(저메모리) 기기 티어: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "런타임(ait-mem.js)이 기기 메모리(navigator.deviceMemory)·직전 세션 비정상 종료 이력을 보고 저사양 기기를 판별해 " +
+                 "AITMemory.lowMemTier 를 켜면, 후속 최적화(스트리밍 예산 축소·지연 put 등)가 이 값을 기준으로 동작합니다. " +
+                 "이 플래그는 판별과 진단만 켜며 게임 동작을 직접 바꾸지 않습니다. 0 이면 판별 자체를 끕니다.")]
+        public int lowMemoryTier = -1;
+
+        [Tooltip("페이지 캐시 put 지연: -1 = 자동(WebKit 계열만 활성), 0 = 비활성, 1 = 활성(모든 엔진). " +
+                 "legacy early-fetch 가 받은 data/wasm 을 Cache API 에 넣는 put 을 첫 프레임 이후로 미뤄 로드 중 메모리 피크와 직렬화 경합을 줄입니다. " +
+                 "WebKit(iOS) 은 put 중 본문 사본이 상주해 RSS 가 커지므로 자동에서도 켭니다. 캐시 히트는 다음 방문부터 적용됩니다.")]
+        public int pageCacheDeferredPut = -1;
+
+        [Tooltip("텍스처 스트리밍 동시 메모리 예산(MB, 기본 16). 외부화된 스트림 텍스처를 동시에 RGBA32 로 풀어 둘 수 있는 총량 상한입니다. " +
+                 "저사양 티어(lowMemoryTier)에서 런타임이 이 예산을 넘는 스트리밍 시작을 미룹니다. 0 이하이면 예산 제한 없음으로 취급합니다.")]
+        public int textureStreamingMemoryBudgetMB = 16;
+
+        [Tooltip("루프 오디오 재인코딩: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "audioStreamTranscode 가 loop=true 로 참조되는 클립을 건너뛰는 게이트를 풀어, 루프 클립도 저비트레이트로 재인코딩하되 " +
+                 "gapless 이음새 손실 위험을 줄이는 경로(루프 전용 인코딩)를 씁니다. 루프 이음새 청취 검증 전이라 자동은 꺼 둡니다.")]
+        public int audioStreamLoopTranscode = -1;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -1233,6 +1253,27 @@ namespace AppsInToss
         {
             return false;
         }
+
+        /// <summary>저사양 기기 티어 판별 자동 실효값: true. 판별·진단만 켜며 게임 동작은 바꾸지 않는다.</summary>
+        public static bool GetDefaultLowMemoryTier()
+        {
+            return true;
+        }
+
+        /// <summary>페이지 캐시 put 지연 자동 실효값: false(= 런타임이 WebKit 계열에서만 자동으로 켠다). 빌드타임 실효값은 false 이고 JSON 에는 tri-state 를 그대로 싣는다.</summary>
+        public static bool GetDefaultPageCacheDeferredPut()
+        {
+            return false;
+        }
+
+        /// <summary>루프 오디오 재인코딩 자동 실효값: false. 루프 이음새 청취 검증 전까지 opt-in.</summary>
+        public static bool GetDefaultAudioStreamLoopTranscode()
+        {
+            return false;
+        }
+
+        /// <summary>textureStreamingMemoryBudgetMB 기본값(MB).</summary>
+        public const int DefaultTextureStreamingMemoryBudgetMB = 16;
 
         /// <summary>긴 오디오 강제 압축 재생(framework 패치) 자동 실효값: false. iOS 실기기 검증 전까지 opt-in.</summary>
         public static bool GetDefaultAudioForceCompressedPlayback()

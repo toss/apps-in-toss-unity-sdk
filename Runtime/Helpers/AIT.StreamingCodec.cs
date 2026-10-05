@@ -40,6 +40,14 @@ namespace AppsInToss
         /// <summary>manifest entry.encoding 의 brotli 값(빌드타임 AITBrotliCompressor 채택 시 기록).</summary>
         internal const string EncodingBrotli = "br";
 
+        // --- 진단 카운터(P0-1): 서버가 Content-Encoding 으로 풀어 주지 않아 managed 가 직접 푼 brotli 페이로드.
+        // managed 해제는 입력+출력 버퍼가 wasm 힙(또는 Mono 힙)에 동시에 상주하므로 메모리 회귀의 후보다. AITUnityMemReporter 가 읽는다.
+        internal static int ManagedBrotliCount;
+        internal static long ManagedBrotliInBytes;
+        internal static long ManagedBrotliOutBytes;
+        internal static double ManagedBrotliMs;
+        private static bool _managedBrotliLogged;
+
         /// <summary>
         /// 현재 컴파일 프로파일에서 raw brotli 클라이언트 해제(BrotliStream)가 가능한지.
         /// 이 어셈블리(런타임)가 어떤 API 레벨로 컴파일됐는지에 따라 결정된다 — Editor 테스트
@@ -104,6 +112,18 @@ namespace AppsInToss
             return data;
         }
 
+        /// <summary>managed brotli 해제 한 건을 카운터에 반영하고, 첫 건에서만 한 줄 로그를 남긴다.</summary>
+        internal static void RecordManagedBrotli(long inBytes, long outBytes, double ms)
+        {
+            ManagedBrotliCount++;
+            ManagedBrotliInBytes += inBytes;
+            ManagedBrotliOutBytes += outBytes;
+            ManagedBrotliMs += ms;
+            if (_managedBrotliLogged) return;
+            _managedBrotliLogged = true;
+            Debug.Log($"[AIT-Streaming] managed brotli 해제 발생(서버 Content-Encoding 미적용 경로): {inBytes / 1024}KB → {outBytes / 1024}KB, {ms:0.#}ms — 이후 누계는 [AIT-UnityMem] 줄의 brotli= 항목");
+        }
+
         /// <summary>
         /// brotli 해제 시도. 미지원 프로파일(.NET Framework API 레벨)이거나 유효한 brotli
         /// 스트림이 아니면 false.
@@ -119,6 +139,7 @@ namespace AppsInToss
 #if NET_STANDARD_2_1 || NET_STANDARD
             try
             {
+                long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 using (var input = new MemoryStream(src, false))
                 using (var brotli = new BrotliStream(input, CompressionMode.Decompress))
                 using (var output = new MemoryStream(src.Length * 3))
@@ -130,6 +151,8 @@ namespace AppsInToss
                     }
 
                     result = output.ToArray();
+                    RecordManagedBrotli(src.Length, result.Length,
+                        (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
                     return true;
                 }
             }

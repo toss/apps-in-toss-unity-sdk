@@ -191,6 +191,22 @@ namespace AppsInToss.Editor
                 "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 비활성입니다.",
                 AITDefaultSettings.GetDefaultAudioForceCompressedPlayback());
 
+            config.lowMemoryTier = DrawPerfTriState(
+                config.lowMemoryTier, "저사양 기기 티어 판별",
+                "기기 메모리와 직전 세션 비정상 종료 이력으로 저사양 기기를 판별해 AITMemory.lowMemTier 를 켭니다. " +
+                "판별과 진단만 켜며 게임 동작을 직접 바꾸지 않습니다. 후속 저메모리 최적화가 이 값을 읽습니다.",
+                AITDefaultSettings.GetDefaultLowMemoryTier());
+
+            config.pageCacheDeferredPut = DrawPerfTriState(
+                config.pageCacheDeferredPut, "페이지 캐시 put 지연",
+                "early-fetch 캐시 put 을 첫 프레임 이후로 미룹니다. 자동은 WebKit(iOS) 계열에서만 켭니다.",
+                AITDefaultSettings.GetDefaultPageCacheDeferredPut(), autoText: "WebKit 만 활성", anyExplicitIsModified: true);
+
+            config.audioStreamLoopTranscode = DrawPerfTriState(
+                config.audioStreamLoopTranscode, "루프 오디오 재인코딩",
+                "audioStreamTranscode 가 건너뛰던 루프 클립도 재인코딩합니다. 루프 이음새 청취 검증 전이라 자동은 비활성입니다.",
+                AITDefaultSettings.GetDefaultAudioStreamLoopTranscode());
+
             bool forceCompressedEffective = config.audioForceCompressedPlayback >= 0
                 ? config.audioForceCompressedPlayback == 1
                 : AITDefaultSettings.GetDefaultAudioForceCompressedPlayback();

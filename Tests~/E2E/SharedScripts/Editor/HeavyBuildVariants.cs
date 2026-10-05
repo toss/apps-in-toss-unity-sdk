@@ -154,6 +154,8 @@ public static class HeavyBuildVariants
         config.exactDataBody = 0;
         config.releaseConsumedData = 0;
         config.audioForceCompressedPlayback = 0;
+        config.lowMemoryTier = 0;
+        config.pageCacheDeferredPut = 0;
         config.audioStreamingCompressedPlayback = 0;   // 기존 레버: 외부화된 긴 클립 압축 재생
     }
 

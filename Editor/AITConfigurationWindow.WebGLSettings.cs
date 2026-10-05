@@ -1080,6 +1080,13 @@ namespace AppsInToss.Editor
                 config.textureStreamingMaxConcurrent, 1, 8
             );
 
+            // 동시 메모리 예산(저사양 티어에서 적용)
+            config.textureStreamingMemoryBudgetMB = EditorGUILayout.IntField(
+                new GUIContent("동시 메모리 예산 (MB)",
+                    "동시에 RGBA32 로 풀어 둘 스트림 텍스처 총량 상한(기본 16). 저사양 티어(lowMemoryTier)에서 이 예산을 넘는 스트리밍 시작을 미룹니다. 0 이하 = 제한 없음."),
+                config.textureStreamingMemoryBudgetMB
+            );
+
             GUILayout.Space(5);
 
             // 스트림 사본 다운스케일(lossy, 기본 ON)
@@ -1387,6 +1394,11 @@ namespace AppsInToss.Editor
             if (config.releaseConsumedData >= 0 && (config.releaseConsumedData == 1) != defaultReleaseConsumedData) count++;
             bool defaultAudioForceCompressed = AITDefaultSettings.GetDefaultAudioForceCompressedPlayback();
             if (config.audioForceCompressedPlayback >= 0 && (config.audioForceCompressedPlayback == 1) != defaultAudioForceCompressed) count++;
+            if (config.lowMemoryTier >= 0 && (config.lowMemoryTier == 1) != AITDefaultSettings.GetDefaultLowMemoryTier()) count++;
+            // pageCacheDeferredPut 은 자동(WebKit 만)이 엔진별로 갈리므로 0/1 어느 쪽이든 명시값이면 변경으로 본다.
+            if (config.pageCacheDeferredPut >= 0) count++;
+            if (config.audioStreamLoopTranscode >= 0 && (config.audioStreamLoopTranscode == 1) != AITDefaultSettings.GetDefaultAudioStreamLoopTranscode()) count++;
+            if (config.textureStreamingMemoryBudgetMB != AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB) count++;
 
             return count;
         }
@@ -1632,6 +1644,10 @@ namespace AppsInToss.Editor
             config.releaseConsumedData = -1;
             config.audioForceCompressedPlayback = -1;
             config.audioForceCompressedMinSeconds = 10f;
+            config.lowMemoryTier = -1;
+            config.pageCacheDeferredPut = -1;
+            config.audioStreamLoopTranscode = -1;
+            config.textureStreamingMemoryBudgetMB = AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB;
         }
 
     }

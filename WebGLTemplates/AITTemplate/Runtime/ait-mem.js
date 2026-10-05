@@ -17,6 +17,18 @@
  *      2 이상이면 DPR 상한을 낮추는 근거로 읽는다. memoryTelemetry 가 꺼져 있으면 항상 0.
  *      백그라운드(hidden)에서 죽은 세션은 crashCount 에 넣지 않고 bgKillCount 로 따로 센다(OS 가 숨은 탭을 정리한 것일 수 있다).
  *      한 세션이 STABLE_MS(60초) 넘게 살아 있으면 저장된 연속 횟수는 0 으로 되돌린다(그 세션의 crashCount 값은 부팅 때 값 그대로).
+ *  - window.AITMemory.bootFailCount: number
+ *      "부팅 중 사망" 횟수. localStorage '__ait_boot_v1' 마커(stage: boot-start → first-frame → stable)가 first-frame 뒤 60초(stable)에
+ *      닿기 전에 pagehide/hidden 신호 없이 끝난 부팅의 최근 10분(BOOT_FAIL_WINDOW_MS) 이내 개수. sessionStorage crashCount 와 별개로 센다
+ *      (앱이 통째로 죽으면 sessionStorage 가 같이 사라지는 WebView 가 있다). stable 에 닿으면 기록을 비운다.
+ *      pagehide(exit)·hidden(bg) 로 끝난 부팅은 사망으로 세지 않는다. localStorage 를 못 쓰면 항상 0.
+ *  - window.AITMemory.lowMemTier: 0 | 1 | 2
+ *      저사양 티어. 0 = 정상. bootFailCount 와 24시간 만료 저장값('__ait_lowmem_v1')에서 정한다(부팅 사망 1회 → 1, 같은 티어로 또 죽으면 2).
+ *      __AIT_PERF.lowMemoryTier=false 이거나 memoryTelemetry=false 면 항상 0. 이 파일은 판별·노출만 하고 정책(DPR 상한, put 생략,
+ *      스트리밍 동시성 등)은 읽는 쪽이 정한다: JS 는 window.AITMemory.lowMemTier, C# 은 AITMemoryBridge.LowMemTier(jslib __AITMemoryBridge_GetLowMemTier).
+ *      값은 부팅 때 한 번 정해지고 세션 중 바뀌지 않는다.
+ *  - window.AITMemory.markFirstFrame(): index.html 의 첫 프레임 콜백이 1회 부른다(멱등). boot-start → first-frame 전이 + stable 타이머 시작.
+ *  - 로그 태그: [AIT-Memory] 부팅 마커 줄(부팅 시 1회, 첫 프레임 1회).
  *  - window.__AIT_HEAP_GROW: { count, failures, totalMs, maxMs, peakBytes, initialBytes, sequenceMB:[...], events:[...] }
  *      grow 호출마다 갱신된다. events 항목: { n, t(ms, performance.now()), ms, from, to, ok, err? }. 최근 128개만 보관.
  *  - window 'ait:memory' 이벤트 detail: { type: 'crash'|'grow'|'grow-failed'|'pressure', level: 'ok'|'high'|'critical',
@@ -47,6 +59,12 @@
         crashCount: 0,
         bgKillCount: 0,
         prevSession: 'none', // 'none' | 'exit' | 'foreground' | 'background'
+        bootFailCount: 0,
+        lowMemTier: 0,
+        lowMemReason: '',
+        prevBoot: 'none',    // 'none' | 'stable' | 'exit' | 'bg' | 'boot-start' | 'first-frame'(뒤 둘은 사망)
+        bootStage: 'boot-start', // 'boot-start' | 'first-frame' | 'stable'
+        firstFrameMs: -1,
         thresholds: { highBytes: HIGH_BYTES, criticalBytes: CRITICAL_BYTES },
         bridgeReady: false
     };
@@ -88,6 +106,120 @@
         sessionState.phase = isHidden() ? 'bg' : 'fg';
         writeState();
     })();
+
+    // ---------------------------------------------------------------- 부팅 마커 (localStorage: 부팅 중 사망 + 저사양 티어)
+    var BOOT_KEY = '__ait_boot_v1';
+    var TIER_KEY = '__ait_lowmem_v1';
+    var BOOT_FAIL_WINDOW_MS = 10 * 60 * 1000;
+    var TIER_TTL_MS = 24 * 60 * 60 * 1000;
+    var MAX_FAIL_RECORDS = 8;
+    var lowMemEnabled = flags.lowMemoryTier !== false;
+    var bootState = { stage: 'boot-start', end: '', t: 0, ff: 0, fails: [] };
+
+    function readLocal(key) {
+        try {
+            var raw = window.localStorage.getItem(key);
+            var v = raw ? JSON.parse(raw) : null;
+            return v && typeof v === 'object' ? v : null;
+        } catch (e) { return null; }
+    }
+    function writeLocal(key, value) {
+        try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* 저장 불가 — 부팅 마커만 생략 */ }
+    }
+    function writeBoot() { writeLocal(BOOT_KEY, bootState); }
+
+    (function bootStageMarker() {
+        var now = Date.now();
+        var prev = readLocal(BOOT_KEY);
+        var fails = [];
+        var prevDied = false;
+        if (prev) {
+            if (Array.isArray(prev.fails)) {
+                for (var i = 0; i < prev.fails.length; i++) {
+                    var ts = Number(prev.fails[i]);
+                    if (ts > 0 && ts <= now + 60000 && now - ts < BOOT_FAIL_WINDOW_MS) fails.push(ts);
+                }
+            }
+            if (prev.stage === 'stable') {
+                fails = [];
+                mem.prevBoot = 'stable';
+            } else if (prev.end === 'exit') {
+                mem.prevBoot = 'exit';
+            } else if (prev.end === 'bg') {
+                mem.prevBoot = 'bg';
+            } else if (prev.stage === 'boot-start' || prev.stage === 'first-frame') {
+                // 부팅 마커가 stable 에 닿지 못했고 pagehide/hidden 신호도 없이 끝났다 → 부팅(또는 직후) 사망.
+                prevDied = true;
+                mem.prevBoot = prev.stage;
+                var diedAt = Number(prev.t) > 0 ? Number(prev.t) : now;
+                // 사망 시각이 이미 창 밖이면(오래된 기록) 세지 않는다.
+                if (now - diedAt < BOOT_FAIL_WINDOW_MS) fails.push(diedAt);
+            }
+        }
+        if (fails.length > MAX_FAIL_RECORDS) fails = fails.slice(fails.length - MAX_FAIL_RECORDS);
+        bootState.fails = fails;
+        bootState.t = now;
+        mem.bootFailCount = fails.length;
+
+        // 저사양 티어: 이번 부팅의 사망 횟수 + 24시간 저장값. 이전 부팅이 사망이었다면 저장 티어에서 한 단계 올린다(최대 2).
+        if (lowMemEnabled) {
+            var stored = readLocal(TIER_KEY);
+            var storedTier = 0;
+            var storedTs = 0;
+            if (stored && Number(stored.tier) > 0 && Number(stored.ts) > 0 && now - Number(stored.ts) < TIER_TTL_MS && Number(stored.ts) <= now + 60000) {
+                storedTier = Math.min(2, Number(stored.tier) | 0);
+                storedTs = Number(stored.ts);
+            }
+            var failTier = fails.length >= 2 ? 2 : (fails.length >= 1 ? 1 : 0);
+            var tier = Math.max(failTier, prevDied ? Math.min(2, storedTier + 1) : storedTier);
+            if (tier > 0) {
+                mem.lowMemTier = tier;
+                mem.lowMemReason = prevDied ? ('boot-fail x' + fails.length) : 'stored';
+                // 같은 티어면 만료 기준 시각을 유지한다(24시간 뒤 자연 해제). 올라갔을 때만 새로 찍는다.
+                if (tier !== storedTier || !storedTs) writeLocal(TIER_KEY, { tier: tier, ts: now });
+            }
+        }
+        writeBoot();
+    })();
+
+    // 부팅 단계 전이. 이미 stable 이면 pagehide/hidden 으로 end 를 바꾸지 않는다(정상 세션).
+    function setBootEnd(end) {
+        if (bootState.stage === 'stable' || bootState.end === end) return;
+        bootState.end = end;
+        writeBoot();
+    }
+    var stableTimer = null;
+    mem.markFirstFrame = function () {
+        if (bootState.stage !== 'boot-start') return false;
+        bootState.stage = 'first-frame';
+        mem.bootStage = 'first-frame';
+        try { mem.firstFrameMs = Math.round(performance.now()); } catch (e) { mem.firstFrameMs = 0; }
+        bootState.ff = mem.firstFrameMs;
+        writeBoot();
+        try {
+            console.log('[AIT-Memory] first-frame t=' + mem.firstFrameMs + 'ms bootFailCount=' + mem.bootFailCount +
+                ' lowMemTier=' + mem.lowMemTier + (mem.lowMemReason ? '(' + mem.lowMemReason + ')' : '') +
+                ' prevBoot=' + mem.prevBoot);
+        } catch (e) { /* 로그 실패 무시 */ }
+        try {
+            stableTimer = setTimeout(function () {
+                stableTimer = null;
+                if (bootState.stage !== 'first-frame') return;
+                bootState.stage = 'stable';
+                mem.bootStage = 'stable';
+                bootState.end = '';
+                bootState.fails = [];
+                mem.stableReached = true;
+                writeBoot();
+            }, STABLE_MS);
+        } catch (e) { /* 타이머 실패 — stable 에 못 닿을 뿐 */ }
+        return true;
+    };
+    try {
+        document.addEventListener('visibilitychange', function () { if (bootState.end !== 'exit') setBootEnd(isHidden() ? 'bg' : ''); });
+        window.addEventListener('pagehide', function () { setBootEnd('exit'); });
+        window.addEventListener('pageshow', function () { if (bootState.end === 'exit') { bootState.end = ''; writeBoot(); } if (isHidden()) setBootEnd('bg'); });
+    } catch (e) { /* 리스너 등록 실패는 무시 */ }
 
     // pagehide 뒤에는 스펙상 visibilitychange(hidden) 가 이어서 온다. 'exit' 를 'bg' 로 덮어쓰지 않도록 pageshow 전까지 고정한다.
     var exited = false;
@@ -192,7 +324,9 @@
             growTotalMs: heap.totalMs,
             growMaxMs: heap.maxMs,
             crashCount: mem.crashCount,
-            bgKillCount: mem.bgKillCount
+            bgKillCount: mem.bgKillCount,
+            bootFailCount: mem.bootFailCount,
+            lowMemTier: mem.lowMemTier
         };
     }
 
@@ -310,6 +444,10 @@
         s.wrapped = wrapped;
         s.initialBytes = heap.initialBytes;
         s.bridgeReady = mem.bridgeReady;
+        s.bootStage = mem.bootStage;
+        s.prevBoot = mem.prevBoot;
+        s.firstFrameMs = mem.firstFrameMs;
+        s.lowMemReason = mem.lowMemReason;
         try {
             // Chrome 계열에서만 있다. JS 힙이고 wasm heap 과 별개다.
             if (performance && performance.memory) s.jsHeapUsedBytes = performance.memory.usedJSHeapSize;
@@ -339,7 +477,9 @@
     // 부팅 요약 로그 + 이전 세션이 크래시였다면 이벤트 1회.
     try {
         console.log('[AIT-Memory] 텔레메트리 활성: 이전 세션=' + mem.prevSession + ' crashCount=' + mem.crashCount +
-            ' bgKillCount=' + mem.bgKillCount + ' growHook=' + (wrapped ? 'on' : 'off'));
+            ' bgKillCount=' + mem.bgKillCount + ' growHook=' + (wrapped ? 'on' : 'off') +
+            ' bootFailCount=' + mem.bootFailCount + ' lowMemTier=' + mem.lowMemTier +
+            (mem.lowMemReason ? '(' + mem.lowMemReason + ')' : '') + ' prevBoot=' + mem.prevBoot);
     } catch (e) { /* 로그 실패 무시 */ }
     if (mem.crashCount > 0) {
         pendingTypes.crash = true;

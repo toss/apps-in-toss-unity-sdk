@@ -247,23 +247,61 @@ namespace AppsInToss.Editor
             /// <summary>env로 강제된 enum 멤버 이름(없으면 null). Apply=true일 때만 의미가 있다.</summary>
             public readonly string ForcedMember;
 
-            public Decision(bool apply, bool allowLto, string forcedMember)
+            /// <summary>
+            /// LTO 링크가 OOM 으로 실패하면 LTO 없이 한 번 다시 빌드할지(자동 폴백 대상).
+            /// 6000.0.x 에서 RAM 게이트를 통과해 LTO 를 "시도"하는 자동 정책일 때만 true 다.
+            /// env 로 멤버를 강제한 경우(운영자 측정·재현)는 폴백이 결과를 가리므로 false.
+            /// </summary>
+            public readonly bool LtoFallbackOnOom;
+
+            /// <summary>
+            /// 6000.0.x 에서 LTO 를 건너뛴 사유(로그용). RAM 부족이면 "빌드 머신 RAM ...", LTO 를 허용했거나
+            /// 6000.0 이 아니면 null.
+            /// </summary>
+            public readonly string LtoSkipReason;
+
+            public Decision(bool apply, bool allowLto, string forcedMember,
+                bool ltoFallbackOnOom = false, string ltoSkipReason = null)
             {
                 Apply = apply;
                 AllowLto = allowLto;
                 ForcedMember = forcedMember;
+                LtoFallbackOnOom = ltoFallbackOnOom;
+                LtoSkipReason = ltoSkipReason;
             }
         }
+
+        /// <summary>
+        /// 6000.0.x 에서 DiskSizeLTO 를 "시도"하는 데 필요한 빌드 머신 물리 RAM(MB).
+        /// 링크가 대형 프로젝트에서 수십 GB 를 쓸 수 있어 32GB 를 기준으로 한다. 32GB 장착 머신이
+        /// OS·iGPU 예약분 때문에 약 31.9GB 로 보고하는 경우(Windows)를 허용하려고 1GB 여유를 둔다.
+        /// </summary>
+        internal const long LtoMinSystemMemoryMB = 32L * 1024 - 1024;
 
         /// <summary>
         /// editorConfig(-1 자동/0 미적용/1 적용의 의미상 "적용 여부") + Unity 버전 + 환경변수로
         /// code optimization 적용 정책을 결정하는 순수 함수. PlayerSettings/Application 등 실제 API를
         /// 건드리지 않으므로 실행 중인 Unity 버전과 무관하게 EditMode에서 데이터 주도로 검증할 수 있다.
+        ///
+        /// 이 오버로드는 빌드 머신 RAM 을 모르는 것으로 취급한다(0) — 6000.0.x 는 LTO 제외(과거 동작).
         /// </summary>
         /// <param name="configApply">editorConfig.webGLCodeOptimization != 0 (GUI가 적용을 원하는지).</param>
         /// <param name="unityVersion">Application.unityVersion.</param>
         /// <param name="envValue">EnvOverrideKey 환경변수 원본 값(null 허용).</param>
         internal static Decision ResolveDecision(bool configApply, string unityVersion, string envValue)
+            => ResolveDecision(configApply, unityVersion, envValue, systemMemoryMB: 0);
+
+        /// <summary>
+        /// <see cref="ResolveDecision(bool,string,string)"/> + 빌드 머신 RAM 입력.
+        ///
+        /// 6000.0.x(LTO 링크 OOM 위험 버전)에서 자동 정책은 "고정 제외"가 아니라 "시도 후 폴백"이다.
+        ///  · RAM >= <see cref="LtoMinSystemMemoryMB"/> : DiskSizeLTO 를 시도(AllowLto=true)하고, 링크가 OOM 으로
+        ///    실패하면 호출자(AITConvertCore)가 LTO 없이 한 번 다시 빌드한다(LtoFallbackOnOom=true).
+        ///  · RAM 미만/미상 : 처음부터 LTO 를 제외한다(에디터까지 죽을 수 있는 OOM 을 시도 자체로 막는다).
+        /// 6000.0 이 아닌 버전은 RAM 과 무관하게 기존과 동일(LTO 허용, 폴백 없음).
+        /// </summary>
+        /// <param name="systemMemoryMB">SystemInfo.systemMemorySize(MB). 알 수 없으면 0.</param>
+        internal static Decision ResolveDecision(bool configApply, string unityVersion, string envValue, long systemMemoryMB)
         {
             string env = (envValue ?? string.Empty).Trim();
 
@@ -278,25 +316,80 @@ namespace AppsInToss.Editor
                 return new Decision(apply: false, allowLto: false, forcedMember: null);
             }
 
-            // 버전 게이트: 6000.0.x만 LTO 위험(OOM) — 그 외 버전은 기존과 동일하게 LTO 허용.
-            bool allowLto = !IsLtoRiskyVersion(unityVersion);
+            // 버전 게이트: 6000.0.x만 LTO 위험(OOM). 그 외 버전은 기존과 동일하게 LTO 허용.
+            // 6000.0.x 는 빌드 머신 RAM 이 기준 이상일 때만 LTO 를 시도한다(실패 시 자동 폴백).
+            bool risky = IsLtoRiskyVersion(unityVersion);
+            bool ramOk = systemMemoryMB >= LtoMinSystemMemoryMB;
+            bool allowLto = !risky || ramOk;
+            string skipReason = risky && !ramOk
+                ? (systemMemoryMB > 0
+                    ? $"빌드 머신 RAM {systemMemoryMB / 1024}GB < {LtoMinSystemMemoryMB / 1024 + 1}GB"
+                    : "빌드 머신 RAM 을 알 수 없음")
+                : null;
 
             if (env.Length == 0 || env.Equals("auto", StringComparison.OrdinalIgnoreCase))
             {
-                // 기본 정책: GUI(editorConfig) 값 그대로 + 버전 게이트만 적용.
-                return new Decision(apply: configApply, allowLto: allowLto, forcedMember: null);
+                // 기본 정책: GUI(editorConfig) 값 그대로 + 버전/RAM 게이트만 적용.
+                bool fallback = configApply && risky && ramOk;
+                return new Decision(apply: configApply, allowLto: allowLto, forcedMember: null,
+                    ltoFallbackOnOom: fallback, ltoSkipReason: skipReason);
             }
 
             // 명시적 멤버 강제(운영자 오버라이드, 예: 6000.0에서 DiskSizeLTO를 다시 켜 OOM 재현/반증):
             // GUI '미적용'(configApply == false)도 무시하고 적용한다 — 의도된 동작이다.
+            // 강제 실행은 폴백하지 않는다(LtoFallbackOnOom=false): 실패 자체가 측정·재현 대상이다.
             //
             // AllowLto는 여기서도 버전 게이트 값을 그대로 유지해야 한다(무조건 true로 고정하면 안 됨).
             // 이유: 강제 멤버명이 오타이거나 이 버전 enum에 없으면 TrySetByName이 false를 반환하고,
             // 호출자(AITBuildInitializer)는 일반 사다리 TrySetBestAvailable(decision.AllowLto)로
-            // 폴백한다. 이때 AllowLto가 true로 고정돼 있으면 6000.0에서 강제가 실패한 뒤 폴백
-            // 사다리가 1순위 DiskSizeLTO(OOM 레버)부터 다시 타 조용히 재활성화된다 — 6000.0에서는
-            // 강제 실패 후에도 폴백 사다리가 여전히 DiskSize(2순위)부터 타야 한다.
-            return new Decision(apply: true, allowLto: allowLto, forcedMember: env);
+            // 폴백한다. 이때 AllowLto가 true로 고정돼 있으면 RAM 이 부족한 6000.0 에서 강제가 실패한 뒤
+            // 폴백 사다리가 1순위 DiskSizeLTO(OOM 레버)부터 다시 타 조용히 재활성화된다 — RAM 이 부족한
+            // 6000.0에서는 강제 실패 후에도 폴백 사다리가 여전히 DiskSize(2순위)부터 타야 한다.
+            return new Decision(apply: true, allowLto: allowLto, forcedMember: env, ltoSkipReason: skipReason);
         }
+
+        // ─────────────────── LTO 링크 OOM 자동 폴백(P0-5) ───────────────────
+
+        /// <summary>
+        /// 이번 빌드가 "LTO 시도 후 OOM 이면 LTO 없이 재빌드" 대상인지. AITBuildInitializer 가 빌드마다
+        /// 설정하고, AITConvertCore.BuildWebGLWithLtoFallback 이 한 번 소비(해제)한다.
+        /// </summary>
+        internal static bool LtoFallbackArmed { get; set; }
+
+        /// <summary>
+        /// 링크 단계 OOM 으로 보이는 빌드 실패 텍스트인지 판정한다(순수 함수).
+        /// wasm-ld/emcc 가 메모리 부족으로 OS 에 SIGKILL 당하면 "Killed: 9"(macOS), "Killed"/exit 137(Linux),
+        /// "std::bad_alloc"/"out of memory"(LLVM) 형태로 남는다. 링크 문맥(wasm-ld/emcc/emscripten/em++/Link)
+        /// 단서가 같이 없으면 무관한 OOM(예: 에셋 임포트)일 수 있어 폴백하지 않는다.
+        /// </summary>
+        internal static bool IsLinkOomSignature(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+
+            bool linkContext =
+                ContainsIgnoreCase(text, "wasm-ld") ||
+                ContainsIgnoreCase(text, "emcc") ||
+                ContainsIgnoreCase(text, "em++") ||
+                ContainsIgnoreCase(text, "emscripten") ||
+                ContainsIgnoreCase(text, "Link_WebGL") ||
+                ContainsIgnoreCase(text, "LinkWebGL") ||
+                ContainsIgnoreCase(text, "wasm-opt");
+            if (!linkContext) return false;
+
+            return ContainsIgnoreCase(text, "Killed: 9") ||
+                   ContainsIgnoreCase(text, "SIGKILL") ||
+                   ContainsIgnoreCase(text, "signal 9") ||
+                   ContainsIgnoreCase(text, "bad_alloc") ||
+                   ContainsIgnoreCase(text, "out of memory") ||
+                   ContainsIgnoreCase(text, "Cannot allocate memory") ||
+                   ContainsIgnoreCase(text, "ENOMEM") ||
+                   ContainsIgnoreCase(text, "exit code 137") ||
+                   ContainsIgnoreCase(text, "exited with code 137") ||
+                   ContainsIgnoreCase(text, "returned 137") ||
+                   ContainsIgnoreCase(text, "exit status 137");
+        }
+
+        private static bool ContainsIgnoreCase(string text, string needle)
+            => text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 }

@@ -365,8 +365,15 @@ test.describe('ait-gl.js 합성 페이지', () => {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         // 픽셀 데이터가 있는 업로드는 인벤토리에 넣지 않는다
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16));
-        return window['__AIT_GL'].rt.summary();
+        // 업로드 바이트(P0-1): 위 두 호출 중 데이터가 있는 것은 16바이트, 할당만 하는 것은 64*64*4 alloc
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16));
+        return { ...window['__AIT_GL'].rt.summary(), upload: window['__AIT_GL'].rt.upload() };
       });
+      expect(s.upload.texImage).toEqual({ n: 1, bytes: 16 });
+      expect(s.upload.sub).toEqual({ n: 1, bytes: 16 });
+      expect(s.upload.totalBytes).toBe(32);
+      expect(s.upload.allocBytes).toBe(64 * 64 * 4);
+      expect(s.upload.nonView).toBe(0);
       expect(s.rbMSCount).toBe(1);
       const ms = s.rows.find((r) => r.kind === 'rbMS');
       expect(ms.w).toBe(256);

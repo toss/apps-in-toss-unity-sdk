@@ -52,6 +52,10 @@ namespace AppsInToss
         /// <summary>동시 스트리밍 다운로드/디코드 기본 상한(매니페스트에 값이 없을 때). LoadImage 가 메인스레드 디코드라 hitch 제한용.</summary>
         private const int DefaultMaxConcurrent = 3;
 
+        // --- 진단 카운터(P0-1): 복원에 성공한 텍스처의 CPU 사본 추정 바이트(w*h*4, LoadImage 가 RGBA32 로 풀므로). AITUnityMemReporter 가 읽는다.
+        internal static long HeldBytes;
+        internal static int HeldCount;
+
         private const string ManifestRelativePath = "ait-stream-texture/manifest.json";
         private const string StreamDirRelativePath = "ait-stream-texture/";
 
@@ -329,6 +333,8 @@ namespace AppsInToss
 
                 if (applied)
                 {
+                    HeldBytes += (long)tex.width * tex.height * 4;
+                    HeldCount++;
                     pending.RemoveAll(x => x.guid == e.guid);
                 }
                 else

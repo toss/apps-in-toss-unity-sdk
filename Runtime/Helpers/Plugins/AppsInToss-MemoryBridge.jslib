@@ -19,6 +19,22 @@ mergeInto(LibraryManager.library, {
     },
 
     /**
+     * 저사양 티어(0 = 정상, 1, 2). ait-mem.js 가 부팅 때 정한 window.AITMemory.lowMemTier. 없거나 읽기 실패면 0.
+     * C# 은 AITMemoryBridge.LowMemTier 로 읽는다.
+     */
+    __AITMemoryBridge_GetLowMemTier: function() {
+        try {
+            if (window.AITMemory && typeof window.AITMemory.lowMemTier === 'number') {
+                var t = window.AITMemory.lowMemTier | 0;
+                return t < 0 ? 0 : (t > 2 ? 2 : t);
+            }
+        } catch (e) {
+            // 읽기 실패 시 0
+        }
+        return 0;
+    },
+
+    /**
      * 현재 요약 JSON(type: "snapshot"). 텔레메트리가 꺼져 있으면 빈 문자열.
      */
     __AITMemoryBridge_GetSnapshot: function() {

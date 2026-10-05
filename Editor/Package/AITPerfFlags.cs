@@ -23,6 +23,10 @@
 //   audioForceCompressedMinSeconds number  강제 대상 최소 길이(초)                                           기본 10
 //   unityweb           bool     Decompression Fallback(.unityweb) 빌드 여부 — true 면 data/framework 훅 비활성
 //   audioPatched       bool     framework 패치의 compressed-clip-meta 가 적용됐는지. false 면 런타임이 압축 재생 경로를 쓰지 않는다   기본 false
+//   lowMemoryTier      bool     저사양 기기 티어 판별 사용(ait-mem.js 가 AITMemory.lowMemTier 를 계산)          기본 true
+//   pageCacheDeferredPut number tri-state 그대로(-1 자동=WebKit 만 / 0 끔 / 1 모든 엔진). 런타임이 UA 로 자동을 푼다  기본 -1
+//   textureStreamingMemoryBudgetMB number 스트림 텍스처 동시 RGBA32 메모리 예산(MB). 0 이하면 제한 없음               기본 16
+//   audioStreamLoopTranscode bool 루프 클립도 스트림 사본 재인코딩(빌드타임 게이트; 런타임은 로그용)                기본 false
 //   raw                object   설정의 원본 tri-state 값(-1/0/1). 디버깅·로그 전용
 // -----------------------------------------------------------------------
 
@@ -91,6 +95,30 @@ namespace AppsInToss.Editor.Package
             return c != null && Resolve(c.releaseConsumedData, AITDefaultSettings.GetDefaultReleaseConsumedData());
         }
 
+        internal static bool EffectiveLowMemoryTier(AITEditorScriptObject c)
+        {
+            return c == null || Resolve(c.lowMemoryTier, AITDefaultSettings.GetDefaultLowMemoryTier());
+        }
+
+        /// <summary>tri-state 원본(-1/0/1). 자동의 엔진별 해석은 런타임(ait-mem.js/index.html)이 한다.</summary>
+        internal static int EffectivePageCacheDeferredPut(AITEditorScriptObject c)
+        {
+            if (c == null) return -1;
+            return c.pageCacheDeferredPut < 0 ? -1 : (c.pageCacheDeferredPut == 1 ? 1 : 0);
+        }
+
+        /// <summary>텍스처 스트리밍 동시 메모리 예산(MB). 0 이하는 0(제한 없음)으로 정규화한다.</summary>
+        internal static int EffectiveTextureStreamingMemoryBudgetMB(AITEditorScriptObject c)
+        {
+            if (c == null) return AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB;
+            return c.textureStreamingMemoryBudgetMB > 0 ? c.textureStreamingMemoryBudgetMB : 0;
+        }
+
+        internal static bool EffectiveAudioStreamLoopTranscode(AITEditorScriptObject c)
+        {
+            return c != null && Resolve(c.audioStreamLoopTranscode, AITDefaultSettings.GetDefaultAudioStreamLoopTranscode());
+        }
+
         internal static bool EffectiveAudioForceCompressed(AITEditorScriptObject c)
         {
             return c != null && Resolve(c.audioForceCompressedPlayback, AITDefaultSettings.GetDefaultAudioForceCompressedPlayback());
@@ -137,6 +165,10 @@ namespace AppsInToss.Editor.Package
               .Append(EffectiveAudioForceCompressedMinSeconds(config).ToString("0.###", CultureInfo.InvariantCulture));
             AppendBool(sb, "unityweb", unityweb);
             AppendBool(sb, "audioPatched", audioPatched);
+            AppendBool(sb, "lowMemoryTier", EffectiveLowMemoryTier(config));
+            AppendInt(sb, "pageCacheDeferredPut", EffectivePageCacheDeferredPut(config));
+            AppendInt(sb, "textureStreamingMemoryBudgetMB", EffectiveTextureStreamingMemoryBudgetMB(config));
+            AppendBool(sb, "audioStreamLoopTranscode", EffectiveAudioStreamLoopTranscode(config));
 
             sb.Append(",\"raw\":{");
             AppendInt(sb, "webglAntialiasOpt", config != null ? config.webglAntialiasOpt : -1, first: true);
@@ -148,6 +180,9 @@ namespace AppsInToss.Editor.Package
             AppendInt(sb, "exactDataBody", config != null ? config.exactDataBody : -1);
             AppendInt(sb, "releaseConsumedData", config != null ? config.releaseConsumedData : -1);
             AppendInt(sb, "audioForceCompressedPlayback", config != null ? config.audioForceCompressedPlayback : -1);
+            AppendInt(sb, "lowMemoryTier", config != null ? config.lowMemoryTier : -1);
+            AppendInt(sb, "pageCacheDeferredPut", config != null ? config.pageCacheDeferredPut : -1);
+            AppendInt(sb, "audioStreamLoopTranscode", config != null ? config.audioStreamLoopTranscode : -1);
             sb.Append('}');
 
             sb.Append('}');

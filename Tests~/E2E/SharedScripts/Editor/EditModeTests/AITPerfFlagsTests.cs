@@ -56,6 +56,10 @@ public class AITPerfFlagsTests
         Assert.AreEqual(-1, _config.releaseConsumedData);
         Assert.AreEqual(-1, _config.audioForceCompressedPlayback);
         Assert.AreEqual(10f, _config.audioForceCompressedMinSeconds);
+        Assert.AreEqual(-1, _config.lowMemoryTier);
+        Assert.AreEqual(-1, _config.pageCacheDeferredPut);
+        Assert.AreEqual(16, _config.textureStreamingMemoryBudgetMB);
+        Assert.AreEqual(-1, _config.audioStreamLoopTranscode);
     }
 
     [Test]
@@ -72,6 +76,35 @@ public class AITPerfFlagsTests
         Assert.IsFalse(AITPerfFlags.EffectiveReleaseConsumedData(_config), "자동: releaseConsumedData 는 꺼짐");
         Assert.IsFalse(AITPerfFlags.EffectiveAudioForceCompressed(_config), "자동: 강제 압축 재생은 꺼짐");
         Assert.AreEqual(10f, AITPerfFlags.EffectiveAudioForceCompressedMinSeconds(_config));
+        Assert.IsTrue(AITPerfFlags.EffectiveLowMemoryTier(_config), "자동: 저사양 티어 판별은 켜짐");
+        Assert.AreEqual(-1, AITPerfFlags.EffectivePageCacheDeferredPut(_config), "자동: tri-state 그대로(런타임이 WebKit 에서만 켬)");
+        Assert.AreEqual(16, AITPerfFlags.EffectiveTextureStreamingMemoryBudgetMB(_config));
+        Assert.IsFalse(AITPerfFlags.EffectiveAudioStreamLoopTranscode(_config), "자동: 루프 재인코딩은 꺼짐");
+    }
+
+    [Test]
+    public void LowMemoryFlags_ExplicitValuesAndBudgetNormalization()
+    {
+        _config.lowMemoryTier = 0;
+        _config.pageCacheDeferredPut = 1;
+        _config.audioStreamLoopTranscode = 1;
+        Assert.IsFalse(AITPerfFlags.EffectiveLowMemoryTier(_config));
+        Assert.AreEqual(1, AITPerfFlags.EffectivePageCacheDeferredPut(_config));
+        Assert.IsTrue(AITPerfFlags.EffectiveAudioStreamLoopTranscode(_config));
+
+        _config.pageCacheDeferredPut = 0;
+        Assert.AreEqual(0, AITPerfFlags.EffectivePageCacheDeferredPut(_config));
+
+        _config.textureStreamingMemoryBudgetMB = 32;
+        Assert.AreEqual(32, AITPerfFlags.EffectiveTextureStreamingMemoryBudgetMB(_config));
+        _config.textureStreamingMemoryBudgetMB = -5;
+        Assert.AreEqual(0, AITPerfFlags.EffectiveTextureStreamingMemoryBudgetMB(_config), "0 이하는 제한 없음(0)으로 정규화");
+
+        string json = AITPerfFlags.ToJson(_config, -1, false);
+        StringAssert.Contains("\"lowMemoryTier\":false", json);
+        StringAssert.Contains("\"pageCacheDeferredPut\":0", json);
+        StringAssert.Contains("\"textureStreamingMemoryBudgetMB\":0", json);
+        StringAssert.Contains("\"audioStreamLoopTranscode\":true", json);
     }
 
     [Test]
@@ -159,6 +192,10 @@ public class AITPerfFlagsTests
                      "\"audioForceCompressedMinSeconds\":10",
                      "\"unityweb\":false",
                      "\"audioPatched\":false",
+                     "\"lowMemoryTier\":true",
+                     "\"pageCacheDeferredPut\":-1",
+                     "\"textureStreamingMemoryBudgetMB\":16",
+                     "\"audioStreamLoopTranscode\":false",
                      "\"raw\":{",
                  })
         {

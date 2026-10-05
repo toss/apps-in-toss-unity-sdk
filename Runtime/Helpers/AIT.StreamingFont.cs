@@ -57,6 +57,10 @@ namespace AppsInToss
         /// <summary>동시 번들 다운로드/로드 기본 상한(매니페스트에 값이 없을 때).</summary>
         private const int DefaultMaxConcurrent = 2;
 
+        // --- 진단 카운터(P0-1): 적재에 성공한 폰트 AssetBundle 의 원본 바이트 누계. AITUnityMemReporter 가 읽는다.
+        internal static long HeldBytes;
+        internal static int HeldCount;
+
         private const string ManifestRelativePath = "ait-stream-font/manifest.json";
         private const string StreamDirRelativePath = "ait-stream-font/";
 
@@ -340,6 +344,9 @@ namespace AppsInToss
                     Debug.LogWarning($"[AIT-StreamingFont] 번들 적재 실패(LoadFromMemoryAsync null): {e.bundle}");
                     yield break;
                 }
+
+                HeldBytes += data.Length;
+                HeldCount++;
 
                 bool any = false;
                 var loadReq = bundle.LoadAllAssetsAsync();

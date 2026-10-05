@@ -1076,14 +1076,14 @@ namespace AppsInToss.Editor
 
             // 최대 동시 스트리밍
             config.textureStreamingMaxConcurrent = EditorGUILayout.IntSlider(
-                new GUIContent("최대 동시 스트리밍", "런타임 동시 다운로드/디코드 상한 (기본 3). VRAM/메인스레드 hitch 제한."),
+                new GUIContent("최대 동시 스트리밍", "런타임 동시 다운로드/디코드 상한 (기본 1). VRAM/메인스레드 hitch 제한. 저사양 티어는 1 고정."),
                 config.textureStreamingMaxConcurrent, 1, 8
             );
 
             // 동시 메모리 예산(저사양 티어에서 적용)
             config.textureStreamingMemoryBudgetMB = EditorGUILayout.IntField(
                 new GUIContent("동시 메모리 예산 (MB)",
-                    "동시에 RGBA32 로 풀어 둘 스트림 텍스처 총량 상한(기본 16). 저사양 티어(lowMemoryTier)에서 이 예산을 넘는 스트리밍 시작을 미룹니다. 0 이하 = 제한 없음."),
+                    "auto(-1) textureStreaming 은 (스텁 RGBA32 − 원본 GPU 바이트) 합계가 이 예산 안에 들어오는 텍스처만 외부화합니다(기본 16). 0 이하 = 제한 없음, textureStreaming=1 은 무시."),
                 config.textureStreamingMemoryBudgetMB
             );
 
@@ -1399,6 +1399,8 @@ namespace AppsInToss.Editor
             if (config.pageCacheDeferredPut >= 0) count++;
             if (config.audioStreamLoopTranscode >= 0 && (config.audioStreamLoopTranscode == 1) != AITDefaultSettings.GetDefaultAudioStreamLoopTranscode()) count++;
             if (config.textureStreamingMemoryBudgetMB != AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB) count++;
+            if (config.textureStreamKeepGpuFormat >= 0 && (config.textureStreamKeepGpuFormat == 1) != AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat()) count++;
+            if (config.fontStreamingUnloadBundle >= 0 && (config.fontStreamingUnloadBundle == 1) != AITDefaultSettings.GetDefaultFontStreamingUnloadBundle()) count++;
 
             return count;
         }
@@ -1621,7 +1623,7 @@ namespace AppsInToss.Editor
             config.textureStreamingMinBytes = 524288;
             config.textureStreamingDirs = "";
             config.textureStreamingExcludeDirs = "";
-            config.textureStreamingMaxConcurrent = 3;
+            config.textureStreamingMaxConcurrent = 1;
             config.textureStreamDownscale = -1;
             config.textureStreamDownscaleMaxSize = 2048;
             config.textureStreamRecompress = -1;
@@ -1648,6 +1650,8 @@ namespace AppsInToss.Editor
             config.pageCacheDeferredPut = -1;
             config.audioStreamLoopTranscode = -1;
             config.textureStreamingMemoryBudgetMB = AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB;
+            config.textureStreamKeepGpuFormat = -1;
+            config.fontStreamingUnloadBundle = -1;
         }
 
     }

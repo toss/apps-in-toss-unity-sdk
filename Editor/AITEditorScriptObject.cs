@@ -606,8 +606,8 @@ namespace AppsInToss
         public string textureStreamingExcludeDirs = "";
 
         [Range(1, 8)]
-        [Tooltip("런타임 동시 스트리밍 다운로드/디코드 상한(기본 3). LoadImage 가 RGBA32 로 강제하므로 VRAM/메인스레드 hitch 를 이 값으로 제한합니다.")]
-        public int textureStreamingMaxConcurrent = 3;
+        [Tooltip("런타임 동시 스트리밍 다운로드/디코드 상한(기본 1). LoadImage 가 RGBA32 로 강제하므로 VRAM/메인스레드 hitch 를 이 값으로 제한합니다. 저사양 티어(lowMemoryTier)에서는 이 값과 무관하게 1 로 고정됩니다.")]
+        public int textureStreamingMaxConcurrent = 1;
 
         [Tooltip("(lossy, 기본 ON) 외부화된 스트림 사본(StreamingAssets, CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
                  "프로젝트 원본은 빌드 후 그대로 복원되고, 축소는 '배포/런타임에 보이는 텍스처'에만 적용됩니다(스텁은 원본 차원 유지 → Sprite rect 정합). " +
@@ -720,14 +720,22 @@ namespace AppsInToss
                  "WebKit(iOS) 은 put 중 본문 사본이 상주해 RSS 가 커지므로 자동에서도 켭니다. 캐시 히트는 다음 방문부터 적용됩니다.")]
         public int pageCacheDeferredPut = -1;
 
-        [Tooltip("텍스처 스트리밍 동시 메모리 예산(MB, 기본 16). 외부화된 스트림 텍스처를 동시에 RGBA32 로 풀어 둘 수 있는 총량 상한입니다. " +
-                 "저사양 티어(lowMemoryTier)에서 런타임이 이 예산을 넘는 스트리밍 시작을 미룹니다. 0 이하이면 예산 제한 없음으로 취급합니다.")]
+        [Tooltip("텍스처 스트리밍 동시 메모리 예산(MB, 기본 16). auto(-1) textureStreaming 은 (스텁 RGBA32 − 원본 GPU 바이트) 합계가 이 예산 안에 들어오는 텍스처만 외부화합니다. " +
+                 "0 이하이면 제한 없음, textureStreaming=1 이면 이 값을 무시합니다.")]
         public int textureStreamingMemoryBudgetMB = 16;
 
         [Tooltip("루프 오디오 재인코딩: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
                  "audioStreamTranscode 가 loop=true 로 참조되는 클립을 건너뛰는 게이트를 풀어, 루프 클립도 저비트레이트로 재인코딩하되 " +
                  "gapless 이음새 손실 위험을 줄이는 경로(루프 전용 인코딩)를 씁니다. 루프 이음새 청취 검증 전이라 자동은 꺼 둡니다.")]
         public int audioStreamLoopTranscode = -1;
+
+        [Tooltip("텍스처 스트리밍 GPU 포맷 보존: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "ASTC 원본 블록을 그대로 스트리밍해 LoadRawTextureData 로 복원하며, 미지원 환경에서는 PNG 폴백을 씁니다. 실기기 검증 전이라 자동은 꺼 둡니다.")]
+        public int textureStreamKeepGpuFormat = -1;
+
+        [Tooltip("폰트 번들 언로드: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "폰트 번들 로드 후 Unload(false) 로 번들 메모리를 해제합니다. TMP 동적 폴백에서 tofu 위험이 있어 기본 끔입니다.")]
+        public int fontStreamingUnloadBundle = -1;
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
@@ -1268,6 +1276,18 @@ namespace AppsInToss
 
         /// <summary>루프 오디오 재인코딩 자동 실효값: false. 루프 이음새 청취 검증 전까지 opt-in.</summary>
         public static bool GetDefaultAudioStreamLoopTranscode()
+        {
+            return false;
+        }
+
+        /// <summary>텍스처 스트리밍 GPU 포맷 보존 자동 실효값: false. 실기기 검증 전까지 opt-in.</summary>
+        public static bool GetDefaultTextureStreamKeepGpuFormat()
+        {
+            return false;
+        }
+
+        /// <summary>폰트 번들 언로드 자동 실효값: false. TMP 동적 폴백 tofu 위험이 있어 opt-in.</summary>
+        public static bool GetDefaultFontStreamingUnloadBundle()
         {
             return false;
         }

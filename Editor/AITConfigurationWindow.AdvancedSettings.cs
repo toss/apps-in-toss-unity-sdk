@@ -207,6 +207,16 @@ namespace AppsInToss.Editor
                 "audioStreamTranscode 가 건너뛰던 루프 클립도 재인코딩합니다. 루프 이음새 청취 검증 전이라 자동은 비활성입니다.",
                 AITDefaultSettings.GetDefaultAudioStreamLoopTranscode());
 
+            config.textureStreamKeepGpuFormat = DrawPerfTriState(
+                config.textureStreamKeepGpuFormat, "텍스처 GPU 포맷 보존",
+                "ASTC 원본 블록을 스트리밍해 LoadRawTextureData 로 복원합니다. 미지원 시 PNG 로 폴백합니다. 실기기 검증 전이라 자동은 비활성입니다.",
+                AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat());
+
+            config.fontStreamingUnloadBundle = DrawPerfTriState(
+                config.fontStreamingUnloadBundle, "폰트 번들 언로드",
+                "폰트 번들 로드 후 Unload(false) 로 번들 메모리를 해제합니다. TMP 동적 폴백 tofu 위험이 있어 자동은 비활성입니다.",
+                AITDefaultSettings.GetDefaultFontStreamingUnloadBundle());
+
             bool forceCompressedEffective = config.audioForceCompressedPlayback >= 0
                 ? config.audioForceCompressedPlayback == 1
                 : AITDefaultSettings.GetDefaultAudioForceCompressedPlayback();

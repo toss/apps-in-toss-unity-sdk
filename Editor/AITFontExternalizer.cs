@@ -388,7 +388,7 @@ namespace AppsInToss.Editor
                 //    이렇게 해야 같은 소스를 공유하는 다중 대상에서 '이미 스텁된 소스'를 캡처하는 순서 위험이 없다.
                 // brotli 인코더(내장 Node) 가용 여부를 여기서 한 번 결정: 가용하면 무압축 번들 +
                 // Phase D-1 의 .br 인코딩, 미가용이면 종전 LZ4 경로(BuildFontBundle 주석 참조).
-                bool brotliAvailable = AITBrotliCompressor.TryResolveNode(out _);
+                bool brotliAvailable = AITBrotliCompressor.TryResolveStreamingBrotli(out _);
                 var built = new List<PlanEntry>();
                 // ── Phase B-0: 로컬 fallback 테이블 strip — 체인 중복 선적 방지(빌드 직후 복원). ──
                 var strippedFallbacks = StripFallbackTablesForBundleCapture(plan);
@@ -521,8 +521,10 @@ namespace AppsInToss.Editor
                     mergedEntries.AddRange(entries);
 
                     var sb = new StringBuilder();
-                    sb.Append("{\"maxConcurrent\":").Append(maxConcurrent)
-                      .Append(",\"entries\":[").Append(string.Join(",", mergedEntries)).Append("]}");
+                    sb.Append("{\"maxConcurrent\":").Append(maxConcurrent);
+                    // 번들 로드 후 Unload(false) 옵트인(런타임 AITStreamingFont 가 unloadBundle==1 일 때만 해제). 꺼짐이면 키를 쓰지 않는다.
+                    if (Package.AITPerfFlags.EffectiveFontStreamingUnloadBundle(config)) sb.Append(",\"unloadBundle\":1");
+                    sb.Append(",\"entries\":[").Append(string.Join(",", mergedEntries)).Append("]}");
                     File.WriteAllText(manifestPath, sb.ToString());
                     AssetDatabase.Refresh();
 

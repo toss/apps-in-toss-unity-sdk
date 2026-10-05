@@ -12,6 +12,7 @@ using AppsInToss.Editor;
 ///                  textureStreaming=1 로 4장이 외부화(스텁 + StreamingAssets 사본)되고, HeavyTexStreamProbe 가 부팅 직후 프리팹을 인스턴스화해
 ///                  AITStreamingTexture 의 복원 경로(LoadImage 제자리 복원)와 그 메모리를 실제로 태운다. 기존 heavy 텍스처는 전부 /Resources/ 밑이라
 ///                  외부화 대상이 0장이어서 이 경로가 측정되지 않았다.
+///   tex-stream-gpu : tex-stream 에 AIT_TEXTURE_STREAM_KEEP_GPU_FORMAT=1 을 더한다(원본 ASTC 블록 스트리밍 + LoadRawTextureData 복원 경로 측정).
 ///   exc-explicit : WebGL 예외 처리를 ExplicitlyThrownExceptionsOnly 로(SDK 기본은 FullWithStacktrace). 코드 크기·성능 비용 비교용.
 ///                  posture 접미사 "-explicit" 과 같은 효과를 변형으로도 쓸 수 있게 한 것이다.
 ///   lto600       : 코드 최적화를 DiskSizeLTO 로 강제한다(AIT_WEBGL_CODE_OPTIMIZATION 환경변수를 이 프로세스에 설정). 6000.0 은 기본으로 LTO 를 건너뛰는
@@ -97,6 +98,17 @@ public static class HeavyLowMemVariants
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log($"[heavy] tex-stream: {TexStreamSize}² 스프라이트 {TexStreamCount}장 + 프리팹({TexStreamPrefabPath}) 생성, textureStreaming=1");
+    }
+
+    [HeavyVariant("tex-stream-gpu")]
+    public static void ApplyTexStreamGpu(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+
+        ApplyTexStream(config);
+        // 같은 프로세스 안에서 빌드가 돌므로 환경변수가 AITLargeTextureExternalizer.ResolveKeepGpuFormat 입력으로 그대로 전달된다(lto600 과 같은 방식).
+        System.Environment.SetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar, "1");
+        Debug.Log($"[heavy] tex-stream-gpu: tex-stream + {AITTextureStreamPlanner.KeepGpuFormatEnvVar}=1 (원본 ASTC 블록 스트리밍)");
     }
 
     [HeavyVariant("exc-explicit")]

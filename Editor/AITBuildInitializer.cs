@@ -199,10 +199,15 @@ namespace AppsInToss.Editor
             // TrySetDiskSizeLTO() 호출 자체를 건너뛰어 6000.0에서 code optimization이 완전히
             // 미적용이었다 — 버전 게이트/킬스위치 결정 로직은 AITWebGLCodeOptimization.ResolveDecision
             // (순수 함수, EditMode 데이터 주도 테스트 대상)으로 뽑아 한곳에서 관리한다.
+            // 6000.0 은 "고정 제외"가 아니라 "시도 후 폴백"이다: 빌드 머신 RAM 이 기준(32GB) 이상이면
+            // DiskSizeLTO 를 시도하고, 링크가 OOM 으로 실패하면 AITConvertCore.BuildWebGLWithLtoFallback 이
+            // LTO 없이 한 번 다시 빌드한다. RAM 이 모자라면 처음부터 건너뛴다(에디터 보호).
             var codeOpt = AITWebGLCodeOptimization.ResolveDecision(
-                applyWebGLCodeOpt, Application.unityVersion, webGLCodeOptEnv);
+                applyWebGLCodeOpt, Application.unityVersion, webGLCodeOptEnv, SystemInfo.systemMemorySize);
             string webGLCodeOptBefore = AITWebGLCodeOptimization.GetCurrentName();
             bool webGLCodeOptApplied = false;
+            // 이전 빌드(취소·예외)에서 소비되지 않은 폴백 무장을 항상 먼저 해제한다.
+            AITWebGLCodeOptimization.LtoFallbackArmed = false;
             if (codeOpt.Apply)
             {
                 if (!string.IsNullOrEmpty(codeOpt.ForcedMember))
@@ -229,6 +234,21 @@ namespace AppsInToss.Editor
                 else
                 {
                     Debug.Log($"[AIT] WebGL codeOptimization: '{webGLCodeOptBefore ?? "?"}' → '{AITWebGLCodeOptimization.GetCurrentName()}'");
+
+                    // 6000.0 에서 DiskSizeLTO 를 실제로 적용했을 때만 OOM 폴백을 무장한다
+                    // (자동 정책일 때만 — env 강제 실행은 실패 자체가 측정 대상이라 무장하지 않는다).
+                    if (codeOpt.LtoFallbackOnOom &&
+                        AITWebGLCodeOptimization.GetCurrentName() == AITWebGLCodeOptimization.DiskSizeLTO)
+                    {
+                        AITWebGLCodeOptimization.LtoFallbackArmed = true;
+                        Debug.Log($"[AIT] 6000.0 LTO 시도: 빌드 머신 RAM {SystemInfo.systemMemorySize / 1024}GB " +
+                                  "— 링크가 OOM 으로 실패하면 LTO 없이 한 번 다시 빌드합니다.");
+                    }
+                }
+                if (codeOpt.LtoSkipReason != null && !codeOpt.AllowLto)
+                {
+                    Debug.Log($"[AIT] 6000.0 LTO 제외: {codeOpt.LtoSkipReason} (링크 OOM 회피). " +
+                              $"강제하려면 {AITWebGLCodeOptimization.EnvOverrideKey}={AITWebGLCodeOptimization.DiskSizeLTO}");
                 }
             }
             // ===== IL2CPP Code Generation (Meta 로드타임 스택: OptimizeSize) =====
@@ -381,10 +401,13 @@ namespace AppsInToss.Editor
                 : showUnityLogoApplied ? "숨김"
                 : "숨김 요청됨 (Pro 라이선스 없음 — 미적용)";
             Debug.Log($"[AIT]   - Unity 로고: {showUnityLogoLog}{(editorConfig.showUnityLogo < 0 ? " (자동)" : "")}");
+            string ltoNote = codeOpt.AllowLto
+                ? (AITWebGLCodeOptimization.LtoFallbackArmed ? " (6000.0 LTO 시도 — OOM 시 자동 폴백)" : "")
+                : " (LTO 제외 — 6000.0 OOM 회피: " + (codeOpt.LtoSkipReason ?? "버전 게이트") + ")";
             string webGLCodeOptLog = !codeOpt.Apply
                 ? (applyWebGLCodeOpt ? "미적용 (env off)" : "미적용 (off)")
                 : webGLCodeOptApplied
-                    ? $"{AITWebGLCodeOptimization.GetCurrentName()}{(codeOpt.AllowLto ? "" : " (LTO 제외 — 6000.0 OOM 회피)")}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
+                    ? $"{AITWebGLCodeOptimization.GetCurrentName()}{ltoNote}{(editorConfig.webGLCodeOptimization < 0 ? " (자동)" : "")}"
                     : "미적용 (API 부재)";
             Debug.Log($"[AIT]   - WebGL Code Optimization: {webGLCodeOptLog}");
 #if UNITY_6000_0_OR_NEWER

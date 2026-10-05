@@ -42,6 +42,8 @@ import { fileURLToPath } from 'url';
  *  - PERF_NET_UP_MBPS   : 업로드 Mbps(기본 50).
  *  - PERF_NET_RTT_MS    : RTT ms(기본 50).
  *  - PERF_WARM          : 0이면 재방문(warm) 측정 생략(기본 1).
+ *  - PERF_NO_GESTURE    : 1이면 첫 프레임 뒤 캔버스 클릭(사용자 제스처 1회)을 생략한다(기본 0 = 클릭). 클릭은 TTFF·전송량을 확정한 뒤에 보내므로
+ *                         지표에는 영향이 없고, AudioContext 가 시작돼 오디오 디코드/미디어 요소 경로가 실제로 도는 상태를 재현한다.
  *  - PERF_PAIR_PROJECT_PATH : (페어 A/B 모드) B 산출물의 프로젝트 경로. 미지정 시 기존 단일 측정과 동일.
  *  - PERF_LABEL_A / PERF_LABEL_B : 페어 모드에서 결과 JSON pairing 섹션에 남길 라벨(기본 'A'/'B').
  *
@@ -62,6 +64,7 @@ const NET_DOWN_MBPS = parseFloat(process.env.PERF_NET_DOWN_MBPS || '100');
 const NET_UP_MBPS = parseFloat(process.env.PERF_NET_UP_MBPS || '50');
 const NET_RTT_MS = parseFloat(process.env.PERF_NET_RTT_MS || '50');
 const MEASURE_WARM = process.env.PERF_WARM !== '0';
+const SEND_GESTURE = process.env.PERF_NO_GESTURE !== '1';
 
 // ---- 페어 A/B 모드 (미지정 시 기존 단일 측정과 완전 동일) ----
 const PAIR_PROJECT = process.env.PERF_PAIR_PROJECT_PATH || '';
@@ -642,6 +645,20 @@ async function measureLoad(page, url) {
   const firstVisible = (typeof metrics.ttff === 'number' && typeof overlayHidden === 'number')
     ? Math.max(metrics.ttff, overlayHidden)
     : null;
+
+  // 사용자 제스처 1회(캔버스 중앙 클릭): TTFF·전송량·firstVisible 이 모두 확정된 뒤라 측정에는 영향이 없다. 브라우저 자동재생 정책 때문에
+  // 제스처가 없으면 AudioContext 가 suspended 로 남아 외부화 오디오의 재수화/디코드 경로가 돌지 않는다(P0-1 진단 전제).
+  if (gotDraw && SEND_GESTURE) {
+    try {
+      const box = await page.locator('#unity-canvas').boundingBox({ timeout: 2000 });
+      const vp = page.viewportSize() || { width: 1280, height: 720 };
+      const x = box ? box.x + box.width / 2 : vp.width / 2;
+      const y = box ? box.y + box.height / 2 : vp.height / 2;
+      await page.mouse.click(x, y);
+    } catch (e) {
+      console.warn(`  제스처 클릭 실패(무시): ${e && e.message}`);
+    }
+  }
   return { ...metrics, firstVisible, unityReady };
 }
 
@@ -695,10 +712,23 @@ async function logAudioDecode(page, label, consoleLines) {
   // BGM 프로브가 붙은 빌드면 외부화 클립 재수화(다운로드 + 디코드)가 끝날 때까지 상한 안에서 기다린다.
   const probed = consoleLines.some((l) => l.indexOf('[HeavyAudioProbe]') >= 0);
   const t0 = Date.now();
-  if (probed) {
-    await page.waitForFunction(() => window.__aitAudioPcmBytes > 1048576 || window.__aitAudioMediaEls > 0,
-      undefined, { timeout: AUDIO_REHYDRATE_WAIT_MS }).catch(() => {});
-  }
+  // Unity 측 메모리 분해의 두 번째 줄(첫 프레임+30초)이 아직 안 나왔으면 같은 상한 안에서 함께 기다린다(재수화 대기와 겹쳐 돈다).
+  const waitUnityMemLate = async () => {
+    const has = (re) => consoleLines.some((l) => re.test(l));
+    if (!has(/\[AIT-UnityMem\] t=first-frame(?!\+)/) || has(/\[AIT-UnityMem\] t=first-frame\+30s/)) return;
+    const limit = Math.min(Date.now() + AUDIO_REHYDRATE_WAIT_MS, testDeadlineAt - SUMMARY_RESERVE_MS);
+    while (Date.now() < limit && !has(/\[AIT-UnityMem\] t=first-frame\+30s/)) await page.waitForTimeout(500);
+  };
+  await Promise.all([
+    probed
+      ? page.waitForFunction(() => window.__aitAudioPcmBytes > 1048576 || window.__aitAudioMediaEls > 0,
+        undefined, { timeout: AUDIO_REHYDRATE_WAIT_MS }).catch(() => {})
+      : Promise.resolve(),
+    waitUnityMemLate().catch(() => {}),
+  ]);
+  // wasm 적재 경로(index.html 이 기록). 첫 프레임에 enc/dec 가 채워진 뒤의 값이다.
+  const wasmPath = await page.evaluate(() => window['__AIT_WASM_PATH'] || null).catch(() => null);
+  if (wasmPath) console.log(`  __AIT_WASM_PATH${tag}: ${JSON.stringify(wasmPath)}`);
   const audio = await page.evaluate(() => ({
     pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls,
     calls: window.__aitAudioDecodeCalls || 0, inBytes: window.__aitAudioDecodeInBytes || 0, errors: window.__aitAudioDecodeErrors || 0,
@@ -722,7 +752,10 @@ async function logAudioDecode(page, label, consoleLines) {
       ` wasm힙=${(audio.heap / 1048576).toFixed(0)}MB` +
       (probed ? ` (재수화 대기 ${Date.now() - t0}ms)` : ''));
   }
-  for (const l of consoleLines.slice(0, 40)) console.log(`    console${tag}: ${l.slice(0, 200)}`);
+  // 진단 태그([AIT-WasmPath]/[AIT-UnityMem]/[AIT-Memory] 부팅 마커/[AIT-GL] 업로드)는 개수 상한에 밀리지 않게 먼저 모두 남기고, 나머지는 40줄까지.
+  const diag = /AIT-WasmPath|AIT-UnityMem|AIT-CodeSize|AIT-Memory\] (first-frame|텔레메트리)|AIT-GL\] 텍스처 업로드|managed brotli/;
+  const rest = consoleLines.filter((l) => !diag.test(l)).slice(0, 40);
+  for (const l of [...consoleLines.filter((l) => diag.test(l)), ...rest]) console.log(`    console${tag}: ${l.slice(0, 260)}`);
 }
 
 /** 외부화 BGM 재수화를 기다리는 상한(첫 iter 에서만). */
@@ -764,7 +797,7 @@ async function measureIteration(browser, url, iter, label) {
   if (iter === 0) {
     page.on('console', (m) => {
       const t = m.text();
-      if (/AIT-StreamingAudio|AIT-Audio|HeavyAudioProbe|Decode error|AIT-GL|AIT-Pacing|AIT-Memory|AIT-DataBuf/.test(t)) audioConsole.push(t);
+      if (/AIT-Streaming|AIT-Audio|HeavyAudioProbe|Decode error|AIT-GL|AIT-Pacing|AIT-Memory|AIT-DataBuf|AIT-WasmPath|AIT-UnityMem|AIT-CodeSize/.test(t)) audioConsole.push(t);
     });
   }
 

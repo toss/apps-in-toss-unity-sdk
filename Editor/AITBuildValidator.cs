@@ -285,6 +285,9 @@ namespace AppsInToss.Editor
                 }
             }
 
+            // 1-1. Decompression Fallback(.unityweb) 빌드 경고(P0-8, 비치명적)
+            WarnIfDecompressionFallback(publicBuildPath);
+
             // 2. index.html 검증
             string indexPath = Path.Combine(buildProjectPath, "index.html");
             if (File.Exists(indexPath))
@@ -320,6 +323,54 @@ namespace AppsInToss.Editor
                 Debug.Log($"[AIT] 배포 폴더: {distPath}");
             }
             Debug.Log("[AIT] ========================================");
+        }
+
+        /// <summary>
+        /// Build 폴더에 .unityweb(Decompression Fallback 산출물)이 있으면 경고 문구를, 없으면 null 을 돌려준다(순수 함수).
+        /// Toss CDN 은 Content-Encoding 을 항상 붙이므로 fallback 이 필요 없고, 켜면 오히려 메모리가 늘어난다.
+        /// </summary>
+        internal static string BuildDecompressionFallbackWarning(IEnumerable<string> buildFileNames)
+        {
+            if (buildFileNames == null)
+            {
+                return null;
+            }
+
+            var found = new List<string>();
+            foreach (string name in buildFileNames)
+            {
+                if (!string.IsNullOrEmpty(name) && name.EndsWith(".unityweb", StringComparison.OrdinalIgnoreCase))
+                {
+                    found.Add(Path.GetFileName(name));
+                }
+            }
+
+            if (found.Count == 0)
+            {
+                return null;
+            }
+
+            return "[AIT] ⚠ Decompression Fallback 빌드입니다(" + string.Join(", ", found) + "). Toss CDN 은 Content-Encoding 을 항상 붙이므로 필요하지 않고, 켜면 저메모리 단말에서 불리합니다.\n"
+                + "     - wasm 을 ArrayBuffer 로 통째 받아 instantiate 해서 스트리밍 컴파일이 안 되고, 원본 wasm 전체가 컴파일 피크에 함께 상주합니다.\n"
+                + "     - 서버가 Content-Encoding 을 빼면 JS brotli 해제까지 붙습니다(느려지고 힙이 더 늘어남).\n"
+                + "     해결: AIT Configuration 창의 Decompression Fallback 을 끄세요(기본값은 꺼짐, decompressionFallback=0).";
+        }
+
+        private static void WarnIfDecompressionFallback(string publicBuildPath)
+        {
+            try
+            {
+                string warning = BuildDecompressionFallbackWarning(Directory.GetFiles(publicBuildPath));
+                if (warning != null)
+                {
+                    // 사용자 설정에 기인하므로 Sentry 전송은 억제하고 콘솔 경고만 남긴다.
+                    AITLog.Warning(warning, sentryCapture: false);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] Decompression Fallback 검사 예외(무시): {e.Message}");
+            }
         }
 
         /// <summary>

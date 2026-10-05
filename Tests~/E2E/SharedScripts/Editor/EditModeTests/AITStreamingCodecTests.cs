@@ -193,4 +193,56 @@ public class AITStreamingCodecTests
     {
         Assert.AreEqual(10, AITBrotliCompressor.DefaultMinGainPercent);
     }
+
+    // =====================================================
+    // P0-8: 스트리밍 자산 brotli 정책(CDN Content-Encoding 미확인 → 자동은 .br 를 만들지 않는다)
+    // =====================================================
+
+    [TestCase(null, false)]
+    [TestCase("", false)]
+    [TestCase("0", false)]
+    [TestCase("false", false)]
+    [TestCase("garbage", false)]
+    [TestCase("1", true)]
+    [TestCase("true", true)]
+    [TestCase(" TRUE ", true)]
+    [TestCase("on", true)]
+    public void ResolveStreamingBrotli_DefaultOffAndExplicitOptIn(string env, bool expected)
+    {
+        Assert.AreEqual(expected, AITBrotliCompressor.ResolveStreamingBrotli(env));
+    }
+
+    [Test]
+    public void TryResolveStreamingBrotli_WhenPolicyOff_ReturnsFalseEvenIfNodeExists()
+    {
+        string prev = Environment.GetEnvironmentVariable(AITBrotliCompressor.StreamingBrotliEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(AITBrotliCompressor.StreamingBrotliEnvVar, null);
+            Assert.IsFalse(AITBrotliCompressor.IsStreamingBrotliEnabled());
+            Assert.IsFalse(AITBrotliCompressor.TryResolveStreamingBrotli(out string node));
+            Assert.IsNull(node);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AITBrotliCompressor.StreamingBrotliEnvVar, prev);
+        }
+    }
+
+    [Test]
+    public void ManagedBrotliCounters_ReflectDecodeOnlyWhenServerDidNotDecode()
+    {
+        if (!AITStreamingCodec.CanDecompressBrotli)
+        {
+            Assert.Ignore("BrotliStream 이 없는 API 프로파일");
+        }
+
+        int before = AITStreamingCodec.ManagedBrotliCount;
+        // 서버가 이미 해제한 경우(경로 1): managed 해제는 일어나지 않는다.
+        AITStreamingCodec.DecodePayload("br", Payload, d => true, "t");
+        Assert.AreEqual(before, AITStreamingCodec.ManagedBrotliCount, "Content-Encoding 으로 이미 풀린 페이로드는 C# 해제를 타면 안 된다");
+        // CE 없이 raw brotli 가 도착한 경우(경로 2): managed 해제 1회가 카운트된다 — 정책이 .br 스트리밍 자산을 없애려는 이유.
+        AITStreamingCodec.DecodePayload("br", Br, d => d != null && d.Length == Payload.Length, "t");
+        Assert.AreEqual(before + 1, AITStreamingCodec.ManagedBrotliCount);
+    }
 }

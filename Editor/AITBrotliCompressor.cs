@@ -91,6 +91,66 @@ namespace AppsInToss.Editor
             return brBytes * 100L <= rawBytes * (100L - minGainPercent);
         }
 
+        // ─────────────────────────── 스트리밍 자산 brotli 정책 (P0-8) ───────────────────────────
+        //
+        // 스트리밍 자산(ait-stream-* 의 폰트 번들·텍스처)을 .br 로 내렸을 때 CDN 이 Content-Encoding: br 을 붙여 주는지는
+        // 확인되지 않았다(알파 CDN 에서 채집된 것은 .unityweb 과 .gz 뿐). 붙이지 않으면 raw brotli 가 그대로 도착해
+        // AITStreamingCodec 이 C# BrotliStream 으로 wasm 힙 안에서 푼다. 압축본 + MemoryStream 성장분 + ToArray 사본이 힙
+        // high-water 를 수십 MB 올리고 wasm 힙은 줄지 않는다. 그래서 자동(미설정)은 스트리밍 자산을 brotli 재압축하지 않는다.
+        //
+        // (b) gzip + JS DecompressionStream 안을 쓰지 않은 이유: Unity 는 UnityWebRequest 로 받은 바이트를 managed byte[] 로
+        //     들고 있고, JS 가 푼 결과도 결국 wasm 힙의 byte[] 로 되돌려야 해서 JS<->wasm 비동기 브리지(jslib + 폴링)가 필요하다.
+        //     이득은 MemoryStream 성장분 제거 정도인데 코드·위험이 훨씬 크다. 또 빌더 3곳의 파일명·encoding 계약(.br)을 모두 바꿔야 한다.
+        // (a) 생략의 비용: 폰트 번들이 LZ4(ChunkBasedCompression)로 나가 brotli 단일 계층보다 다운로드가 커진다(첫 프레임 이후 백그라운드).
+        //     텍스처(PNG/JPG)는 원래 ShouldKeep(>=10%) 채택이 드물어 영향이 작다.
+        // CDN 이 .br 에 Content-Encoding 을 붙이는 것으로 확인되면 AIT_STREAMING_BROTLI=1 로 되돌린다(다운로드 최소).
+
+        /// <summary>스트리밍 자산 brotli 재압축 환경 변수 오버라이드(1/true/on = 켬, 그 외·미설정 = 끔).</summary>
+        internal const string StreamingBrotliEnvVar = "AIT_STREAMING_BROTLI";
+
+        private static bool _streamingBrotliSkipLogged;
+
+        /// <summary>환경 변수 값에서 스트리밍 자산 brotli 사용 여부를 정한다(순수 함수). 미설정/빈 값/그 외는 false.</summary>
+        internal static bool ResolveStreamingBrotli(string envValue)
+        {
+            if (string.IsNullOrEmpty(envValue))
+            {
+                return false;
+            }
+
+            string v = envValue.Trim().ToLowerInvariant();
+            return v == "1" || v == "true" || v == "on" || v == "yes";
+        }
+
+        /// <summary>이번 빌드에서 스트리밍 자산(폰트 번들·텍스처)을 brotli 로 재압축할지.</summary>
+        internal static bool IsStreamingBrotliEnabled()
+        {
+            return ResolveStreamingBrotli(Environment.GetEnvironmentVariable(StreamingBrotliEnvVar));
+        }
+
+        /// <summary>
+        /// 스트리밍 자산용 brotli 가용성. 정책이 꺼져 있으면(자동) 내장 Node 가 있어도 false 를 돌려줘 호출부가
+        /// 무압축(폰트는 LZ4 번들) 경로를 타게 한다. 켜져 있으면 <see cref="TryResolveNode"/> 와 같다.
+        /// 스트리밍 자산 외의 Node 용도(오디오 트랜스코더, 로더 패처 등)는 <see cref="TryResolveNode"/> 를 그대로 쓴다.
+        /// </summary>
+        internal static bool TryResolveStreamingBrotli(out string nodeExe)
+        {
+            nodeExe = null;
+            if (!IsStreamingBrotliEnabled())
+            {
+                if (!_streamingBrotliSkipLogged)
+                {
+                    _streamingBrotliSkipLogged = true;
+                    Debug.Log($"[AIT-Brotli] 스트리밍 자산은 brotli 재압축을 하지 않습니다(CDN 의 Content-Encoding 미확인 — C# brotli 해제로 wasm 힙이 급증하는 경로 차단). "
+                              + $"CDN 이 .br 에 Content-Encoding 을 붙이는 것이 확인되면 {StreamingBrotliEnvVar}=1 로 켭니다.");
+                }
+
+                return false;
+            }
+
+            return TryResolveNode(out nodeExe);
+        }
+
         /// <summary>내장 Node 실행 파일을 해석한다(미설치 시 on-demand 다운로드 포함). 실패 시 false.</summary>
         internal static bool TryResolveNode(out string nodeExe)
         {

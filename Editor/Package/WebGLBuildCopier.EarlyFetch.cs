@@ -258,18 +258,20 @@ namespace AppsInToss.Editor.Package
         function markNonNet(r) {{ try {{ if (NON_NET && r && typeof r === 'object') NON_NET.add(r); }} catch (e) {{}} return r; }}
         function isPlainWasm(url) {{ return WASM_BYPASS && url === WASM_ABS; }}
 
-        // 완결 버퍼(buf)를 Response 로 감싸는 두 방식. new Response(buf) 는 엔진이 본문을 한 번 더 통째로 복사하고,
+        // 로더 핸드오프용 Response. new Response(buf) 는 엔진이 본문을 한 번 더 통째로 복사하고,
         // 로더가 그 본문을 읽을 때 다시 청크 복사가 생긴다(로더가 u=new Uint8Array(Content-Length) 로 한 번 더 복사하는 건 별개).
         // 기본(non-byte) ReadableStream 에 이미 받은 Uint8Array 를 그대로 enqueue 하면 엔진은 같은 객체를 로더 reader 에 건넨다 → 복사 0.
         // 엔진이 JS ReadableStream 본문을 모르면(구형: 문자열 '[object ReadableStream]' 로 강제 변환) 응답이 오염되므로,
         // 생성한 Response 의 body 가 방금 만든 스트림 객체와 같은지 확인하고 아니면 기존 방식으로 돌아간다.
         // byte 전용 스트림(type 옵션에 bytes)은 enqueue 가 ArrayBuffer 를 transfer(detach) 해 캐시 put 과 공유하는 buf 를 망가뜨리므로 쓰지 않는다.
-        var STREAM_CHUNK = 4194304;
+        // 캐시 put 은 여기에 스트림 본문을 쓰지 않는다: JS 스트림 본문 put 은 엔진이 청크마다 메인 스레드의 pull 을 기다려
+        // (CPU 4x 스로틀 실측) 같은 크기의 put 이 5초에서 30초 이상으로 늘어난다. 그동안 data 버퍼와 put 임시 복사가 상주해
+        // 첫 프레임 뒤 RSS 가 +30MB, 피크가 +11MB 늘었다(new Response(buf) put 은 5초에 끝나 GC 가 곧바로 버퍼를 회수한다).
         function streamResponse(rs, h) {{
             var r = new Response(rs, {{ status: 200, headers: h }});
             return (r && r.body === rs) ? r : null;
         }}
-        // 로더(data)·index.html(wasm instantiateWasm)에 주는 단일 청크 스트림 Response. 읽은 뒤에는 buf 참조를 놓는다(put 이 따로 들고 있다).
+        // 로더(data)·index.html(wasm instantiateWasm)에 주는 단일 청크 스트림 Response. 읽은 뒤에는 buf 참조를 놓는다.
         // wasm 은 index.html 이 URL 없는 Response 를 어차피 new Response(r.body, application/wasm) 로 재포장해 instantiateStreaming 에 넘기므로
         // 스트림 본문이어도 같은 경로를 탄다(Chromium·WebKit 26 에서 단일 청크 스트림 본문 instantiateStreaming 확인, 실패해도 index.html 의 재페치 폴백이 받는다).
         // window.__AIT_PERF.exactDataBody === false 면 꺼진다(키/객체가 없으면 기본 켜짐, ait-databuf.js 와 같은 규칙).
@@ -291,24 +293,6 @@ namespace AppsInToss.Editor.Package
                     if (r) return r;
                 }} catch (e) {{}}
             }}
-            return new Response(buf, {{ status: 200, headers: h }});
-        }}
-        // put 용: 버퍼의 subarray 뷰(STREAM_CHUNK 단위)를 흘리는 스트림 본문. 본문 전체 복사본을 만들지 않는다.
-        function putResponse(buf, h) {{
-            try {{
-                if (typeof ReadableStream === 'function' && buf.byteLength > STREAM_CHUNK && exactStreamOn()) {{
-                    var off = 0;
-                    var r = streamResponse(new ReadableStream({{
-                        pull: function(c) {{
-                            if (off >= buf.byteLength) {{ c.close(); return; }}
-                            var end = Math.min(off + STREAM_CHUNK, buf.byteLength);
-                            c.enqueue(buf.subarray(off, end));
-                            off = end;
-                        }}
-                    }}), h);
-                    if (r) return r;
-                }}
-            }} catch (e) {{}}
             return new Response(buf, {{ status: 200, headers: h }});
         }}
 
@@ -384,7 +368,7 @@ namespace AppsInToss.Editor.Package
             try {{
                 var h = {{ 'Content-Type': ct || 'application/octet-stream', 'Content-Length': String(buf.byteLength) }};
                 self.caches.open(CACHE_NAME).then(function(c) {{
-                    return c.put(url, putResponse(buf, h));
+                    return c.put(url, new Response(buf, {{ status: 200, headers: h }}));
                 }}).then(function() {{
                     markStored(url);
                     try {{ console.log('[AIT] cache: stored ' + url); }} catch (e) {{}}

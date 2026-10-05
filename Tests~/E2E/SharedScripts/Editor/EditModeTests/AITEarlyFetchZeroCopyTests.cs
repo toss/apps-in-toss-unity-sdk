@@ -7,9 +7,12 @@
 //  버퍼 크기만큼 여러 번 더 상주했다(2021.3 CI 페어: exactDataBody 가 6000.x 는 42MB, 2021.3 은 10MB 만 감소).
 //
 //  변경: (1) 로더/index.html 에 주는 Response 는 이미 받은 Uint8Array 를 한 번 enqueue 하는 기본
-//  ReadableStream 본문(복사 0), (2) put 은 같은 버퍼의 4MB subarray 뷰를 흘리는 스트림 본문(복사 0),
-//  (3) 페이지 캐시 put 은 직렬화. 모두 window.__AIT_PERF.exactDataBody === false 로 끌 수 있고,
+//  ReadableStream 본문(복사 0), (2) 페이지 캐시 put 은 직렬화. 핸드오프는 window.__AIT_PERF.exactDataBody === false 로 끌 수 있고,
 //  엔진이 JS ReadableStream 본문을 모르면(문자열 강제 변환) body 동일성 검사로 기존 방식에 되돌아간다.
+//
+//  put 을 버퍼의 subarray 뷰를 흘리는 스트림 본문으로 만들던 시도는 되돌렸다: 엔진이 청크마다 메인 스레드의 pull 을 기다려
+//  CPU 4x 스로틀에서 put 이 5초 -> 30초 이상으로 늘고, 그동안 data 버퍼와 put 임시 복사가 상주해 2021.3 CI 페어에서
+//  첫 프레임 뒤 RSS +30MB, 피크 +11MB 였다. put 은 new Response(buf) 한 덩어리로 돌아갔고(로더 버퍼와 공유하지 않는다) 이 테스트가 그것을 고정한다.
 //
 //  이 테스트는 실제 emitter/생성기 출력(페이지 캐시 스니펫 + 레거시 early-fetch 스크립트)을 Node 에서
 //  head 에서와 같은 순서로 실행한다. 하네스 패턴은 AITEarlyFetchRuntimeTests 와 같다
@@ -177,13 +180,12 @@ async function scenarioZeroCopy() {
   await settle(30);
   const pi = putInfo[DATA];
   if (!pi) fail('data must be put into page cache');
-  if (pi.chunkLens.length < 3) fail('put body must be chunked views, got chunk lens ' + JSON.stringify(pi.chunkLens));
-  if (Math.max.apply(null, pi.chunkLens) > 4 * 1048576) fail('put chunk must be <= 4MB');
   if (pi.bytes !== DATA_SIZE) fail('put total bytes mismatch ' + pi.bytes);
-  if (pi.buffers.size !== 1) fail('put chunks must be views of one shared buffer (no copies), got ' + pi.buffers.size);
-  // 제로카피 핵심: 로더가 받은 청크와 put 청크가 같은 ArrayBuffer 위에 있다.
-  if (!pi.buffers.has(chunks[0].buffer)) fail('loader chunk and put chunks must share the same ArrayBuffer (zero-copy handoff)');
-  if (chunks[0].buffer.byteLength !== DATA_SIZE) fail('shared buffer must not be detached/transferred');
+  // put 은 JS 스트림 본문(subarray 뷰 청크)이 아니라 new Response(buf) 한 덩어리다: 스트림 본문 put 은 스로틀 아래서 5초 -> 30초 이상으로 느려져 버퍼가 오래 상주한다.
+  if (pi.chunkLens.length !== 1) fail('put body must be the single whole-buffer Response(buf), got chunk lens ' + JSON.stringify(pi.chunkLens));
+  if (pi.buffers.has(chunks[0].buffer)) fail('put must not stream views of the loader buffer (stream-body put is slow and retains the buffer)');
+  // 로더 청크는 put 과 무관하게 온전해야 한다(detach/transfer 금지).
+  if (chunks[0].buffer.byteLength !== DATA_SIZE) fail('loader buffer must not be detached/transferred');
   if (pi.headerLength !== String(DATA_SIZE)) fail('put Content-Length header must be exact, got ' + pi.headerLength);
   // wasm 도 같은 스트림 경로.
   const wres = await window.fetch(WASM);
@@ -385,9 +387,12 @@ main().catch((e) => fail('uncaught: ' + (e && e.stack ? e.stack : e)));
 
         StringAssert.Contains("var DATA_URL = 'Build/aaaa.data.br';", js);
         StringAssert.Contains("function loaderResponse(url, buf, ct)", js);
-        StringAssert.Contains("function putResponse(buf, h)", js);
         StringAssert.Contains("return markNonNet(loaderResponse(url, buf, ct));", js);
-        StringAssert.Contains("return c.put(url, putResponse(buf, h));", js);
+        StringAssert.Contains("return c.put(url, new Response(buf, { status: 200, headers: h }));", js);
+        // put 용 스트림 본문(subarray 뷰 청크)은 쓰지 않는다: 스로틀 아래서 put 이 5초 -> 30초 이상으로 늘어 버퍼가 상주한다.
+        StringAssert.DoesNotContain("function putResponse", js);
+        StringAssert.DoesNotContain("STREAM_CHUNK", js);
+        StringAssert.DoesNotContain("buf.subarray", js);
         // 엔진이 JS ReadableStream 본문을 모르면 문자열로 강제 변환되므로 body 동일성 검사로 기존 방식에 되돌아간다.
         StringAssert.Contains("r.body === rs", js);
         // 로더/put 이 같은 버퍼를 공유하므로 transfer(detach)가 일어나는 byte 스트림은 쓰지 않는다.
@@ -431,16 +436,16 @@ main().catch((e) => fail('uncaught: ' + (e && e.stack ? e.stack : e)));
     }
 
     [Test]
-    public void PageCache_PutBuffer_UsesChunkedStreamAndSerialization()
+    public void PageCache_PutBuffer_UsesWholeBufferResponse_AndSerialization()
     {
         string js = PageCache();
 
-        StringAssert.Contains("function bufferPutResponse(buf, h)", js);
-        StringAssert.Contains("c.put(url, bufferPutResponse(buf, h))", js);
-        StringAssert.Contains("r.body === rs", js);
+        StringAssert.Contains("c.put(url, new Response(buf, { status: 200, headers: h }))", js);
+        // put 용 스트림 본문은 쓰지 않는다(느린 put 이 버퍼를 오래 붙든다).
+        StringAssert.DoesNotContain("bufferPutResponse", js);
+        StringAssert.DoesNotContain("PUT_CHUNK", js);
+        StringAssert.DoesNotContain("u8.subarray", js);
         StringAssert.Contains("var putChain = Promise.resolve();", js);
-        StringAssert.Contains("pf.exactDataBody === false", js);
-        StringAssert.DoesNotContain("type: 'bytes'", js);
         // put 감시 타이머와 통계 계약은 유지.
         StringAssert.Contains("'put timeout ' + url", js);
         StringAssert.Contains("window.__aitPageCachePutBuffer = function (url, buf, ct)", js);
@@ -449,9 +454,9 @@ main().catch((e) => fail('uncaught: ' + (e && e.stack ? e.stack : e)));
     // ---------------- 런타임 ----------------
 
     [Test]
-    public void Runtime_LoaderChunkAndPutChunks_ShareOneBuffer_NoCopy()
+    public void Runtime_LoaderGetsBufferItself_PutUsesWholeBufferResponse()
     {
-        // 로더가 받는 data 청크가 버퍼 그 자체이고(복사 0), put 은 같은 ArrayBuffer 의 4MB 뷰로 나뉜다. wasm 도 같은 스트림 경로.
+        // 로더가 받는 data 청크가 버퍼 그 자체이고(복사 0), put 은 스트림 뷰가 아니라 new Response(buf) 한 덩어리다. wasm 도 같은 스트림 핸드오프.
         RunScenario("zero_copy");
     }
 

@@ -150,130 +150,6 @@ namespace AppsInToss
 
         #endregion
 
-        #region Debug Symbol Fallback
-
-        // 실패 판정에 쓰는 진단 텍스트 상한(문자)과 에디터 로그에서 이번 빌드 구간만 읽을 때의 최대 바이트.
-        private const int SymbolEvidenceMaxChars = 64 * 1024;
-        private const int SymbolLogMaxBytes = 256 * 1024;
-
-        /// <summary>
-        /// WebGL 빌드를 실행하고, External 디버그 심볼 빌드가 Unity 로더 전처리의 SYMBOLS_FILENAME 누락으로 실패하면
-        /// (<see cref="AITDebugSymbolFallback"/>) 심볼을 Off 로 바꿔 한 번만 다시 빌드한다. External 이 아니면 BuildWebGL 과 같다.
-        /// 바꾼 debugSymbolMode 는 DoExport 가 PrepareExport 이전에 찍은 PlayerSettingsSnapshot 이 사용자 값으로 되돌린다.
-        /// </summary>
-        internal static AITExportError BuildWebGLWithSymbolFallback(bool cleanBuild, AITBuildProfile profile)
-        {
-            if (!AITDebugSymbolFallback.CanFallback())
-                return Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
-
-            var captured = new System.Text.StringBuilder();
-            Application.LogCallback collect = (condition, stackTrace, type) =>
-            {
-                if (type == LogType.Log) return;
-                lock (captured)
-                {
-                    if (captured.Length < SymbolEvidenceMaxChars)
-                        captured.AppendLine(condition);
-                }
-            };
-
-            long logOffset = GetFileLength(Application.consoleLogPath);
-            // 이전 빌드의 실패 리포트가 이번 판정에 섞이지 않게 비운다(BuildWebGL 이 BuildPlayer 후 다시 채운다).
-            AITErrorReporter.SetBuildReport(null);
-            AITExportError result;
-            Application.logMessageReceivedThreaded += collect;
-            try
-            {
-                result = Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
-            }
-            finally
-            {
-                Application.logMessageReceivedThreaded -= collect;
-            }
-
-            if (result != AITExportError.BUILD_WEBGL_FAILED || IsCancelled())
-                return result;
-
-            string evidence;
-            lock (captured) { evidence = captured.ToString(); }
-            evidence += "\n" + (AITErrorReporter.FormatBuildErrors() ?? string.Empty);
-            evidence += "\n" + (ReadFileSince(Application.consoleLogPath, logOffset, SymbolLogMaxBytes) ?? string.Empty);
-
-            if (!AITDebugSymbolFallback.IsSignature(evidence))
-                return result;
-
-            Debug.LogWarning("[AIT] External 디버그 심볼 빌드가 Unity 로더 전처리(SYMBOLS_FILENAME 누락)에서 실패했습니다 — " +
-                             $"디버그 심볼을 끄고 한 번 다시 빌드합니다. Unity {Application.unityVersion} 의 다음 빌드부터는 처음부터 끈 채로 빌드합니다.");
-            AITDebugSymbolFallback.SwitchOffAndRemember();
-
-            // 실패한 시도가 남긴 부분 산출물을 비운다. 폴더만 지우므로 Bee 캐시는 유지된다.
-            try
-            {
-                string outputPath = Path.Combine(UnityUtil.GetProjectPath(), webglDir);
-                if (Directory.Exists(outputPath))
-                    Directory.Delete(outputPath, true);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[AIT] 실패한 빌드 출력 폴더 정리 실패(무시): {e.Message}");
-            }
-
-            var retry = Editor.AITWebGLBuilder.BuildWebGL(false, profile);
-            if (retry == AITExportError.SUCCEED)
-                Debug.Log("[AIT] 디버그 심볼 없는 재빌드 성공 — 이번 산출물에는 외부 심볼 파일(symbols.json)이 없습니다.");
-            else
-                Debug.LogWarning("[AIT] 디버그 심볼 없는 재빌드도 실패했습니다. 위 에러를 확인하세요.");
-            return retry;
-        }
-
-        private static long GetFileLength(string path)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return 0;
-                return new FileInfo(path).Length;
-            }
-            catch (Exception)
-            {
-                return 0;
-            }
-        }
-
-        /// <summary>
-        /// 파일의 <paramref name="offset"/> 이후 구간(최대 <paramref name="maxBytes"/>의 꼬리)을 읽는다.
-        /// 파일이 줄었으면(에디터 로그 회전) 처음부터 읽는다. 읽을 수 없으면 null(진단 보조라 예외를 삼킨다).
-        /// </summary>
-        private static string ReadFileSince(string path, long offset, int maxBytes)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
-                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                {
-                    long start = offset <= fs.Length ? offset : 0;
-                    long len = fs.Length - start;
-                    if (len <= 0) return null;
-                    if (len > maxBytes) { start = fs.Length - maxBytes; len = maxBytes; }
-                    fs.Seek(start, SeekOrigin.Begin);
-                    var buf = new byte[len];
-                    int read = 0;
-                    while (read < len)
-                    {
-                        int n = fs.Read(buf, read, (int)len - read);
-                        if (n <= 0) break;
-                        read += n;
-                    }
-                    return System.Text.Encoding.UTF8.GetString(buf, 0, read);
-                }
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
-
-        #endregion
-
         #region Build Marker
 
         public const string BUILD_MARKER_FILENAME = ".ait-build-info.json";
@@ -397,6 +273,156 @@ namespace AppsInToss
 
         #endregion
 
+        #region LTO OOM Fallback (6000.0)
+
+        // LTO 링크 실패 판정에 쓰는 진단 텍스트 상한(문자). wasm-ld 가 남기는 한두 줄이면 충분하다.
+        private const int LtoEvidenceMaxChars = 64 * 1024;
+
+        // 에디터 로그에서 이번 빌드 구간만 읽을 때의 최대 바이트.
+        private const int LtoLogMaxBytes = 256 * 1024;
+
+        /// <summary>
+        /// WebGL 빌드를 실행하고, 6000.0 에서 DiskSizeLTO 를 "시도"한 빌드가 링크 단계 OOM 으로 실패하면
+        /// LTO 없이(DiskSize) 한 번만 다시 빌드한다(P0-5). 무장(<see cref="AITWebGLCodeOptimization.LtoFallbackArmed"/>)은
+        /// AITBuildInitializer 가 6000.0 + RAM 기준 통과 + 자동 정책일 때만 건다. 그 외에는 BuildWebGL 호출과 동일하다.
+        ///
+        /// PlayerSettings 원복: 재시도가 바꾸는 값은 codeOptimization 하나뿐이다. DoExport/DoExportAsync 가
+        /// PrepareExport 이전에 찍은 PlayerSettingsSnapshot 이 이를 사용자의 원래 값으로 되돌린다
+        /// (PlayerSettingsSnapshot.RestoreInternal 의 webGLCodeOptimization). 콘텐츠 프로세서(텍스처/오디오 등)는
+        /// BuildWebGL 의 try/finally 가 매 시도마다 적용·원복하므로 재시도에서 중복 적용되지 않는다.
+        /// 재시도는 최대 1회이고, 취소(CANCELLED)나 OOM 이 아닌 실패는 재시도하지 않는다.
+        /// </summary>
+        internal static AITExportError BuildWebGLWithLtoFallback(bool cleanBuild, AITBuildProfile profile)
+        {
+            if (!AITWebGLCodeOptimization.LtoFallbackArmed)
+                return Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
+
+            // 한 번 소비: 같은 무장으로 두 번 재시도하지 않는다.
+            AITWebGLCodeOptimization.LtoFallbackArmed = false;
+
+            var captured = new System.Text.StringBuilder();
+            Application.LogCallback collect = (condition, stackTrace, type) =>
+            {
+                if (type == LogType.Log) return;
+                lock (captured)
+                {
+                    if (captured.Length < LtoEvidenceMaxChars)
+                        captured.AppendLine(condition);
+                }
+            };
+
+            long logOffset = GetFileLength(Application.consoleLogPath);
+            // 이전 빌드의 실패 리포트가 이번 판정에 섞이지 않게 비운다(BuildWebGL 이 BuildPlayer 후 다시 채운다).
+            AITErrorReporter.SetBuildReport(null);
+            AITExportError result;
+            Application.logMessageReceivedThreaded += collect;
+            try
+            {
+                result = Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
+            }
+            finally
+            {
+                Application.logMessageReceivedThreaded -= collect;
+            }
+
+            if (result != AITExportError.BUILD_WEBGL_FAILED)
+                return result;
+
+            if (IsCancelled())
+                return result;
+
+            string evidence;
+            lock (captured) { evidence = captured.ToString(); }
+            evidence += "\n" + (AITErrorReporter.FormatBuildErrors() ?? string.Empty);
+            evidence += "\n" + (ReadFileSince(Application.consoleLogPath, logOffset, LtoLogMaxBytes) ?? string.Empty);
+
+            if (!AITWebGLCodeOptimization.IsLinkOomSignature(evidence))
+            {
+                Debug.Log("[AIT] LTO 빌드 실패 — 링크 OOM 징후가 없어 LTO 없는 재빌드는 하지 않습니다.");
+                return result;
+            }
+
+            Debug.LogWarning("[AIT] 6000.0 LTO 링크가 메모리 부족(OOM)으로 실패한 것으로 보입니다 — " +
+                             "LTO 없이(DiskSize) 한 번 다시 빌드합니다. 빌드 시간이 길어집니다.");
+
+            if (!AITWebGLCodeOptimization.TrySetBestAvailable(allowLto: false))
+            {
+                Debug.LogWarning("[AIT] LTO 제외 사다리를 적용하지 못해 재빌드를 건너뜁니다.");
+                return result;
+            }
+            Debug.Log($"[AIT] WebGL codeOptimization(재빌드): '{AITWebGLCodeOptimization.DiskSizeLTO}' → " +
+                      $"'{AITWebGLCodeOptimization.GetCurrentName()}' (빌드 종료 시 PlayerSettings 스냅샷이 사용자 값으로 복원)");
+
+            // 실패한 시도가 남긴 부분 산출물(잘린 wasm 등)을 비운다. 폴더만 지우므로 Bee 캐시는 유지되고
+            // 컴파일 플래그가 달라진 오브젝트만 다시 만들어진다. 빈 폴더라 BuildWebGL 은 증분 경로로 간다.
+            try
+            {
+                string outputPath = Path.Combine(UnityUtil.GetProjectPath(), webglDir);
+                if (Directory.Exists(outputPath))
+                    Directory.Delete(outputPath, true);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AIT] 실패한 LTO 빌드 출력 폴더 정리 실패(무시): {e.Message}");
+            }
+
+            AITWebGLCodeOptimization.LtoFallbackArmed = false;
+            var retry = Editor.AITWebGLBuilder.BuildWebGL(false, profile);
+            if (retry == AITExportError.SUCCEED)
+                Debug.Log("[AIT] LTO 없는 재빌드 성공 — 이번 산출물은 LTO 가 적용되지 않았습니다(6000.0 빌드 머신 메모리 부족).");
+            else
+                Debug.LogWarning("[AIT] LTO 없는 재빌드도 실패했습니다. 위 에러를 확인하세요.");
+            return retry;
+        }
+
+        private static long GetFileLength(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return 0;
+                return new FileInfo(path).Length;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// 파일의 <paramref name="offset"/> 이후 구간(최대 <paramref name="maxBytes"/>의 꼬리)을 읽는다.
+        /// 파일이 줄었으면(에디터 로그 회전) 처음부터 읽는다. 읽을 수 없으면 null(진단 보조라 예외를 삼킨다).
+        /// </summary>
+        private static string ReadFileSince(string path, long offset, int maxBytes)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    long start = offset <= fs.Length ? offset : 0;
+                    long len = fs.Length - start;
+                    if (len <= 0) return null;
+                    if (len > maxBytes) { start = fs.Length - maxBytes; len = maxBytes; }
+                    fs.Seek(start, SeekOrigin.Begin);
+                    var buf = new byte[len];
+                    int read = 0;
+                    while (read < len)
+                    {
+                        int n = fs.Read(buf, read, (int)len - read);
+                        if (n <= 0) break;
+                        read += n;
+                    }
+                    return System.Text.Encoding.UTF8.GetString(buf, 0, read);
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        #endregion
+
         #region Main Export Pipeline
 
         /// <summary>
@@ -475,7 +501,7 @@ namespace AppsInToss
                         Editor.ErrorTracker.AITEditorErrorTracker.AddBreadcrumb("build", "WebGL 빌드 시작");
                     var webglSpan = transaction?.StartSpan("webgl.build", "Unity WebGL Build");
                     AITBuildSession.SetStage(BuildStage.WebGLBuild);
-                    var webglResult = BuildWebGLWithSymbolFallback(cleanBuild, profile);
+                    var webglResult = BuildWebGLWithLtoFallback(cleanBuild, profile);
                     webglSpan?.Finish(webglResult == AITExportError.SUCCEED ? "ok" : "internal_error");
 
                     if (webglResult != AITExportError.SUCCEED)
@@ -660,7 +686,7 @@ namespace AppsInToss
                     trackedOnProgress(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (pnpm install 병렬 실행 중)");
 
                     AITBuildSession.SetStage(BuildStage.WebGLBuild);
-                    var webglResult = BuildWebGLWithSymbolFallback(cleanBuild, profile);
+                    var webglResult = BuildWebGLWithLtoFallback(cleanBuild, profile);
                     if (webglResult != AITExportError.SUCCEED)
                     {
                         earlyCtx.CancelAndDisposePnpm();
@@ -704,7 +730,7 @@ namespace AppsInToss
                     trackedOnProgress(BuildPhase.WebGLBuild, 0.05f, "WebGL 빌드 중... (Unity 제한으로 에디터가 일시 정지됩니다)");
 
                     AITBuildSession.SetStage(BuildStage.WebGLBuild);
-                    var webglResult = BuildWebGLWithSymbolFallback(cleanBuild, profile);
+                    var webglResult = BuildWebGLWithLtoFallback(cleanBuild, profile);
                     if (webglResult != AITExportError.SUCCEED)
                     {
                         try { snapshot.Restore(); }

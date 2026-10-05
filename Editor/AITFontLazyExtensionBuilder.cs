@@ -213,7 +213,7 @@ namespace AppsInToss.Editor
                 var newEntries = new List<ManifestEntryDto>();
                 try
                 {
-                    bool brotliAvailable = AITBrotliCompressor.TryResolveNode(out _);
+                    bool brotliAvailable = AITBrotliCompressor.TryResolveStreamingBrotli(out _);
                     Directory.CreateDirectory(streamRootFull);
                     Directory.CreateDirectory(bundleTempFull);
                     EnsureTempFolder();

@@ -40,6 +40,15 @@
  *     index.html 의 wasm 경로가 이 표식으로 "vConsole 류 몽키패치"와 AIT 자체 래퍼를 구분하므로 빠지면 wasm 직접
  *     스트리밍이 꺼진다.
  *
+ * === 저메모리 tier: data 요청 보류 ===
+ *  window.AITMemory.lowMemTier(ait-mem.js, 부팅 사망 후 저사양 tier) >= 1 이면 로더의 data GET fetch 를 wasm 컴파일이 끝날 때까지 보류한다.
+ *  data 본문(heavy 30MB)이 wasm 컴파일 구조(수백 MB)와 같은 시점에 상주하는 피크를 없애려는 것이다. 재포장 설정(exactDataBody 등)과 무관하게 동작하고
+ *  fetch 래퍼는 재포장 래퍼 바깥에 얹는다(보류가 풀린 뒤 같은 체인을 그대로 탄다).
+ *  컴파일 완료 신호는 WebAssembly.instantiate/instantiateStreaming/compile/compileStreaming 래퍼가 만든다: 1MB 이상의 바이트 배열 또는 Response(Promise)를
+ *  받은 첫 호출이 성공하면 풀린다(실패하면 재시도 경로가 이어서 부르므로 기다린다). 신호가 끝내 없어도 DEFER_MAX_MS(60초)가 지나면 풀린다(로드가 영구히 멈추지 않게).
+ *  early-fetch(레거시/modern 인라인 스크립트)는 같은 tier 에서 data 선시작을 하지 않는다 — 선시작하면 이 보류가 다운로드를 늦추지 못한다.
+ *  getState() 의 tier / deferInstalled / deferred / deferReason / deferWaitMs 로 확인한다. 로그 태그는 [AIT-DataBuf].
+ *
  * ⚠️ Unity 로더보다 먼저 로드되어야 한다 — index.html 의 body 초입(ait-playerprefs.js 다음)에서 로드된다.
  */
 (function () {
@@ -63,7 +72,14 @@
         skipped: 0,
         lastEncoding: '',
         lastContentLength: '',
-        lastResult: ''
+        lastResult: '',
+        // 저메모리 tier data 보류(진단용)
+        tier: 0,
+        deferInstalled: false,
+        deferred: 0,
+        deferReason: '',
+        deferWaitMs: -1,
+        compiled: false
     };
 
     var logged = {};
@@ -204,7 +220,7 @@
         return out;
     }
 
-    function configure(config) {
+    function configureRewrap(config) {
         state.configured = true;
         if (state.installed) return; // 중복 호출 방지(이중 래핑 금지)
 
@@ -267,14 +283,141 @@
         logOnce('install', '재포장 활성: dataRawSize=' + raw + ' bytes, dataUrl=' + dataUrlRaw);
     }
 
+    // ------------------------------------------------------------------
+    // 저메모리 tier: data 요청 보류 (wasm 컴파일 완료까지)
+    // ------------------------------------------------------------------
+    var WASM_MIN_BYTES = 1048576;   // 이보다 작은 바이트 배열은 게임 wasm 으로 보지 않는다(보조 모듈 오탐 방지)
+    var DEFER_MAX_MS = 60000;       // 컴파일 신호가 없어도 이 시간 뒤에는 푼다
+    var compileDone = false;
+    var compileWaiters = [];
+    var deferTimer = null;
+
+    function nowMs() {
+        try { return performance.now(); } catch (e) { return Date.now(); }
+    }
+
+    function lowMemTier() {
+        try {
+            var m = window.AITMemory;
+            return (m && typeof m.lowMemTier === 'number') ? (m.lowMemTier | 0) : 0;
+        } catch (e) { return 0; }
+    }
+
+    function markCompiled(reason) {
+        if (compileDone) return;
+        compileDone = true;
+        state.compiled = true;
+        state.deferReason = reason;
+        if (deferTimer) { try { clearTimeout(deferTimer); } catch (e) { /* ignore */ } deferTimer = null; }
+        var ws = compileWaiters.splice(0);
+        for (var i = 0; i < ws.length; i++) {
+            try { ws[i](reason); } catch (e) { /* ignore */ }
+        }
+    }
+
+    function waitCompiled() {
+        return new Promise(function (resolve) {
+            if (compileDone) { resolve(state.deferReason); return; }
+            compileWaiters.push(resolve);
+            if (!deferTimer) {
+                deferTimer = setTimeout(function () { deferTimer = null; markCompiled('timeout'); }, DEFER_MAX_MS);
+            }
+        });
+    }
+
+    // 게임 wasm 을 컴파일하는 호출인지: Response / Promise<Response>(스트리밍) 이거나 1MB 이상 바이트 배열.
+    // WebAssembly.Module 을 받는 instantiate(module, imports) 는 컴파일이 이미 끝난 뒤이므로 제외한다.
+    function isGameWasmSource(src) {
+        try {
+            if (typeof Response === 'function' && src instanceof Response) return true;
+            if (src && typeof src.then === 'function') return true;
+            if (src && typeof src.byteLength === 'number') return src.byteLength >= WASM_MIN_BYTES;
+        } catch (e) { /* 아래 false */ }
+        return false;
+    }
+
+    function watchWasmCompile() {
+        if (typeof WebAssembly !== 'object' || !WebAssembly) return false;
+        var names = ['instantiateStreaming', 'instantiate', 'compileStreaming', 'compile'];
+        for (var i = 0; i < names.length; i++) {
+            (function (name) {
+                var orig = WebAssembly[name];
+                if (typeof orig !== 'function' || orig.__aitDataBuf) return;
+                var w = function (src) {
+                    var p = orig.apply(this, arguments);
+                    try {
+                        if (!compileDone && isGameWasmSource(src) && p && typeof p.then === 'function') {
+                            // 성공만 신호로 본다. 실패하면 호출부가 다른 경로(버퍼 인스턴스화 등)로 이어서 부른다.
+                            p.then(function () { markCompiled('compiled'); }, function () { /* 다음 호출을 기다린다 */ });
+                        }
+                    } catch (e) { /* 관측 실패가 컴파일을 바꾸면 안 된다 */ }
+                    return p;
+                };
+                w.__aitDataBuf = true;
+                try { WebAssembly[name] = w; } catch (e) { /* 교체 불가 환경 — 타임아웃이 푼다 */ }
+            })(names[i]);
+        }
+        return true;
+    }
+
+    function configureDefer(config) {
+        if (state.deferInstalled) return;
+        var tier = lowMemTier();
+        state.tier = tier;
+        if (tier < 1) return;
+        if (typeof window.fetch !== 'function' || typeof Promise !== 'function') return;
+
+        var cfg = config || window.unityConfig;
+        var dataUrlRaw = cfg && cfg.dataUrl;
+        if (!dataUrlRaw || typeof dataUrlRaw !== 'string') {
+            logOnce('defer-nourl', 'tier=' + tier + ': config.dataUrl 이 없어 data 보류를 건너뜀', 'warn');
+            return;
+        }
+        var dataUrl = toUrl(dataUrlRaw);
+        if (!dataUrl) return;
+
+        watchWasmCompile();
+
+        var prior = window.fetch;
+        var wrapper = function (resource, init) {
+            var match = false;
+            try {
+                match = requestMethod(resource, init) === 'GET' && sameResource(requestUrl(resource), dataUrl);
+            } catch (e) { match = false; }
+            if (!match || compileDone) return prior.apply(this, arguments);
+            var self = this, args = arguments, t0 = nowMs();
+            state.deferred++;
+            logOnce('defer', '저메모리 tier=' + tier + ': data 요청을 wasm 컴파일 완료까지 보류 (최대 ' + (DEFER_MAX_MS / 1000) + '초)');
+            return waitCompiled().then(function (reason) {
+                state.deferWaitMs = Math.round(nowMs() - t0);
+                logOnce('release', 'data 요청 재개 (' + (reason === 'compiled' ? 'wasm 컴파일 완료' : '대기 시간 초과') + ', 보류 ' + state.deferWaitMs + 'ms)');
+                return prior.apply(self, args);
+            });
+        };
+        try {
+            if (prior.__aitWrapper === true || isNativeFetch(prior)) wrapper.__aitWrapper = true;
+        } catch (e) { /* ignore */ }
+        window.fetch = wrapper;
+        state.deferInstalled = true;
+    }
+
+    function configure(config) {
+        try {
+            configureRewrap(config);
+        } catch (e) {
+            state.reason = 'configure 예외: ' + (e && e.message);
+            logOnce('install-error', 'configure 실패, 재포장 없이 진행: ' + (e && e.message), 'warn');
+        }
+        try {
+            configureDefer(config);
+        } catch (e) {
+            logOnce('defer-error', 'data 보류 설치 실패, 보류 없이 진행: ' + (e && e.message), 'warn');
+        }
+    }
+
     window.__AIT_DATABUF = {
         configure: function (config) {
-            try {
-                configure(config);
-            } catch (e) {
-                state.reason = 'configure 예외: ' + (e && e.message);
-                logOnce('install-error', 'configure 실패, 재포장 없이 진행: ' + (e && e.message), 'warn');
-            }
+            configure(config);
         },
         // 진단용 스냅샷(복사본). 상태 객체 자체는 노출하지 않는다.
         getState: function () {

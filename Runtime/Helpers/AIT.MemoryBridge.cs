@@ -18,7 +18,10 @@
 // AITMemoryBridge.AutoUnloadUnusedAssets = true 로 명시해야 한다(켜도 30초에 한 번, critical 단계에서만).
 
 using System;
+using System.Globalization;
+using System.Text;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Scripting;
 #if UNITY_WEBGL && !UNITY_EDITOR
 using System.Runtime.InteropServices;
@@ -67,6 +70,12 @@ namespace AppsInToss
         /// <summary>이전 세션이 백그라운드(hidden)에서 끝난 횟수. OS 가 숨은 탭을 정리한 경우일 수 있어 crashCount 와 따로 센다.</summary>
         public int bgKillCount;
 
+        /// <summary>최근 10분 안에 부팅 중(first-frame 후 60초 안정 전) 사망한 부팅 횟수. ait-mem.js 의 localStorage 마커 기준(P0-1).</summary>
+        public int bootFailCount;
+
+        /// <summary>저사양 티어 0/1/2(0 = 정상). 부팅 때 한 번 정해지며 세션 중 바뀌지 않는다. <see cref="AITMemoryBridge.LowMemTier"/> 와 같은 값.</summary>
+        public int lowMemTier;
+
         /// <summary><see cref="level"/> 문자열을 enum 으로 푼 값. 모르는 값은 Ok.</summary>
         public AITMemoryLevel Level
         {
@@ -107,7 +116,34 @@ namespace AppsInToss
 
         [DllImport("__Internal")]
         private static extern string __AITMemoryBridge_GetSnapshot();
+
+        [DllImport("__Internal")]
+        private static extern int __AITMemoryBridge_GetLowMemTier();
 #endif
+
+        /// <summary>
+        /// 저사양 티어(0 = 정상, 1, 2). ait-mem.js 가 부팅 때 정한 window.AITMemory.lowMemTier 를 그대로 읽는다.
+        /// WebGL 빌드가 아니거나, 텔레메트리/lowMemoryTier 설정이 꺼졌거나, 읽기에 실패하면 0 이다.
+        /// 값은 세션 중 바뀌지 않으므로 필요한 쪽이 한 번 읽어 캐시해도 된다(후속 저메모리 최적화는 이 값으로 정책을 정한다).
+        /// </summary>
+        public static int LowMemTier
+        {
+            get
+            {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                try
+                {
+                    return Mathf.Clamp(__AITMemoryBridge_GetLowMemTier(), 0, 2);
+                }
+                catch (Exception)
+                {
+                    return 0;
+                }
+#else
+                return 0;
+#endif
+            }
+        }
 
         /// <summary>메모리 이벤트. grow 는 1초 이상 간격으로 합쳐서, pressure/grow-failed/crash 는 발생 즉시(다음 태스크) 온다.</summary>
         public static event Action<AITMemoryInfo> OnMemoryEvent;
@@ -206,6 +242,57 @@ namespace AppsInToss
 #endif
         }
 
+        private const double Mb = 1048576.0;
+
+        private static string MbText(long bytes)
+        {
+            return (bytes / Mb).ToString("0.0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Unity 측 메모리 분해 한 줄(P0-1 진단). 태그는 <c>[AIT-UnityMem]</c>.
+        /// alloc/reserved/monoHeap/monoUsed/gfx 는 UnityEngine.Profiling.Profiler 값(WebGL 비개발 빌드는 0 으로 올 수 있다 — 그 자체가 정보다),
+        /// streamTex/streamAudio/streamFont 는 스트리밍 헬퍼가 보유한 바이트와 개수, brotli 는 managed 해제 누계.
+        /// wasmHeap 은 마지막으로 받은 텔레메트리의 heapBytes(없으면 생략). 예외는 던지지 않는다.
+        /// </summary>
+        internal static string FormatUnityBreakdown(string label)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("[AIT-UnityMem] ").Append(label);
+            try
+            {
+                sb.Append(" alloc=").Append(MbText(Profiler.GetTotalAllocatedMemoryLong())).Append("MB");
+                sb.Append(" reserved=").Append(MbText(Profiler.GetTotalReservedMemoryLong())).Append("MB");
+                sb.Append(" monoHeap=").Append(MbText(Profiler.GetMonoHeapSizeLong())).Append("MB");
+                sb.Append(" monoUsed=").Append(MbText(Profiler.GetMonoUsedSizeLong())).Append("MB");
+                sb.Append(" gfx=").Append(MbText(Profiler.GetAllocatedMemoryForGraphicsDriver())).Append("MB");
+            }
+            catch (Exception e)
+            {
+                sb.Append(" profiler=unavailable(").Append(e.GetType().Name).Append(')');
+            }
+
+            sb.Append(" streamTex=").Append(MbText(AITStreamingTexture.HeldBytes)).Append("MB(").Append(AITStreamingTexture.HeldCount).Append(')');
+            sb.Append(" streamAudio=").Append(MbText(AITStreamingAudio.HeldBytes)).Append("MB(").Append(AITStreamingAudio.HeldCount).Append(')');
+            sb.Append(" streamFont=").Append(MbText(AITStreamingFont.HeldBytes)).Append("MB(").Append(AITStreamingFont.HeldCount).Append(')');
+            sb.Append(" brotli=").Append(AITStreamingCodec.ManagedBrotliCount).Append('x');
+            if (AITStreamingCodec.ManagedBrotliCount > 0)
+            {
+                sb.Append('(').Append(MbText(AITStreamingCodec.ManagedBrotliInBytes)).Append("MB→")
+                  .Append(MbText(AITStreamingCodec.ManagedBrotliOutBytes)).Append("MB,")
+                  .Append(AITStreamingCodec.ManagedBrotliMs.ToString("0", CultureInfo.InvariantCulture)).Append("ms)");
+            }
+
+            var latest = Latest;
+            if (latest != null)
+            {
+                sb.Append(" wasmHeap=").Append(MbText(latest.heapBytes)).Append("MB");
+                sb.Append(" bootFail=").Append(latest.bootFailCount);
+            }
+            sb.Append(" lowMemTier=").Append(LowMemTier);
+            return sb.ToString();
+        }
+
         private static void MaybeUnloadUnusedAssets(AITMemoryInfo info)
         {
             if (!AutoUnloadUnusedAssets) return;
@@ -229,6 +316,18 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
             try
             {
+                // 분해 로그 리포터는 텔레메트리 설정과 무관하게 항상 만든다(all0 같은 대조군 빌드에서도 같은 줄을 남겨야 A/B 가 된다).
+                var reporterGo = new GameObject("AITUnityMemReporter");
+                UnityEngine.Object.DontDestroyOnLoad(reporterGo);
+                reporterGo.AddComponent<AITUnityMemReporter>();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[AITMemoryBridge] 분해 리포터 초기화 실패(무시): " + e.Message);
+            }
+
+            try
+            {
                 // 텔레메트리가 꺼진 빌드는 0 을 돌려준다 — 그러면 오브젝트도 만들지 않는다.
                 if (__AITMemoryBridge_Register() == 0) return;
 
@@ -241,6 +340,39 @@ namespace AppsInToss
                 Debug.LogWarning("[AITMemoryBridge] 초기화 실패(무시): " + e.Message);
             }
 #endif
+        }
+    }
+
+    /// <summary>
+    /// Unity 측 메모리 분해를 두 번 로그로 남긴다(P0-1 진단): 씬 로드 직후 2프레임째(첫 프레임 근사)와 그로부터 30초 뒤.
+    /// 로그만 남기고 게임 동작은 바꾸지 않는다. 두 번 남긴 뒤 자신을 파괴한다.
+    /// </summary>
+    [Preserve]
+    internal sealed class AITUnityMemReporter : MonoBehaviour
+    {
+        internal const float LateDelaySeconds = 30f;
+
+        private int _frames;
+        private float _startTime = -1f;
+        private bool _firstLogged;
+
+        private void Update()
+        {
+            if (_startTime < 0f) _startTime = Time.realtimeSinceStartup;
+
+            if (!_firstLogged)
+            {
+                if (++_frames < 2) return;
+                _firstLogged = true;
+                Debug.Log(AITMemoryBridge.FormatUnityBreakdown("t=first-frame"));
+                return;
+            }
+
+            if (Time.realtimeSinceStartup - _startTime >= LateDelaySeconds)
+            {
+                Debug.Log(AITMemoryBridge.FormatUnityBreakdown("t=first-frame+30s"));
+                Destroy(gameObject);
+            }
         }
     }
 

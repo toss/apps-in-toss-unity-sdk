@@ -203,4 +203,49 @@ public class AITMemoryBridgeTests
         Assert.IsFalse(AITMemoryBridge.TryGetSnapshot(out var info));
         Assert.IsNull(info);
     }
+
+    [Test]
+    public void TryParse_BootFailAndLowMemTier_MapsNewFields_AndDefaultsToZero()
+    {
+        Assert.IsTrue(AITMemoryBridge.TryParse(
+            "{\"type\":\"snapshot\",\"level\":\"ok\",\"bootFailCount\":2,\"lowMemTier\":1}", out var info));
+        Assert.AreEqual(2, info.bootFailCount);
+        Assert.AreEqual(1, info.lowMemTier);
+
+        // 구버전 JS(키 없음)도 0 으로 파싱된다.
+        Assert.IsTrue(AITMemoryBridge.TryParse(PressureJson, out var old));
+        Assert.AreEqual(0, old.bootFailCount);
+        Assert.AreEqual(0, old.lowMemTier);
+    }
+
+    [Test]
+    public void LowMemTier_OutsideWebGL_IsZero()
+    {
+        Assert.AreEqual(0, AITMemoryBridge.LowMemTier);
+    }
+
+    [Test]
+    public void FormatUnityBreakdown_HasTagAndAllContractKeys_AndDoesNotThrow()
+    {
+        string line = null;
+        Assert.DoesNotThrow(() => line = AITMemoryBridge.FormatUnityBreakdown("t=test"));
+        StringAssert.StartsWith("[AIT-UnityMem] t=test", line);
+        foreach (string key in new[] { "alloc=", "reserved=", "monoHeap=", "monoUsed=", "gfx=", "streamTex=", "streamAudio=", "streamFont=", "brotli=", "lowMemTier=" })
+        {
+            StringAssert.Contains(key, line);
+        }
+        StringAssert.DoesNotContain("\n", line, "분해는 한 줄이어야 한다");
+    }
+
+    [Test]
+    public void StreamingCodec_RecordManagedBrotli_AccumulatesCounters()
+    {
+        int c0 = AITStreamingCodec.ManagedBrotliCount;
+        long i0 = AITStreamingCodec.ManagedBrotliInBytes;
+        long o0 = AITStreamingCodec.ManagedBrotliOutBytes;
+        AITStreamingCodec.RecordManagedBrotli(100, 400, 1.5);
+        Assert.AreEqual(c0 + 1, AITStreamingCodec.ManagedBrotliCount);
+        Assert.AreEqual(i0 + 100, AITStreamingCodec.ManagedBrotliInBytes);
+        Assert.AreEqual(o0 + 400, AITStreamingCodec.ManagedBrotliOutBytes);
+    }
 }

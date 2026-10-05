@@ -46,6 +46,10 @@ namespace AppsInToss
         /// <summary>AudioSource 스캔 주기(초). 너무 잦으면 GC/CPU, 너무 느리면 BGM 시작 지연.</summary>
         private const float ScanIntervalSeconds = 0.2f;
 
+        // --- 진단 카운터(P0-1): 재수화한 클립의 다운로드 페이로드 바이트 누계(압축 재생 경로면 이 크기가 곧 상주분의 하한). AITUnityMemReporter 가 읽는다.
+        internal static long HeldBytes;
+        internal static int HeldCount;
+
         private const string ManifestRelativePath = "ait-stream-audio/manifest.json";
         private const string StreamDirRelativePath = "ait-stream-audio/";
 
@@ -264,6 +268,8 @@ namespace AppsInToss
 
                 if (real != null)
                 {
+                    HeldBytes += (long)req.downloadedBytes;
+                    HeldCount++;
                     real.name = entry.name; // 이름 보존(이후 동일 클립 식별)
                     Debug.Log($"[AIT-StreamingAudio] 재수화 {entry.name} loadType={real.loadType} compressed={entry.compressed} stream={streamAudio} len={real.length:0.0}s");
                     loaded[entry.name] = real;

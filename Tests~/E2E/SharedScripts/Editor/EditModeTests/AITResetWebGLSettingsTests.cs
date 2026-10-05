@@ -84,6 +84,8 @@ public class AITResetWebGLSettingsTests
         "webglAntialiasOpt", "webglContextRecovery", "frameRateCap", "adaptiveFrameRate",
         "mobileLifecycle", "memoryTelemetry", "exactDataBody", "releaseConsumedData",
         "audioForceCompressedPlayback", "audioForceCompressedMinSeconds",
+        // 저메모리 기기 대응
+        "lowMemoryTier", "pageCacheDeferredPut", "textureStreamingMemoryBudgetMB", "audioStreamLoopTranscode",
     };
 
     [Test]

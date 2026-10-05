@@ -24,12 +24,19 @@
 //   audioStreamTranscode=0 으로 끈다. cascaded lossy(320→160kbps 등)는 세대손실이 누적되고
 //   루핑 BGM 은 LAME delay/padding 갭 리스크가 있어, auto 에서는 빌드 씬·프리팹의 AudioSource 가
 //   loop=true 로 참조하는 클립과 20초 초과 클립(러너 출력에 Xing/Info delay·padding 태그 없음)을 건너뛴다(CollectLoopingClipGuids). 명시 활성(==1)은 게이트 없음.
+//
+// P0-6(저메모리 대응): 같은 audioStreamTranscode 스위치가 PCM WAV → AAC-LC(.m4a) 변환도 맡는다(TranscodeWavToAac).
+//   대상은 압축 재생 경로(매니페스트 compressed=true)로 가는 PCM WAV 뿐이다. 이 경로의 WAV 는 바이트 그대로 wasm 힙과
+//   Blob 에 두 번 상주하기 때문이다. 인코더는 시스템 ffmpeg/afconvert(AITAudioAacEncoder)이고 없으면 경고 후 WAV 유지.
+//   루프 클립은 AAC 이음새(인코더 프라이밍) 위험 때문에 audioStreamLoopTranscode=1 옵트인(auto=0)일 때만 변환한다.
+//   MP3 경로의 20초 길이 게이트는 쓰지 않는다 — 쓰면 BGM 이 전부 빠져 이득이 사라진다(스크립트가 런타임에 켜는 loop 는 탐지 불가).
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using AppsInToss.Editor.Package;
 using Debug = UnityEngine.Debug;
 
 namespace AppsInToss.Editor
@@ -76,6 +83,9 @@ namespace AppsInToss.Editor
 
             /// <summary>원본 AudioClip 에셋 GUID(루프 클립 게이트용). 비어 있으면 게이트 미적용.</summary>
             public string Guid;
+
+            /// <summary>매니페스트 compressed=true(런타임이 압축 재생 경로로 받음)인지. WAV → AAC 변환은 이 경로 대상만 한다.</summary>
+            public bool Compressed;
         }
 
         /// <summary>파일 1건의 러너 결과. error 가 비어 있으면 성공.</summary>
@@ -462,6 +472,179 @@ namespace AppsInToss.Editor
 
             Debug.Log($"[AIT-AudioTranscode] ✓ 스트림 오디오 {adopted}/{targets.Count}개 재인코딩({targetKbps}kbps CBR), {savedBytes / 1048576f:0.0}MB 절감");
             return adopted;
+        }
+
+        // ─────────────────────────── PCM WAV → AAC-LC (P0-6) ───────────────────────────
+
+        /// <summary>AAC 변환 산출물 확장자(매니페스트 file 이 이 확장자로 바뀐다).</summary>
+        internal const string AacExtension = ".m4a";
+
+        /// <summary>AAC 변환 산출물의 매니페스트 mime(런타임 AudioType 판정과 진단용).</summary>
+        internal const string AacMime = "audio/mp4";
+
+        /// <summary>
+        /// WAV 사본 1건의 AAC 변환 가능 여부. 변환하면 안 되는 이유를 짧은 코드로 돌려주고, 변환 대상이면 null 이다(순수 함수).
+        /// 코드: not-wav / not-compressed-path / not-pcm / channels / loop / loop-unknown.
+        /// </summary>
+        internal static string DecideAacSkipReason(string ext, bool compressedPath, bool pcm, int channels,
+            bool looping, bool loopScanIncomplete, bool loopOptIn)
+        {
+            if (!string.Equals(ext, ".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                return "not-wav";
+            }
+
+            if (!compressedPath)
+            {
+                return "not-compressed-path"; // 짧은 효과음은 지연 없는 PCM 재생을 유지한다.
+            }
+
+            if (!pcm)
+            {
+                return "not-pcm"; // ADPCM 등 이미 압축된 WAV 는 세대손실만 남는다.
+            }
+
+            if (channels < 1 || channels > 2)
+            {
+                return "channels"; // 다채널은 브라우저별 AAC 다채널 재생이 갈려 건드리지 않는다.
+            }
+
+            if (!loopOptIn && looping)
+            {
+                return "loop";
+            }
+
+            if (!loopOptIn && loopScanIncomplete)
+            {
+                return "loop-unknown"; // 바이너리 씬/프리팹이 있어 루프 여부를 확정할 수 없다.
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 압축 재생 경로로 가는 PCM WAV 사본을 AAC-LC(.m4a)로 바꾼다. 성공한 것만 WAV 사본을 지우고 .m4a 를 남기며,
+        /// 반환값은 에셋 GUID → 새 사본의 절대 경로다(호출부가 매니페스트 file/mime 을 고친다).
+        /// 인코더가 없거나 실패·절감 미달이면 그 항목은 WAV 그대로 둔다(프로젝트 원본은 어떤 경우에도 비접촉).
+        /// </summary>
+        internal static Dictionary<string, string> TranscodeWavToAac(AITEditorScriptObject config, IReadOnlyList<Candidate> candidates)
+        {
+            var renamed = new Dictionary<string, string>();
+            if (!IsEnabled(config) || candidates == null || candidates.Count == 0)
+            {
+                return renamed;
+            }
+
+            var wavs = new List<Candidate>();
+            foreach (var c in candidates)
+            {
+                if (c.Compressed && string.Equals(Path.GetExtension(c.AbsPath), ".wav", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrEmpty(c.Guid))
+                {
+                    wavs.Add(c);
+                }
+            }
+
+            if (wavs.Count == 0)
+            {
+                return renamed;
+            }
+
+            bool loopOptIn = AITPerfFlags.EffectiveAudioStreamLoopTranscode(config);
+            HashSet<string> loopGuids = null;
+            bool scanIncomplete = false;
+            if (!loopOptIn)
+            {
+                loopGuids = CollectLoopingClipGuids(out scanIncomplete);
+            }
+
+            var targets = new List<Candidate>();
+            var infos = new List<AITAudioAacEncoder.WavInfo>();
+            foreach (var c in wavs)
+            {
+                bool pcm = AITAudioAacEncoder.TryReadWavInfo(c.AbsPath, out var info) && info.IsPcm;
+                string why = DecideAacSkipReason(".wav", c.Compressed, pcm, info.Channels,
+                    loopGuids != null && loopGuids.Contains(c.Guid), scanIncomplete, loopOptIn);
+                if (why != null)
+                {
+                    Debug.Log($"[AIT-AudioTranscode]   WAV→AAC 제외({why}): {Path.GetFileName(c.AbsPath)}"
+                              + (why == "loop" || why == "loop-unknown" ? " — 루프 클립은 audioStreamLoopTranscode=1 로 켠다" : string.Empty));
+                    continue;
+                }
+
+                targets.Add(c);
+                infos.Add(info);
+            }
+
+            if (targets.Count == 0)
+            {
+                return renamed;
+            }
+
+            if (!AITAudioAacEncoder.TryFindTool(out var tool, out string toolPath))
+            {
+                Debug.LogWarning($"[AIT-AudioTranscode] AAC 인코더(ffmpeg/afconvert)를 찾지 못해 PCM WAV {targets.Count}개를 그대로 둡니다 "
+                                 + $"— 압축 재생 경로의 WAV 는 힙과 Blob 에 원본 크기로 두 번 상주합니다. ffmpeg 를 설치하거나 {AITAudioAacEncoder.FfmpegPathEnvVar} 로 경로를 지정하세요.");
+                return renamed;
+            }
+
+            int targetKbps = ResolveTargetKbps(config);
+            long savedBytes = 0;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                string src = targets[i].AbsPath;
+                string dst = Path.ChangeExtension(src, AacExtension);
+                string tmp = dst + TmpSuffix;
+                int kbps = AITAudioAacEncoder.AacBitrateKbps(targetKbps, infos[i].Channels);
+                try
+                {
+                    if (!AITAudioAacEncoder.TryEncode(tool, toolPath, src, tmp, kbps, out string error))
+                    {
+                        Debug.LogWarning($"[AIT-AudioTranscode]   AAC 인코딩 실패(WAV 유지) {Path.GetFileName(src)}: {error}");
+                        continue;
+                    }
+
+                    long raw = new FileInfo(src).Length;
+                    long outBytes = new FileInfo(tmp).Length;
+                    if (!ShouldAdopt(raw, outBytes))
+                    {
+                        Debug.LogWarning($"[AIT-AudioTranscode]   AAC 절감 미달(WAV 유지) {Path.GetFileName(src)}: {raw / 1048576f:0.00}→{outBytes / 1048576f:0.00}MB (<{MinGainPercent}%)");
+                        continue;
+                    }
+
+                    if (File.Exists(dst))
+                    {
+                        File.Delete(dst);
+                    }
+
+                    File.Move(tmp, dst);
+                    File.Delete(src);
+                    renamed[targets[i].Guid] = dst;
+                    savedBytes += raw - outBytes;
+                    Debug.Log($"[AIT-AudioTranscode]   WAV→AAC {Path.GetFileName(src)}: {raw / 1048576f:0.00}→{outBytes / 1048576f:0.00}MB ({kbps}kbps, {tool})");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[AIT-AudioTranscode]   WAV→AAC 예외(WAV 유지) {Path.GetFileName(src)}: {e.Message}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (File.Exists(tmp))
+                        {
+                            File.Delete(tmp);
+                        }
+                    }
+                    catch
+                    {
+                        // 임시 산출물 정리 실패는 무시.
+                    }
+                }
+            }
+
+            Debug.Log($"[AIT-AudioTranscode] ✓ 압축 재생용 WAV {renamed.Count}/{targets.Count}개를 AAC-LC({targetKbps}kbps)로 변환, {savedBytes / 1048576f:0.0}MB 절감");
+            return renamed;
         }
 
         // ─────────────────────────── 도구 준비 (FontSubset 패턴) ───────────────────────────

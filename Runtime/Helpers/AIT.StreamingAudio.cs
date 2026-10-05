@@ -61,6 +61,9 @@ namespace AppsInToss
             public string file;
             public float length;
             public bool compressed;
+
+            /// <summary>컨테이너 mime(예: 변환된 AAC "audio/mp4"). 빈 값/부재(구 매니페스트)는 확장자로 판정한다.</summary>
+            public string mime;
         }
 
         [System.Serializable]
@@ -224,14 +227,15 @@ namespace AppsInToss
         {
 #if AIT_HAS_UNITYWEBREQUEST && AIT_HAS_UWR_AUDIO
             string url = ResolveStreamingUrl(StreamDirRelativePath + entry.file);
-            var type = GuessAudioType(entry.file);
+            var type = GuessAudioType(entry.file, entry.mime);
             using (var req = UnityWebRequestMultimedia.GetAudioClip(url, type))
             {
                 var audioHandler = (DownloadHandlerAudioClip)req.downloadHandler;
                 // 긴 클립은 압축 상태(브라우저 미디어 요소 재생)로 둔다. WebGL 은 비압축 클립을 float32 PCM AudioBuffer 로 통째 풀어 두지만
                 // 압축 클립은 PCM 을 상주시키지 않는다. 다만 엔진이 stream 을 compressed 보다 먼저 보므로(stream → FMOD 가 wasm 안에서
                 // 디코드한 PCM 을 _JS_Sound_Load_PCM 으로 넘김) compressed 만 켜서는 효과가 없다 — 압축 재생은 stream 을 꺼야 선택된다.
-                DecideLoadMode(entry.compressed, IsFrameworkAudioPatched(), out bool streamAudio, out bool compressedClip);
+                DecideLoadMode(entry.compressed, IsFrameworkAudioPatched(), out bool streamAudio, out bool compressedClip,
+                    RequiresMediaElement(entry.file, entry.mime));
                 audioHandler.streamAudio = streamAudio;
                 audioHandler.compressed = compressedClip;
                 yield return req.SendWebRequest();
@@ -314,9 +318,13 @@ namespace AppsInToss
         /// <param name="entryCompressed">빌드가 정한 압축 재생 대상 여부.</param>
         /// <param name="frameworkPatched">framework 오디오 패치(compressed-clip-meta)가 적용된 빌드인가. 미적용 빌드의 압축 클립은
         /// length 가 0 이 되므로 이 경우 압축 경로를 쓰지 않는다.</param>
-        internal static void DecideLoadMode(bool entryCompressed, bool frameworkPatched, out bool streamAudio, out bool compressed)
+        /// <param name="mediaElementOnly">브라우저 media element 로만 재생할 수 있는 컨테이너(AAC/m4a)인가. FMOD(wasm)가 이 코덱을 못 풀 수
+        /// 있어 stream=true 경로가 실패하므로, 패치 여부와 무관하게 압축 경로를 쓴다(stock framework 도 이 경로는 media element 로 만든다 —
+        /// 패치가 없으면 clip.length 가 0 일 뿐이고 ScanAndSwap 의 loaded 맵이 재스왑을 막는다).</param>
+        internal static void DecideLoadMode(bool entryCompressed, bool frameworkPatched, out bool streamAudio, out bool compressed,
+            bool mediaElementOnly = false)
         {
-            if (entryCompressed && frameworkPatched)
+            if (entryCompressed && (frameworkPatched || mediaElementOnly))
             {
                 streamAudio = false;
                 compressed = true;
@@ -393,9 +401,40 @@ namespace AppsInToss
         }
 #endif
 
-        internal static AudioType GuessAudioType(string file)
+        /// <summary>
+        /// 변환된 AAC(.m4a/.mp4/.aac, 또는 mime audio/mp4·audio/aac)처럼 media element 로만 풀 수 있는 컨테이너인지.
+        /// (테스트 가능한 순수 함수)
+        /// </summary>
+        internal static bool RequiresMediaElement(string file, string mime)
+        {
+            if (!string.IsNullOrEmpty(mime))
+            {
+                string m = mime.ToLowerInvariant();
+                if (m.StartsWith("audio/mp4") || m.StartsWith("audio/aac") || m.StartsWith("audio/x-m4a"))
+                {
+                    return true;
+                }
+            }
+
+            if (string.IsNullOrEmpty(file))
+            {
+                return false;
+            }
+
+            string f = file.ToLowerInvariant();
+            return f.EndsWith(".m4a") || f.EndsWith(".mp4") || f.EndsWith(".aac");
+        }
+
+        internal static AudioType GuessAudioType(string file, string mime = null)
         {
             string f = file.ToLowerInvariant();
+            if (f.EndsWith(".m4a") || f.EndsWith(".mp4") || f.EndsWith(".aac"))
+            {
+                // Unity 의 AAC 항목은 철자가 ACC 다(AudioType.ACC). WebGL 은 브라우저가 컨테이너를 판별하므로 실제 mime 은
+                // framework 패치의 컨테이너 probe(audio/mp4)가 정한다.
+                return AudioType.ACC;
+            }
+
             if (f.EndsWith(".mp3"))
             {
                 return AudioType.MPEG;
@@ -414,6 +453,21 @@ namespace AppsInToss
             if (f.EndsWith(".aiff") || f.EndsWith(".aif"))
             {
                 return AudioType.AIFF;
+            }
+
+            // 확장자로 못 정하면 매니페스트 mime 으로 보조 판정(구 매니페스트는 mime 이 없어 UNKNOWN 그대로).
+            if (!string.IsNullOrEmpty(mime))
+            {
+                string m = mime.ToLowerInvariant();
+                if (m.StartsWith("audio/mp4") || m.StartsWith("audio/aac"))
+                {
+                    return AudioType.ACC;
+                }
+
+                if (m.StartsWith("audio/mpeg"))
+                {
+                    return AudioType.MPEG;
+                }
             }
 
             return AudioType.UNKNOWN;

@@ -28,7 +28,8 @@
  *  다음 경우에는 응답을 그대로 돌려준다(no-op).
  *   - exactDataBody 꺼짐, RAW 미상(<=0), .unityweb(Decompression Fallback) 빌드
  *   - Content-Encoding 없이 Content-Length 가 이미 있는 응답(레거시 early-fetch 의 완결 버퍼 재합성, 캐시 히트 등:
- *     이미 정확한 크기). dataCaching 경로도 여기에 해당한다.
+ *     이미 정확한 크기). dataCaching 경로도 여기에 해당한다. 레거시 early-fetch 는 이 응답의 본문을 이미 받은
+ *     버퍼를 한 번 enqueue 하는 스트림(복사 0)으로 만들어 주므로 이 층이 더 할 일이 없다(WebGLBuildCopier.EarlyFetch.cs).
  *   - ok 가 아니거나 body 가 없는 응답, Response/Headers/fetch 가 없는 환경, 그 밖의 모든 예외(fail-open)
  *  RAW 가 낡아도(실제 크기와 다르면) 로더의 종전 overflow/slice 경로로 돌아갈 뿐 실패하지 않는다.
  *

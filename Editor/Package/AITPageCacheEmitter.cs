@@ -522,24 +522,68 @@ namespace AppsInToss.Editor.Package
             // 레거시 early-fetch 용: 네이티브 fetch 와 '완결 버퍼 원자 put'. clone-tee put 은 CI 에서 wasm 저장이 끝나지 않고
             // 멈추는 경우가 있어(오류 기록도 없음) 버퍼가 이미 있는 호출자는 이쪽으로 저장한다. 결과는 통계에 그대로 반영한다.
             window.__aitPageCachePriorFetch = priorFetch;
-            window.__aitPageCachePutBuffer = function (url, buf, ct) {
-                var settled = false;
-                var timer = setTimeout(function () {
-                    if (!settled) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
-                }, PUT_TIMEOUT_MS);
-                window.__aitCacheStats.misses.push(url);
+
+            // 완결 버퍼를 put 용 Response 로 감싼다. new Response(buf) 는 엔진이 본문을 통째로 한 번 더 복사해, 로더가 같은 데이터를
+            // 읽는 동안 일시 피크가 버퍼 크기만큼 늘어난다. 버퍼의 subarray 뷰(PUT_CHUNK 단위)를 흘리는 기본 ReadableStream 본문은
+            // 복사가 없다(엔진이 청크를 읽어 저장소로 넘길 때만 조각 단위 임시 메모리). window.__AIT_PERF.exactDataBody === false 면 기존 방식.
+            // 엔진이 JS ReadableStream 본문을 모르면(구형: 문자열 '[object ReadableStream]' 로 강제 변환) 저장 엔트리가 오염되므로
+            // 생성한 Response 의 body 가 방금 만든 스트림과 같은 객체인지 확인하고 아니면 기존 방식으로 돌아간다.
+            var PUT_CHUNK = 4194304;
+            function bufferPutResponse(buf, h) {
                 try {
-                    var h = { 'Content-Type': ct || 'application/octet-stream', 'Content-Length': String(buf.byteLength) };
-                    getCache().then(function (c) { return c.put(url, new Response(buf, { status: 200, headers: h })); })
-                        .then(function () { settled = true; clearTimeout(timer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
-                        .catch(function (e) {
-                            settled = true; clearTimeout(timer);
-                            window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
+                    var pf = window.__AIT_PERF;
+                    var on = !(pf && typeof pf === 'object' && pf.exactDataBody === false);
+                    if (on && typeof ReadableStream === 'function' && buf.byteLength > PUT_CHUNK) {
+                        var u8 = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
+                        var off = 0;
+                        var rs = new ReadableStream({
+                            pull: function (c) {
+                                if (off >= u8.byteLength) { c.close(); return; }
+                                var end = Math.min(off + PUT_CHUNK, u8.byteLength);
+                                c.enqueue(u8.subarray(off, end));
+                                off = end;
+                            }
                         });
-                } catch (e) {
-                    settled = true; clearTimeout(timer);
-                    window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
-                }
+                        var r = new Response(rs, { status: 200, headers: h });
+                        if (r.body === rs) { return r; }
+                    }
+                } catch (e) {}
+                return new Response(buf, { status: 200, headers: h });
+            }
+            // 버퍼 put 직렬화: data 와 wasm 의 put 이 동시에 진행되면 저장소로 넘어가는 임시 복사가 겹친다. 앞선 put 이 끝난 뒤 시작한다.
+            // 앞선 put 이 멈춰도(CI 에서 관측된 무응답 put) 뒤따르는 put 이 갇히지 않도록 PUT_TIMEOUT_MS 까지만 기다린다.
+            var putChain = Promise.resolve();
+            window.__aitPageCachePutBuffer = function (url, buf, ct) {
+                window.__aitCacheStats.misses.push(url);
+                var prev = putChain;
+                var gateTimer = null;
+                var gate = Promise.race([
+                    prev,
+                    new Promise(function (resolve) { gateTimer = setTimeout(resolve, PUT_TIMEOUT_MS); })
+                ]).then(function () { clearTimeout(gateTimer); });
+                var finished;
+                var thisPut = new Promise(function (resolve) { finished = resolve; });
+                putChain = thisPut;
+                gate.then(function () {
+                    var settled = false;
+                    var timer = setTimeout(function () {
+                        if (!settled) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
+                    }, PUT_TIMEOUT_MS);
+                    try {
+                        var h = { 'Content-Type': ct || 'application/octet-stream', 'Content-Length': String(buf.byteLength) };
+                        getCache().then(function (c) { return c.put(url, bufferPutResponse(buf, h)); })
+                            .then(function () { settled = true; clearTimeout(timer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
+                            .catch(function (e) {
+                                settled = true; clearTimeout(timer);
+                                window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
+                            })
+                            .then(finished, finished);
+                    } catch (e) {
+                        settled = true; clearTimeout(timer);
+                        window.__aitCacheStats.errors.push('put ' + url + ': ' + (e && e.message || e));
+                        finished();
+                    }
+                });
             };
 
             // populated 힌트: 이 버킷에 put 된 URL 목록을 localStorage 에 동기 조회 가능한 형태로 남긴다.

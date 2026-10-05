@@ -557,7 +557,7 @@ namespace AppsInToss.Editor
                 //    런타임 AITStreamingCodec 이 encoding="br" 를 매직 스니핑으로 해제(서버 해제 포함).
                 var texBr = new Dictionary<string, string>(); // streamFile → streamFile+".br"
                 var rawBr = new HashSet<string>();            // brotli 채택된 raw 사본 파일명(<guid>.astc → <guid>.astc.br)
-                if (records.Count > 0 && AITBrotliCompressor.TryResolveNode(out _))
+                if (records.Count > 0 && AITBrotliCompressor.TryResolveStreamingBrotli(out _))
                 {
                     var brSources = new List<string>();
                     foreach (var rec in records)
@@ -736,24 +736,11 @@ namespace AppsInToss.Editor
         /// <summary>
         /// GPU 포맷 보존(원본 ASTC 블록 스트리밍) 사용 여부. 설정 필드(<c>textureStreamKeepGpuFormat</c>, tri-state)가 있으면 그 값,
         /// 환경 변수 <c>AIT_TEXTURE_STREAM_KEEP_GPU_FORMAT</c>(1/0)가 있으면 그것이 우선한다. 자동(-1)은 꺼짐
-        /// — 실기기 검증 전이다. 필드는 리플렉션으로 읽어 설정 클래스에 필드가 추가되기 전에도 컴파일된다.
+        /// — 실기기 검증 전이다.
         /// </summary>
         internal static bool ResolveKeepGpuFormat(AITEditorScriptObject config)
         {
-            int stored = -1;
-            try
-            {
-                var f = typeof(AITEditorScriptObject).GetField(AITTextureStreamPlanner.KeepGpuFormatFieldName,
-                    BindingFlags.Public | BindingFlags.Instance);
-                if (f != null && f.FieldType == typeof(int) && config != null)
-                {
-                    stored = (int)f.GetValue(config);
-                }
-            }
-            catch (Exception)
-            {
-                // 필드를 못 읽으면 자동으로 본다.
-            }
+            int stored = config != null ? config.textureStreamKeepGpuFormat : -1;
 
             stored = AITTextureStreamPlanner.ParseTriStateEnv(
                 Environment.GetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar), stored);

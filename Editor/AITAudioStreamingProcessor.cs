@@ -46,6 +46,27 @@ namespace AppsInToss.Editor
         /// <summary>SDK 패키지에 동봉된 무음 스텁 디렉토리(Unity 미임포트: '~' 접미사).</summary>
         private const string SilentStubDirName = "SilentStubs~";
 
+        /// <summary>매니페스트 entry 1건. 재인코딩(확장자 변경)이 끝난 뒤에 JSON 으로 직렬화하려고 빌드 중에는 이 형태로 들고 있는다.</summary>
+        internal sealed class EntryRecord
+        {
+            public string Guid;
+            public string Name;
+            public string FileName;
+            public float Length;
+            public bool Compressed;
+
+            /// <summary>컨테이너 mime(변환된 AAC 등). 비어 있으면 필드를 생략해 구 매니페스트와 같은 형식을 유지한다.</summary>
+            public string Mime;
+
+            public string ToJson()
+            {
+                return "{\"guid\":\"" + Guid + "\",\"name\":" + JsonStr(Name)
+                    + ",\"file\":" + JsonStr(FileName) + ",\"length\":" + Length.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                    + ",\"compressed\":" + (Compressed ? "true" : "false")
+                    + (string.IsNullOrEmpty(Mime) ? string.Empty : ",\"mime\":" + JsonStr(Mime)) + "}";
+            }
+        }
+
         /// <summary>한 번의 외부화 결과를 나타내는 핸들. finally 에서 정확한 복원에 사용.</summary>
         public sealed class StreamHandle
         {
@@ -108,7 +129,7 @@ namespace AppsInToss.Editor
                 string projectRoot = Directory.GetParent(Application.dataPath).FullName;
                 Directory.CreateDirectory(Path.Combine(projectRoot, StreamRootAssets));
 
-                var entries = new List<string>();
+                var entries = new List<EntryRecord>();
                 var externalizedPaths = new List<string>(); // 빌드 리포트용 경로 목록
                 var transcodeCandidates = new List<AITAudioStreamTranscoder.Candidate>(); // 사본 재인코딩 후보
                 int n = 0;
@@ -166,12 +187,14 @@ namespace AppsInToss.Editor
                     string streamFile = g + ext;
                     string streamFull = Path.Combine(projectRoot, StreamRootAssets, streamFile);
                     File.Copy(srcFull, streamFull, true);
+                    bool keepCompressed = ShouldKeepCompressed(config.audioStreamingCompressedPlayback, realLen);
                     transcodeCandidates.Add(new AITAudioStreamTranscoder.Candidate
                     {
                         AbsPath = streamFull,
                         Bytes = size,
                         Seconds = realLen,
                         Guid = g,
+                        Compressed = keepCompressed,
                     });
 
                     // 2) 소스 백업 + 무음 치환 + reimport (.data 에서 제거)
@@ -184,23 +207,38 @@ namespace AppsInToss.Editor
                     File.Copy(silent, srcFull, true);
                     AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
 
-                    bool keepCompressed = ShouldKeepCompressed(config.audioStreamingCompressedPlayback, realLen);
-                    entries.Add("{\"guid\":\"" + g + "\",\"name\":" + JsonStr(clipName)
-                                + ",\"file\":" + JsonStr(streamFile) + ",\"length\":" + realLen.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-                                + ",\"compressed\":" + (keepCompressed ? "true" : "false") + "}");
+                    entries.Add(new EntryRecord
+                    {
+                        Guid = g,
+                        Name = clipName,
+                        FileName = streamFile,
+                        Length = realLen,
+                        Compressed = keepCompressed,
+                    });
                     n++;
                     stubbedBytes += size;
                     externalizedPaths.Add(path);
                     Debug.Log($"[AIT-StreamingAudio]   외부화 {clipName} ({size / 1048576f:0.00}MB src, len {realLen:0.0}s{(keepCompressed ? ", 압축 재생(stream 해제)" : "")}) → {streamFile}");
                 }
 
-                // 3) 외부화 사본 재인코딩(옵션, 명시 활성 시에만). 파일명/매니페스트 불변,
-                //    프로젝트 원본 비접촉 — 실패 시 사본이 원본 바이트 그대로 유지된다.
+                // 3) 외부화 사본 재인코딩. 프로젝트 원본 비접촉 — 실패 시 사본이 원본 바이트 그대로 유지된다.
+                //    (a) MP3 → 저비트레이트 MP3: 파일명/매니페스트 불변.
                 AITAudioStreamTranscoder.TranscodeInPlace(config, transcodeCandidates);
+
+                //    (b) 압축 재생 경로의 PCM WAV → AAC-LC .m4a(P0-6): 확장자가 바뀌므로 매니페스트 file/mime 을 고친다.
+                var aacRenamed = AITAudioStreamTranscoder.TranscodeWavToAac(config, transcodeCandidates);
+                foreach (var rec in entries)
+                {
+                    if (aacRenamed.TryGetValue(rec.Guid, out string aacPath))
+                    {
+                        rec.FileName = Path.GetFileName(aacPath);
+                        rec.Mime = AITAudioStreamTranscoder.AacMime;
+                    }
+                }
 
                 // 4) 매니페스트 동봉
                 var sb = new StringBuilder();
-                sb.Append("{\"entries\":[").Append(string.Join(",", entries)).Append("]}");
+                sb.Append("{\"entries\":[").Append(string.Join(",", entries.ConvertAll(r => r.ToJson()))).Append("]}");
                 string manifestPath = Path.Combine(projectRoot, StreamRootAssets, "manifest.json");
                 File.WriteAllText(manifestPath, sb.ToString());
                 AssetDatabase.Refresh();

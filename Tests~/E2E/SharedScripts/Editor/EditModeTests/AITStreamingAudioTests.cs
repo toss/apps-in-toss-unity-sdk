@@ -138,4 +138,56 @@ public class AITStreamingAudioTests
         try { Assert.AreEqual(-1, config.audioStreamingCompressedPlayback); }
         finally { UnityEngine.Object.DestroyImmediate(config); }
     }
+
+    // =====================================================
+    // P0-6: AAC(.m4a) 외부화 사본 — AudioType / media element 전용 판정
+    // =====================================================
+
+    [TestCase("a/b/guid.m4a", AudioType.ACC)]
+    [TestCase("guid.M4A", AudioType.ACC)]
+    [TestCase("guid.aac", AudioType.ACC)]
+    [TestCase("guid.mp4", AudioType.ACC)]
+    public void GuessAudioType_Aac_MapsToAcc(string file, AudioType expected)
+    {
+        Assert.AreEqual(expected, AITStreamingAudio.GuessAudioType(file));
+    }
+
+    [Test]
+    public void GuessAudioType_ExtensionWinsOverMime_AndMimeIsFallbackOnly()
+    {
+        Assert.AreEqual(AudioType.WAV, AITStreamingAudio.GuessAudioType("x.wav", "audio/mp4"), "확장자가 우선");
+        Assert.AreEqual(AudioType.ACC, AITStreamingAudio.GuessAudioType("x.bin", "audio/mp4"));
+        Assert.AreEqual(AudioType.MPEG, AITStreamingAudio.GuessAudioType("x.bin", "audio/mpeg"));
+        Assert.AreEqual(AudioType.UNKNOWN, AITStreamingAudio.GuessAudioType("x.bin", null), "구 매니페스트(mime 없음)는 기존 그대로");
+    }
+
+    [TestCase("x.m4a", null, true)]
+    [TestCase("x.wav", "audio/mp4", true)]
+    [TestCase("x.wav", "audio/aac", true)]
+    [TestCase("x.wav", null, false)]
+    [TestCase("x.mp3", "audio/mpeg", false)]
+    [TestCase(null, null, false)]
+    public void RequiresMediaElement_OnlyForAacContainers(string file, string mime, bool expected)
+    {
+        Assert.AreEqual(expected, AITStreamingAudio.RequiresMediaElement(file, mime));
+    }
+
+    [Test]
+    public void DecideLoadMode_MediaElementOnly_UsesCompressedPathEvenWithoutFrameworkPatch()
+    {
+        // FMOD(wasm)가 AAC 를 못 풀 수 있으므로 패치 미적용 빌드에서도 stream=true 로 가면 안 된다.
+        AITStreamingAudio.DecideLoadMode(true, false, out bool stream, out bool compressed, mediaElementOnly: true);
+        Assert.IsFalse(stream);
+        Assert.IsTrue(compressed);
+    }
+
+    [Test]
+    public void DecideLoadMode_PlainClipWithoutPatch_StillFallsBackToStream()
+    {
+        AITStreamingAudio.DecideLoadMode(true, false, out bool stream, out bool compressed);
+        Assert.IsTrue(stream);
+        Assert.IsFalse(compressed);
+        AITStreamingAudio.DecideLoadMode(false, true, out stream, out compressed, mediaElementOnly: true);
+        Assert.IsTrue(stream, "빌드가 압축 재생 대상으로 정하지 않은 entry 는 media element 전용이어도 건드리지 않는다");
+    }
 }

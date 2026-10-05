@@ -2,10 +2,10 @@
 // AITLoadFailureTemplateWiringTests.cs
 // index.html 의 빌드 파일 다운로드 실패 처리 배선 가드.
 //
-// Brotli(Content-Encoding: br)를 풀지 못하는 브라우저(구형 Android System WebView)는
-// .unityweb 요청이 모두 즉시 실패한다. 실패마다 재시도 예산을 쓰면 같은 로드 안에서
-// 예산이 바닥나 카운터가 초기화되고 reload 가 끝없이 반복됐다. 템플릿은 로드 한 번에
-// 첫 실패만 처리하고, 원인을 판정해 br 미지원이면 재시도 없이 안내를 띄운다.
+// 한 번의 로드에서 파일 여러 개가 연달아 실패하면 실패마다 재시도 예산을 써서
+// 같은 로드 안에서 예산이 바닥나고 카운터가 초기화돼 reload 가 끝없이 반복됐다.
+// 최종 오류 화면 뒤에도 정체 워치독이 새 사이클을 열었고, 오류 화면은
+// position:fixed 인 캔버스 뒤에 가려져 보이지 않았다.
 // -----------------------------------------------------------------------
 
 using System.IO;
@@ -28,17 +28,6 @@ public class AITLoadFailureTemplateWiringTests
             ".catch 가 워치독이 맡은 다운로드 실패를 다시 처리해 재시도 카운터를 지웁니다.");
         Assert.IsTrue(html.Contains("if (window.unityInstance || window._aitLoadAborted) { clearInterval(_aitStallTimer); return; }"),
             "로드를 중단한 뒤에도 정체 워치독이 reload 할 수 있습니다.");
-    }
-
-    [Test]
-    public void IndexHtml_ClassifiesBrotliUnsupported_OnlyWhenBuildFileRejectedAndLoaderOk()
-    {
-        string html = ReadIndexHtml();
-
-        Assert.IsTrue(html.Contains("function aitProbeContentEncodingUnsupported()"), "br 미지원 판정 함수가 없습니다.");
-        Assert.IsTrue(html.Contains("r[0] === 'rejected' && r[1] === 'ok'"),
-            "빌드 파일 요청이 거부되고 loader.js 는 받을 때만 br 미지원으로 봐야 합니다(404·네트워크 단절은 기존 재시도).");
-        Assert.IsTrue(html.Contains("code: 'UNSUPPORTED_CONTENT_ENCODING'"), "AITLoading 에러 콜백에 미지원 코드를 넘기지 않습니다.");
     }
 
     [Test]

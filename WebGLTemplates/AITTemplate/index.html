@@ -868,43 +868,6 @@
                 // 한 번의 로드에서 파일 여러 개가 연달아 실패해도 첫 실패만 처리한다. 실패마다 예산을 쓰면
                 // 같은 로드 안에서 예산이 바닥나 카운터가 초기화되고, 이미 예약된 reload 가 그 0 에서 다시
                 // 시작해 재시도가 끝나지 않는다.
-                // 첫 실패에서는 작은 요청 두 개로 원인을 가른다. Brotli(Content-Encoding: br)를 풀지 못하는
-                // 브라우저(구형 Android System WebView)는 .unityweb 만 즉시 실패하고 loader.js 는 받는다.
-                // 이 환경은 지원하지 않으므로 재시도 없이 업데이트 안내를 띄운다. 그 밖의 실패는 기존
-                // 재시도 경로로 보낸다.
-                function aitProbeContentEncodingUnsupported() {
-                    // 'rejected': 요청 자체가 실패(디코딩 실패·네트워크 단절), 'ok'·'http-error': 응답을 받음
-                    function probe(url) {
-                        var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-                        return fetch(url, { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
-                            .then(function(r) { if (ctrl) ctrl.abort(); return r.ok ? 'ok' : 'http-error'; },
-                                  function() { return 'rejected'; });
-                    }
-                    var timeout = new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 10000); });
-                    var both = Promise.all([probe(config.frameworkUrl), probe(loaderUrl)]);
-                    return Promise.race([both, timeout])
-                        .then(function(r) { return !!r && r[0] === 'rejected' && r[1] === 'ok'; }, function() { return false; });
-                }
-
-                function showContentEncodingUnsupported(source) {
-                    window._aitLoadAborted = true;
-                    try { sessionStorage.removeItem('__ait_reload_count__'); } catch (e) {}
-                    var message = '이 기기의 Android System WebView 버전이 낮아 게임을 실행할 수 없어요.';
-                    var errorCallbacks = window.AITLoading._errorCallbacks;
-                    for (var i = 0; i < errorCallbacks.length; i++) {
-                        try { errorCallbacks[i]({ message: message, code: 'UNSUPPORTED_CONTENT_ENCODING' }); } catch (e) {}
-                    }
-                    showLoadError(
-                        '지원하지 않는 환경이에요',
-                        message,
-                        [
-                            'Play 스토어에서 Android System WebView 와 Chrome 을 업데이트해 주세요.',
-                            '업데이트한 뒤 앱을 다시 실행해 주세요.'
-                        ],
-                        { source: source, reason: 'brotli-unsupported', userAgent: navigator.userAgent }
-                    );
-                }
-
                 (function() {
                     var origConsoleError = console.error;
                     console.error = function() {
@@ -915,10 +878,7 @@
                                 && !window.unityInstance
                                 && !window._aitDownloadFailureHandled) {
                                 window._aitDownloadFailureHandled = true;
-                                aitProbeContentEncodingUnsupported().then(function(unsupported) {
-                                    if (unsupported) showContentEncodingUnsupported('download-watchdog');
-                                    else retryOrShowDownloadError(msg);
-                                });
+                                retryOrShowDownloadError(msg);
                             }
                         } catch (e) {}
                         return origConsoleError.apply(console, arguments);
@@ -1033,7 +993,7 @@
                         console.log('[AIT] GLctx 에러는 이미 처리되었습니다.');
                         return;
                     }
-                    // 다운로드 실패는 워치독이 이미 원인 판정·재시도를 맡았다. 여기서 카운터를 지우면 재시도가 끝나지 않는다.
+                    // 다운로드 실패는 워치독이 이미 재시도를 맡았다. 여기서 카운터를 지우면 재시도가 끝나지 않는다.
                     if (window._aitDownloadFailureHandled || window._aitLoadAborted) {
                         console.log('[AIT] 다운로드 실패는 워치독이 처리합니다.');
                         return;
@@ -1041,30 +1001,6 @@
 
                     var errorStr = typeof message === 'object' ? (message.message || String(message)) : String(message);
                     console.error('[AIT] ✗ Unity 로드 실패:', errorStr);
-
-                    // 워치독보다 rejection 이 먼저 온 다운로드 실패도 같은 판정을 거친다.
-                    if (/Failed to download file/.test(errorStr)) {
-                        window._aitDownloadFailureHandled = true;
-                        aitProbeContentEncodingUnsupported().then(function(unsupported) {
-                            if (unsupported) { showContentEncodingUnsupported('.catch'); return; }
-                            var cbs = window.AITLoading._errorCallbacks;
-                            for (var j = 0; j < cbs.length; j++) {
-                                try { cbs[j]({ message: errorStr }); } catch (e) {}
-                            }
-                            try { sessionStorage.removeItem('__ait_reload_count__'); } catch (e) {}
-                            showLoadError(
-                                '게임 로드 실패',
-                                errorStr,
-                                [
-                                    '네트워크 연결 상태를 확인해 주세요.',
-                                    '잠시 후 다시 시도해 주세요.',
-                                    '문제가 계속되면 앱을 재시작해 주세요.'
-                                ],
-                                { error: errorStr, source: '.catch' }
-                            );
-                        });
-                        return;
-                    }
 
                     // WebGL context 실패 감지 (Promise rejection으로 전파된 경우)
                     // 에러 콜백보다 먼저 체크하여, WebGL 에러 시 일반 에러 콜백이 불필요하게 호출되지 않도록 함

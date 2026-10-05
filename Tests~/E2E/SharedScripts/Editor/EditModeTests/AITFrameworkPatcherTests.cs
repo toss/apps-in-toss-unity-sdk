@@ -649,4 +649,25 @@ public class AITFrameworkPatcherTests
             Assert.AreEqual(0, p.ExitCode, "node util 실패: " + err);
         }
     }
+
+    // ─────────────────────────── P0-6.3: 압축 클립 JS 중간 사본 없음 ───────────────────────────
+
+    [Test]
+    public void PatchText_Prologue_BuildsBlobFromHeapSubarray_NoIntermediateCopy()
+    {
+        var r = AITFrameworkPatcher.PatchText(SyntheticFramework(), false, 10f, FakePayload);
+
+        int load = r.Source.IndexOf("function _JS_Sound_Load(ptr", StringComparison.Ordinal);
+        Assert.Greater(load, 0);
+        string prologue = r.Source.Substring(load);
+
+        // 압축 클립은 힙의 subarray 뷰를 곧장 Blob 에 넘긴다(Blob 생성자가 복사한다). stock 의 HEAPU8.buffer.slice 같은 JS 쪽
+        // 중간 ArrayBuffer 사본이 클립 수명 동안 남는 일이 없어야 한다.
+        StringAssert.Contains("jsAudioCreateCompressedSoundClip(HEAPU8.subarray(ptr,ptr+length)", prologue);
+        StringAssert.DoesNotContain(".slice(", prologue, "prologue 가 힙을 slice 로 복사하면 클립 크기만큼의 JS 사본이 상주한다");
+        StringAssert.DoesNotContain("HEAPU8.buffer", prologue);
+        // 압축 클립 객체가 원본 바이트를 붙들지 않는다: audioData 인자는 Blob 생성에만 쓰이고 soundClip 필드로 저장되지 않는다.
+        StringAssert.DoesNotContain("soundClip.audioData", r.Source);
+        StringAssert.DoesNotContain("audioData:", r.Source);
+    }
 }

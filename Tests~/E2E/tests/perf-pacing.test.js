@@ -633,6 +633,125 @@ test.describe('메모리 텔레메트리', () => {
     expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('__ait_mem_v1') || '{}').phase)).toBe('fg');
   });
 
+  // ---- 부팅 마커(P0-1): localStorage '__ait_boot_v1' stage 전이, bootFailCount(10분 창), lowMemTier(24시간) ----
+  // ?bseed=<JSON> — 부팅 직전에 "이전 부팅이 이 상태로 끝났다"는 마커를 심는다(ago/fails/tierAgo 는 지금으로부터의 ms).
+  const BOOT_SEED_SCRIPT = "(function(){var m=/[?&]bseed=([^&]+)/.exec(location.search);if(!m)return;" +
+    "try{var o=JSON.parse(decodeURIComponent(m[1]));var n=Date.now();" +
+    "localStorage.setItem('__ait_boot_v1',JSON.stringify({stage:o.stage,end:o.end||'',t:n-(o.ago||1000),ff:0," +
+    "fails:(o.fails||[]).map(function(a){return n-a})}));" +
+    "if(o.tier)localStorage.setItem('__ait_lowmem_v1',JSON.stringify({tier:o.tier,ts:n-(o.tierAgo||1000)}));}catch(e){}})();";
+  const bootSeed = (o) => '?bseed=' + encodeURIComponent(JSON.stringify(o));
+  const memState = (page) => page.evaluate(() => {
+    // @ts-ignore
+    const m = window.AITMemory;
+    return {
+      fails: m.bootFailCount, tier: m.lowMemTier, reason: m.lowMemReason, prevBoot: m.prevBoot, stage: m.bootStage,
+      stored: JSON.parse(localStorage.getItem('__ait_boot_v1') || 'null'),
+      tierStored: JSON.parse(localStorage.getItem('__ait_lowmem_v1') || 'null'),
+    };
+  });
+  const openBoot = (page, flags, seed) =>
+    openHarness(page, flags, { pacing: false, virtualClock: false, preScript: BOOT_SEED_SCRIPT, query: seed ? bootSeed(seed) : '' });
+
+  test('부팅 마커: 첫 부팅은 사망 0·티어 0, markFirstFrame 이 boot-start → first-frame 로 전이(멱등)', async ({ page }) => {
+    const logs = [];
+    page.on('console', (m) => { const t = m.text(); if (/\[AIT-Memory\]/.test(t)) logs.push(t); });
+    await openBoot(page, { memoryTelemetry: true });
+    let s = await memState(page);
+    expect(s).toMatchObject({ fails: 0, tier: 0, prevBoot: 'none', stage: 'boot-start' });
+    expect(s.stored.stage).toBe('boot-start');
+    const r = await page.evaluate(() => {
+      // @ts-ignore
+      const a = window.AITMemory.markFirstFrame();
+      // @ts-ignore
+      const b = window.AITMemory.markFirstFrame();
+      // @ts-ignore
+      return { a, b, ff: window.AITMemory.firstFrameMs };
+    });
+    expect(r.a).toBe(true);
+    expect(r.b).toBe(false);
+    expect(r.ff).toBeGreaterThanOrEqual(0);
+    s = await memState(page);
+    expect(s.stage).toBe('first-frame');
+    expect(s.stored.stage).toBe('first-frame');
+    expect(logs.filter((l) => /first-frame t=/.test(l)).length).toBe(1);
+  });
+
+  test('부팅 마커: stable(60초 — 여기서는 타이머를 줄여 검증)에 닿으면 사망 기록과 end 를 비운다', async ({ page }) => {
+    const scale = "(function(){var st=window.setTimeout;window.setTimeout=function(f,d){return st.call(window,f,d===60000?40:d)};})();";
+    await openHarness(page, { memoryTelemetry: true }, { pacing: false, virtualClock: false,
+      preScript: scale + BOOT_SEED_SCRIPT, query: bootSeed({ stage: 'boot-start', fails: [60000] }) });
+    expect((await memState(page)).fails).toBe(2);
+    await page.evaluate(() => { /* @ts-ignore */ window.AITMemory.markFirstFrame(); });
+    await expect.poll(async () => (await memState(page)).stage).toBe('stable');
+    const s = await memState(page);
+    expect(s.stored.stage).toBe('stable');
+    expect(s.stored.fails).toEqual([]);
+    // 다음 부팅(stable 직후 종료)은 사망이 아니다
+    await page.goto(`${HARNESS_ORIGIN}/index.html`);
+    const n = await memState(page);
+    expect(n).toMatchObject({ fails: 0, prevBoot: 'stable' });
+  });
+
+  test('부팅 마커: 부팅 중 신호 없이 끝났으면 사망 1회 → 티어 1, 같은 티어로 또 죽으면 티어 2', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true }, { stage: 'boot-start' });
+    let s = await memState(page);
+    expect(s).toMatchObject({ fails: 1, tier: 1, prevBoot: 'boot-start' });
+    expect(s.reason).toMatch(/^boot-fail/);
+    expect(s.tierStored.tier).toBe(1);
+
+    // first-frame 이후 stable 전에 죽은 것도 사망. 저장 티어 1 에서 올라가 2.
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'first-frame', tier: 1, tierAgo: 5000 })}`);
+    s = await memState(page);
+    expect(s).toMatchObject({ fails: 1, tier: 2, prevBoot: 'first-frame' });
+    expect(s.tierStored.tier).toBe(2);
+
+    // 티어 2 가 최대
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'boot-start', tier: 2, tierAgo: 5000, fails: [1000, 2000] })}`);
+    expect((await memState(page)).tier).toBe(2);
+  });
+
+  test('부팅 마커: pagehide(exit)/hidden(bg) 로 끝난 부팅과 10분 지난 사망은 세지 않는다', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true }, { stage: 'boot-start', end: 'exit' });
+    expect(await memState(page)).toMatchObject({ fails: 0, tier: 0, prevBoot: 'exit' });
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'first-frame', end: 'bg' })}`);
+    expect(await memState(page)).toMatchObject({ fails: 0, tier: 0, prevBoot: 'bg' });
+    // 창(10분) 밖 사망 기록은 탈락, 창 안 기록만 남는다
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'boot-start', end: 'exit', fails: [11 * 60 * 1000, 2 * 60 * 1000] })}`);
+    expect((await memState(page)).fails).toBe(1);
+    // 사망이었더라도 시각이 창 밖(마지막 부팅이 11분 전)이면 세지 않는다
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'boot-start', ago: 11 * 60 * 1000 })}`);
+    expect((await memState(page)).fails).toBe(0);
+  });
+
+  test('부팅 마커: 저장된 티어는 24시간 뒤 만료되고, stable 이전 부팅의 사망 기록은 stable 이면 지워진다', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true }, { stage: 'stable', tier: 1, tierAgo: 25 * 3600 * 1000, fails: [1000] });
+    expect(await memState(page)).toMatchObject({ fails: 0, tier: 0, prevBoot: 'stable' });
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'stable', tier: 1, tierAgo: 3600 * 1000 })}`);
+    expect(await memState(page)).toMatchObject({ fails: 0, tier: 1, reason: 'stored' });
+  });
+
+  test('부팅 마커: lowMemoryTier=false 면 사망을 세도 티어는 0 이고 티어 저장을 쓰지 않는다. 텔레메트리 off 면 전부 0', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true, lowMemoryTier: false }, { stage: 'boot-start' });
+    expect(await memState(page)).toMatchObject({ fails: 1, tier: 0, tierStored: null });
+
+    // 텔레메트리 off 는 flags 가 다른 새 페이지로 확인한다(같은 컨텍스트라 localStorage 는 공유)
+    const p2 = await page.context().newPage();
+    await openBoot(p2, { memoryTelemetry: false }, { stage: 'boot-start' });
+    const r = await p2.evaluate(() => {
+      // @ts-ignore
+      const m = window.AITMemory;
+      return { fails: m.bootFailCount, tier: m.lowMemTier, ff: typeof m.markFirstFrame };
+    });
+    expect(r).toEqual({ fails: 0, tier: 0, ff: 'undefined' });
+  });
+
+  test('부팅 마커: 일반 reload(pagehide)는 사망이 아니다', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true });
+    await page.reload();
+    expect(await memState(page)).toMatchObject({ fails: 0, tier: 0, prevBoot: 'exit' });
+  });
+
   test('C# 브릿지가 등록되면 unityInstance.SendMessage 로 요약 JSON 을 보낸다', async ({ page }) => {
     await openHarness(page, { memoryTelemetry: true }, { pacing: false, virtualClock: false });
     const r = await page.evaluate(async () => {

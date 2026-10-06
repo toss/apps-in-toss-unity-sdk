@@ -131,6 +131,8 @@ const cachesMock = {
   }),
 };
 
+// 하네스 UA 는 iOS WebKit 이라 지연 put 이 기본으로 켜진다(부팅 중 put 없음, 첫 프레임+10초 뒤 HTTP 캐시 재읽기). 이 테스트는 즉시 put 계약을
+// 검증하므로 각 시나리오가 __AIT_PERF.pageCacheDeferredPut = 0 으로 끈다. 지연 put 자체는 perf-lowmem-tier/perf-pacing 쪽이 다룬다.
 let navUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 defineGlobal('window', globalThis);
 defineGlobal('self', globalThis);
@@ -161,7 +163,7 @@ async function readAll(res) {
 
 // ---- 시나리오 ----
 async function scenarioZeroCopy() {
-  window.__AIT_PERF = { exactDataBody: true };
+  window.__AIT_PERF = { exactDataBody: true, pageCacheDeferredPut: 0 };
   const src = pattern(DATA_SIZE);
   sources.set(DATA, src);
   sources.set(WASM, pattern(WASM_SIZE));
@@ -196,7 +198,7 @@ async function scenarioZeroCopy() {
 }
 
 async function scenarioExactOff() {
-  window.__AIT_PERF = { exactDataBody: false };
+  window.__AIT_PERF = { exactDataBody: false, pageCacheDeferredPut: 0 };
   const src = pattern(DATA_SIZE);
   sources.set(DATA, src);
   sources.set(WASM, pattern(WASM_SIZE));
@@ -236,7 +238,7 @@ async function scenarioLegacyEngineFallsBack() {
     }
   }
   defineGlobal('Response', LegacyResponse);
-  window.__AIT_PERF = { exactDataBody: true };
+  window.__AIT_PERF = { exactDataBody: true, pageCacheDeferredPut: 0 };
   const src = pattern(DATA_SIZE);
   sources.set(DATA, src);
   sources.set(WASM, pattern(WASM_SIZE));
@@ -253,7 +255,7 @@ async function scenarioLegacyEngineFallsBack() {
 }
 
 async function scenarioPutSerialized() {
-  window.__AIT_PERF = { exactDataBody: true };
+  window.__AIT_PERF = { exactDataBody: true, pageCacheDeferredPut: 0 };
   // 페이지 캐시만 실행(early-fetch 없이 훅을 직접 호출).
   try { (0, eval)(pageCacheBody); } catch (e) { fail('page cache script threw: ' + (e && e.stack)); }
   await settle();
@@ -271,7 +273,7 @@ async function scenarioPutSerialized() {
 }
 
 async function scenarioPutFailureDoesNotBlockChain() {
-  window.__AIT_PERF = { exactDataBody: true };
+  window.__AIT_PERF = { exactDataBody: true, pageCacheDeferredPut: 0 };
   try { (0, eval)(pageCacheBody); } catch (e) { fail('page cache script threw: ' + (e && e.stack)); }
   await settle();
   let n = 0;

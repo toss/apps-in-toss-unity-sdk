@@ -89,23 +89,67 @@ public class AITTextureBrowserDecodeTests
     [Test]
     public void IsBrowserDecodeUsable_Gates()
     {
-        Assert.IsTrue(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "", false));
-        Assert.IsTrue(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "br", false));
-        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(false, false, 1, false, "", false), "비활성");
-        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, true, 1, false, "", false), "raw 는 대상 아님");
-        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 0, false, "", false), "readable 원본은 LoadImage");
-        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, true, "", false), "이전 실패");
-        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "br", true), "br 미해제 확인 후 br 제외");
-        Assert.IsTrue(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "", true), "br 차단은 무압축 엔트리에 영향 없음");
+        Assert.IsTrue(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "", false, false));
+        Assert.IsTrue(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "br", false, false));
+        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(false, false, 1, false, "", false, false), "비활성");
+        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, true, 1, false, "", false, false), "raw 는 대상 아님");
+        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 0, false, "", false, false), "readable 원본은 LoadImage");
+        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, true, "", false, false), "이전 실패");
+        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "br", true, false), "br 미해제 확인 후 br 제외");
+        Assert.IsTrue(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "", true, false), "br 차단은 무압축 엔트리에 영향 없음");
+        Assert.IsFalse(AITStreamingTexture.IsBrowserDecodeUsable(true, false, 1, false, "", false, true), "readable 스텁은 LoadImage 경로");
+    }
+
+    // ─────────────────────── 작은 스텁 포맷 선택 ───────────────────────
+
+    [TestCase("ASTC", "ASTC_12x12")]
+    [TestCase("ETC2", "ETC2_RGB4")]
+    [TestCase("DXT", "DXT1")]
+    [TestCase("Generic", "DXT1")]
+    [TestCase("", "DXT1")]
+    public void ChooseCompactStubFormat_BySubtarget(string subtarget, string expected)
+    {
+        Assert.AreEqual(expected, AITTextureStreamPlanner.ChooseCompactStubFormat(subtarget));
     }
 
     [Test]
-    public void NeedsReinitialize_OnlyWhenSizeOrFormatDiffer()
+    public void ChooseCompactStubFormat_NamesParseAsImporterFormats()
     {
-        int rgba = (int)TextureFormat.RGBA32;
-        Assert.IsFalse(AITStreamingTexture.NeedsReinitialize(2048, 2048, rgba, 2048, 2048));
-        Assert.IsTrue(AITStreamingTexture.NeedsReinitialize(2048, 2048, rgba, 1024, 1024));
-        Assert.IsTrue(AITStreamingTexture.NeedsReinitialize(2048, 2048, (int)TextureFormat.DXT5, 2048, 2048));
+        foreach (string sub in new[] { "ASTC", "ETC2", "DXT" })
+        {
+            string name = AITTextureStreamPlanner.ChooseCompactStubFormat(sub);
+            Assert.IsTrue(Enum.TryParse(name, out UnityEditor.TextureImporterFormat _), name + " 는 TextureImporterFormat 이어야 한다.");
+        }
+    }
+
+    [Test]
+    public void EstimateCompactStubBytes_IsMuchSmallerThanRgba32()
+    {
+        long rgba = AITTextureStreamPlanner.EstimateStubBytes(2048, 2048, 1);
+        long astc = AITTextureStreamPlanner.EstimateCompactStubBytes("ASTC", 2048, 2048, 1);
+        long dxt = AITTextureStreamPlanner.EstimateCompactStubBytes("DXT", 2048, 2048, 1);
+        Assert.AreEqual(16L * 1048576, rgba);
+        Assert.AreEqual(171L * 171 * 16, astc, "ASTC 12x12: 블록 171x171, 블록당 16B");
+        Assert.AreEqual(2L * 1048576, dxt, "DXT1: 2048² = 2MB");
+        Assert.Less(dxt, rgba / 4);
+    }
+
+    [Test]
+    public void EstimateCompactStubBytes_CountsMipChainOnlyWhenOriginalHadMips()
+    {
+        long noMips = AITTextureStreamPlanner.EstimateCompactStubBytes("DXT", 1024, 1024, 1);
+        long withMips = AITTextureStreamPlanner.EstimateCompactStubBytes("DXT", 1024, 1024, 11);
+        Assert.Greater(withMips, noMips);
+        Assert.Less(withMips, noMips * 2);
+    }
+
+    [Test]
+    public void UseCompactStub_OnlyForNonReadableBrowserDecodeNonRaw()
+    {
+        Assert.IsTrue(AITTextureStreamPlanner.UseCompactStub(true, false, false));
+        Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(false, false, false), "브라우저 디코드 꺼짐 → 기존 readable 스텁");
+        Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(true, true, false), "readable 원본은 LoadImage 가 필요");
+        Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(true, false, true), "raw 는 원본 포맷 스텁");
     }
 
     [Test]

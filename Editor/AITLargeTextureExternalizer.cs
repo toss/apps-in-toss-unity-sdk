@@ -125,6 +125,9 @@ namespace AppsInToss.Editor
             public long GpuBytes;
             public long StubBytes;
 
+            /// <summary>브라우저 디코드 작은 스텁(non-readable 압축)의 바이트 추정(복원 전 부팅 상태).</summary>
+            public long CompactStubBytes;
+
             /// <summary>PNG/JPG 복원 경로의 메모리 증가(스텁 RGBA32 − 원본 GPU).</summary>
             public long PngDelta;
 
@@ -193,6 +196,8 @@ namespace AppsInToss.Editor
                 var infoByGuid = new Dictionary<string, CandidateInfo>();
                 bool explicitOn = config.textureStreaming == 1;
                 bool keepGpu = ResolveKeepGpuFormat(config);
+                bool browserDecodeOn = ResolveBrowserDecode(config);
+                string webglSubtarget = EditorUserBuildSettings.webGLBuildSubtarget.ToString();
 
                 foreach (var g in guids)
                 {
@@ -243,7 +248,7 @@ namespace AppsInToss.Editor
                     }
 
                     candidates.Add((g, path, w, h, size));
-                    infoByGuid[g] = BuildCandidateInfo(imported, gateImporter, w, h, keepGpu);
+                    infoByGuid[g] = BuildCandidateInfo(imported, gateImporter, w, h, keepGpu, webglSubtarget);
                 }
 
                 // ─── 2단계: 동명·동차원 충돌 검사 ────────────────────────────────
@@ -324,7 +329,7 @@ namespace AppsInToss.Editor
                             sumPicked += ci.Delta;
                         }
 
-                        memLines.Add($"  {Path.GetFileNameWithoutExtension(cpath)} ({cw}x{ch}, {ci.FormatName}, mip {ci.Mips}): 원본 GPU {ci.GpuBytes / 1048576f:0.00}MB, 스텁 RGBA32 {ci.StubBytes / 1048576f:0.00}MB, 증가 {ci.Delta / 1048576f:+0.00;-0.00;0.00}MB{(ci.RawEligible ? " [GPU 포맷 보존]" : string.Empty)} → {verdict}");
+                        memLines.Add($"  {Path.GetFileNameWithoutExtension(cpath)} ({cw}x{ch}, {ci.FormatName}, mip {ci.Mips}): 원본 GPU {ci.GpuBytes / 1048576f:0.00}MB, 복원 후 스텁 RGBA32 {ci.StubBytes / 1048576f:0.00}MB, 증가 {ci.Delta / 1048576f:+0.00;-0.00;0.00}MB{(ci.RawEligible ? " [GPU 포맷 보존]" : string.Empty)}{(AITTextureStreamPlanner.UseCompactStub(browserDecodeOn, ci.WasReadable, ci.RawEligible) ? $" [작은 스텁 {AITTextureStreamPlanner.ChooseCompactStubFormat(webglSubtarget)} {ci.CompactStubBytes / 1048576f:0.00}MB, 부팅 증가 {(ci.CompactStubBytes - ci.GpuBytes) / 1048576f:+0.00;-0.00;0.00}MB, CPU 사본 0]" : string.Empty)} → {verdict}");
                     }
 
                     if (liveIdx.Count > 0)
@@ -337,6 +342,7 @@ namespace AppsInToss.Editor
                 // ─── 3단계: 외부화 실행(스텁 치환 + 스트리밍 소스 복사) ──────────────
                 //    엔트리 문자열은 4단계의 brotli 채택 판정 후 확정하므로, 여기서는 레코드만 수집.
                 var records = new List<(string g, string streamFile, string texName, int w, int h, long size)>();
+                var compactStubSet = new HashSet<string>(); // 작은 스텁으로 임포트된 guid(로그용)
                 var rawFiles = new Dictionary<string, string>(); // guid → raw 스트림 사본 파일명(<guid>.astc, brotli 채택 전)
                 int n = 0;
                 long stubbedBytes = 0;
@@ -406,17 +412,40 @@ namespace AppsInToss.Editor
                     //    raw 경로(원본 ASTC 블록 보존)는 원본과 같은 압축 포맷을 그대로 둔다 — 스텁이 같은 ASTC 포맷·mip 이어야
                     //    런타임 LoadRawTextureData 가 정확한 크기로 들어간다.
                     AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                    //    브라우저 디코드가 켜진 non-readable 원본은 "작은 스텁"(non-readable + WebGL 서브타겟 최소 압축 포맷, mip 설정은 원본 그대로)을 쓴다 —
+                    //    readable RGBA32 스텁의 CPU 사본(w*h*4)이 wasm 힙에 상주하는 것이 힙 증가의 원인이었다. 복원은 런타임이 GL 텍스처를 통째로 교체한다.
+                    bool compactStub = AITTextureStreamPlanner.UseCompactStub(browserDecodeOn, ci.WasReadable, rawBytes != null);
                     var ti2 = AssetImporter.GetAtPath(path) as TextureImporter;
                     if (ti2 != null)
                     {
-                        ti2.isReadable = true;
+                        ti2.isReadable = !compactStub;
                         ti2.crunchedCompression = false;
-                        if (rawBytes == null)
+                        if (compactStub)
+                        {
+                            if (!TryApplyCompactStubFormat(ti2, webglSubtarget))
+                            {
+                                compactStub = false;
+                                ti2.isReadable = true;
+                                ti2.textureCompression = TextureImporterCompression.Uncompressed;
+                            }
+                        }
+                        else if (rawBytes == null)
                         {
                             ti2.textureCompression = TextureImporterCompression.Uncompressed;
                         }
 
                         ti2.SaveAndReimport();
+                    }
+
+                    if (compactStub)
+                    {
+                        var stubTex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                        if (stubTex != null)
+                        {
+                            long stubBytes = AITTextureStreamPlanner.EstimateGpuBytes(stubTex.format.ToString(), stubTex.width, stubTex.height, Math.Max(1, stubTex.mipmapCount));
+                            Debug.Log($"[AIT-StreamingTexture] 작은 스텁 {texName}: {stubTex.width}x{stubTex.height} fmt={stubTex.format} mip={stubTex.mipmapCount} readable={(stubTex.isReadable ? 1 : 0)} ≈{stubBytes / 1048576f:0.00}MB (복원 전 GPU, CPU 사본 없음)");
+                            compactStubSet.Add(g);
+                        }
                     }
 
                     if (rawBytes != null && !StubMatchesOriginal(path, w, h, ci))
@@ -761,7 +790,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>후보의 포맷·mip·메모리 영향·raw 적격을 산출한다(임포트된 텍스처 기준 — 빌드에 실리는 상태).</summary>
-        private static CandidateInfo BuildCandidateInfo(Texture2D imported, TextureImporter ti, int w, int h, bool keepGpu)
+        private static CandidateInfo BuildCandidateInfo(Texture2D imported, TextureImporter ti, int w, int h, bool keepGpu, string webglSubtarget)
         {
             string fmt = imported.format.ToString();
             int mips = Math.Max(1, imported.mipmapCount);
@@ -773,6 +802,7 @@ namespace AppsInToss.Editor
                 WasReadable = ti != null && ti.isReadable,
                 GpuBytes = AITTextureStreamPlanner.EstimateGpuBytes(fmt, w, h, mips),
                 StubBytes = AITTextureStreamPlanner.EstimateStubBytes(w, h, mips),
+                CompactStubBytes = AITTextureStreamPlanner.EstimateCompactStubBytes(webglSubtarget, w, h, mips),
             };
             ci.PngDelta = AITTextureStreamPlanner.ComputeMemoryDelta(ci.StubBytes, ci.GpuBytes);
             ci.RawEligible = keepGpu && ti != null && AITTextureStreamPlanner.IsRawEligible(
@@ -825,6 +855,27 @@ namespace AppsInToss.Editor
                 Debug.LogWarning($"[AIT-StreamingTexture] 원본 블록 읽기 실패({path}): {e.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// 스텁 임포터에 WebGL 플랫폼 오버라이드로 서브타겟별 최소 압축 포맷을 건다. 포맷 이름이 이 Unity 버전의
+        /// TextureImporterFormat 에 없으면(2021.3~6000.3 모두 ASTC_12x12/DXT1/ETC2_RGB4 는 있다) false — 호출부가 기존 스텁으로 되돌린다.
+        /// </summary>
+        private static bool TryApplyCompactStubFormat(TextureImporter ti, string webglSubtarget)
+        {
+            string name = AITTextureStreamPlanner.ChooseCompactStubFormat(webglSubtarget);
+            if (!Enum.TryParse(name, out TextureImporterFormat fmt))
+            {
+                Debug.LogWarning($"[AIT-StreamingTexture] 임포터 포맷 {name} 을 이 Unity 버전에서 찾지 못해 작은 스텁을 포기합니다.");
+                return false;
+            }
+
+            var ps = ti.GetPlatformTextureSettings("WebGL");
+            ps.overridden = true;
+            ps.format = fmt;
+            ps.crunchedCompression = false;
+            ti.SetPlatformTextureSettings(ps);
+            return true;
         }
 
         /// <summary>스텁 임포트 결과가 원본과 같은 차원·포맷·mip 수의 readable 텍스처인지(raw 복원의 전제).</summary>

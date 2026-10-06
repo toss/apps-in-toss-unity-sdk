@@ -119,6 +119,11 @@ namespace AppsInToss.Editor.Package
             return c == null || Resolve(c.textureStreamBrowserDecode, AITDefaultSettings.GetDefaultTextureStreamBrowserDecode());
         }
 
+        internal static bool EffectiveTextureStreamLowTierDownscale(AITEditorScriptObject c)
+        {
+            return c == null || Resolve(c.textureStreamLowTierDownscale, AITDefaultSettings.GetDefaultTextureStreamLowTierDownscale());
+        }
+
         internal static bool EffectiveFontStreamingUnloadBundle(AITEditorScriptObject c)
         {
             return c != null && Resolve(c.fontStreamingUnloadBundle, AITDefaultSettings.GetDefaultFontStreamingUnloadBundle());

@@ -217,6 +217,11 @@ namespace AppsInToss.Editor
                 "스트리밍 텍스처의 PNG/JPG 를 브라우저에서 디코드해 GL 텍스처에 직접 올립니다(wasm 힙 증가 없음). non-readable 텍스처만 대상이며 실패 시 LoadImage 로 폴백합니다. 자동은 활성입니다.",
                 AITDefaultSettings.GetDefaultTextureStreamBrowserDecode());
 
+            config.textureStreamLowTierDownscale = DrawPerfTriState(
+                config.textureStreamLowTierDownscale, "텍스처 저사양 티어 다운스케일",
+                "저사양 티어(1 이상) 기기에서 브라우저 디코드 텍스처를 줄여 올립니다(mip 없는 UI 텍스처 포함). raw 는 위쪽 mip 을 건너뜁니다. 티어 0 에는 영향이 없고 자동은 활성입니다.",
+                AITDefaultSettings.GetDefaultTextureStreamLowTierDownscale());
+
             config.fontStreamingUnloadBundle = DrawPerfTriState(
                 config.fontStreamingUnloadBundle, "폰트 번들 언로드",
                 "폰트 번들 로드 후 Unload(false) 로 번들 메모리를 해제합니다. TMP 동적 폴백 tofu 위험이 있어 자동은 비활성입니다.",

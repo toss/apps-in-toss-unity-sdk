@@ -1,0 +1,208 @@
+name: Memlimit (min viable memory)
+run-name: "Memlimit${{ inputs.run_id && format(' [perf run #{0}]', inputs.run_id) || '' }}"
+
+# 메모리 제한 환경에서 heavy 빌드가 부팅·생존하는 최소 cgroup 한도(min viable MB)를 측정해
+# 메모리 회귀를 감시한다. **정보 제공용(non-required)**: 수치가 나빠도 실패하지 않고,
+# docker/CDP/아티팩트 다운로드 같은 인프라 오류일 때만 실패한다.
+#
+# 측정 방식(Tests~/E2E/tests/memlimit/memlimit.mjs):
+#  - C 모드만 지원: `docker run --memory=N --memory-swap=N` 으로 브라우저 컨테이너 전체에 cgroup 한도를 건다.
+#    R 모드(렌더러 프로세스만 cgroup)는 컨테이너 안에서 cgroup 하위 트리 생성(--privileged +
+#    --renderer-cmd-prefix)이 필요해 러너에서 다루지 않는다.
+#  - 브라우저는 cdn.playwright.dev 다운로드가 막힐 수 있어 공식 mcr.microsoft.com/playwright 이미지의
+#    Chromium 을 쓴다(이미지 태그는 Tests~/E2E/tests/package.json 의 Playwright 버전과 맞춘다).
+#  - 한도마다 부팅 2회, 최대 12단계(시작 한도에서 step 씩 내려가 처음 실패하는 한도에서 멈춘다).
+#
+# heavy 빌드 입력(가장 단순한 방식 = 기존 perf run 의 아티팩트 재사용, 이 워크플로는 Unity 빌드를 하지 않는다):
+#  - workflow_dispatch: run_id(perf.yml run id) 필수.
+#  - schedule: main 에서 가장 최근 성공한 perf.yml run 을 자동 선택한다. 아티팩트 retention(7일)이 지나
+#    heavy 아티팩트가 없으면 경고만 남기고 건너뛴다(perf 가 main push 에서 돌 때만 갱신되므로 정상 경로).
+#
+# 수동 실행 예:
+#   gh api -X POST repos/toss/apps-in-toss-unity-sdk/actions/workflows/memlimit.yml/dispatches \
+#     -f ref=main -f 'inputs[run_id]=<perf run id>' -f 'inputs[versions]=6000.0,2021.3'
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'heavy 아티팩트(ait-build-heavy-macos-<버전>)를 받을 perf.yml run id'
+        type: string
+        required: true
+      versions:
+        description: 'Unity 버전(쉼표 구분)'
+        type: string
+        default: '6000.0,2021.3'
+      start_mb:
+        description: '탐색 시작 한도(MB). 여기서 step 씩 내려간다'
+        type: string
+        default: '704'
+      step_mb:
+        description: '한도 간격(MB)'
+        type: string
+        default: '32'
+      baseline_mb:
+        description: '(선택) 기준 min viable MB. 측정값이 기준보다 64MB 넘게 크면 ::warning:: 를 남긴다'
+        type: string
+        default: ''
+  schedule:
+    - cron: '0 3 * * 1' # 매주 월요일 03:00 UTC
+
+concurrency:
+  group: memlimit-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.resolve.outputs.run_id }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      start_mb: ${{ steps.resolve.outputs.start_mb }}
+      step_mb: ${{ steps.resolve.outputs.step_mb }}
+    steps:
+      - name: Resolve inputs
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          IN_RUN_ID: ${{ inputs.run_id }}
+          IN_VERSIONS: ${{ inputs.versions }}
+          IN_START: ${{ inputs.start_mb }}
+          IN_STEP: ${{ inputs.step_mb }}
+          IN_BASELINE: ${{ inputs.baseline_mb }}
+        run: |
+          VERSIONS="${IN_VERSIONS:-6000.0,2021.3}"
+          START="${IN_START:-704}"
+          STEP="${IN_STEP:-32}"
+          for v in "$START" "$STEP" "$IN_BASELINE" "$IN_RUN_ID"; do
+            [ -z "$v" ] && continue
+            case "$v" in *[!0-9]*) echo "::error::숫자 입력이 아닙니다: '$v'"; exit 1;; esac
+          done
+          # 버전은 숫자와 점만 허용(매트릭스/아티팩트 이름 인젝션 방지)
+          case "$VERSIONS" in *[!0-9.,]*) echo "::error::versions 형식 오류: '$VERSIONS'"; exit 1;; esac
+
+          RUN_ID="$IN_RUN_ID"
+          if [ -z "$RUN_ID" ]; then
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::workflow_dispatch 는 run_id 가 필요합니다"; exit 1
+            fi
+            # schedule: main 에서 가장 최근 성공한 perf.yml run
+            RUN_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/perf.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+            if [ -z "$RUN_ID" ]; then
+              echo "::warning::main 의 성공한 perf run 이 없어 memlimit 을 건너뜁니다"
+              RUN_ID=""
+            fi
+          fi
+
+          MATRIX=$(echo "$VERSIONS" | tr ',' '\n' | jq -R . | jq -sc '{version: .}')
+          {
+            echo "run_id=$RUN_ID"
+            echo "matrix=$MATRIX"
+            echo "start_mb=$START"
+            echo "step_mb=$STEP"
+          } >> "$GITHUB_OUTPUT"
+
+  measure:
+    name: Memlimit (Unity ${{ matrix.version }})
+    needs: setup
+    if: needs.setup.outputs.run_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    env:
+      DIST_ROOT: ${{ github.workspace }}/heavy-${{ matrix.version }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Download Heavy Build Artifact
+        # 아티팩트 retention 이 지났으면 여기서 실패한다(= 인프라 오류로 취급). schedule 은 setup 이 최근 run 을 골랐다.
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-heavy-macos-${{ matrix.version }}
+          path: ${{ env.DIST_ROOT }}
+          run-id: ${{ needs.setup.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Playwright Test Dependencies
+        # 브라우저 다운로드 없이 @playwright/test(CDP 클라이언트)만 필요 → 스크립트 무시
+        working-directory: Tests~/E2E/tests
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
+      - name: Pull Playwright image
+        run: |
+          PW=$(node -p "require('./Tests~/E2E/tests/package.json').devDependencies['@playwright/test'].replace(/^[^0-9]*/, '')")
+          echo "PW_IMAGE=mcr.microsoft.com/playwright:v${PW}-noble" >> "$GITHUB_ENV"
+          docker pull "mcr.microsoft.com/playwright:v${PW}-noble"
+
+      - name: Find served directory
+        run: |
+          if [ -f "$DIST_ROOT/ait-build/dist/web/index.html" ]; then D="$DIST_ROOT/ait-build/dist/web"
+          elif [ -f "$DIST_ROOT/dist/web/index.html" ]; then D="$DIST_ROOT/dist/web"
+          else echo "::error::dist/web/index.html 을 찾지 못했습니다"; find "$DIST_ROOT" -maxdepth 3 | head -30; exit 1; fi
+          echo "DIST_WEB=$D" >> "$GITHUB_ENV"
+
+      - name: Run memlimit sweep
+        # 종료 코드 2 = 인프라 오류만 잡을 실패로 둔다(수치는 실패 사유가 아니다).
+        working-directory: Tests~/E2E/tests
+        run: |
+          node memlimit/memlimit.mjs \
+            --dist "$DIST_WEB" \
+            --start "${{ needs.setup.outputs.start_mb }}" \
+            --step "${{ needs.setup.outputs.step_mb }}" \
+            --max-levels 12 \
+            --image "$PW_IMAGE" \
+            --out "$GITHUB_WORKSPACE/memlimit-${{ matrix.version }}.json"
+
+      - name: Summary
+        if: always()
+        env:
+          VERSION: ${{ matrix.version }}
+          BASELINE_MB: ${{ inputs.baseline_mb }}
+          SRC_RUN: ${{ needs.setup.outputs.run_id }}
+        run: |
+          F="memlimit-${VERSION}.json"
+          [ -f "$F" ] || { echo "### Memlimit ${VERSION}: 결과 없음(인프라 오류)" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          MIN=$(jq -r '.minViableMB // "n/a"' "$F")
+          FAIL=$(jq -r '.firstFailMB // "n/a"' "$F")
+          {
+            echo "### Memlimit (Unity ${VERSION}, C 모드, perf run ${SRC_RUN})"
+            echo
+            echo "| min viable MB | first fail MB | levels tested |"
+            echo "|---|---|---|"
+            echo "| ${MIN} | ${FAIL} | $(jq '.levels | length' "$F") |"
+            echo
+            echo "2-boot tier(첫 부팅이 죽는 한도에서 재부팅 생존 여부):"
+            echo
+            echo "| limit MB | boot1 alive | boot2 alive | boot2 tier |"
+            echo "|---|---|---|---|"
+            jq -r '.twoBoot[] | "| \(.limitMB) | \(.boot1Alive) | \(.boot2Alive) | \(.boot2Tier) |"' "$F"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$BASELINE_MB" ] && [ "$MIN" != "n/a" ] && [ "$MIN" -gt $((BASELINE_MB + 64)) ]; then
+            echo "::warning::Unity ${VERSION} min viable ${MIN}MB 가 기준 ${BASELINE_MB}MB 보다 64MB 넘게 높습니다"
+          fi
+
+      - name: Upload Result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: memlimit-${{ matrix.version }}
+          path: memlimit-${{ matrix.version }}.json
+          if-no-files-found: ignore
+          retention-days: 30

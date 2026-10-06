@@ -77,7 +77,7 @@ namespace AppsInToss
         private static extern int __AITTexDecode_SelfTest(int glTexName);
 
         [DllImport("__Internal")]
-        private static extern void __AITTexDecode_Fetch(string url, int reqId);
+        private static extern void __AITTexDecode_Start(string url, byte[] bytes, int bytesLen, int reqId);
 
         [DllImport("__Internal")]
         private static extern int __AITTexDecode_Poll(int reqId);
@@ -89,7 +89,7 @@ namespace AppsInToss
         private static extern int __AITTexDecode_Height(int reqId);
 
         [DllImport("__Internal")]
-        private static extern int __AITTexDecode_Upload(int reqId, int glTexName, int hasMips);
+        private static extern int __AITTexDecode_Swap(int reqId, int glTexName, int hasMips);
 
         [DllImport("__Internal")]
         private static extern void __AITTexDecode_Release(int reqId);
@@ -201,7 +201,6 @@ namespace AppsInToss
         private sealed class BrowserOutcome
         {
             public bool restored;
-            public bool lost;
             public bool unloaded;
             public string reason;
             public int width;
@@ -388,11 +387,11 @@ namespace AppsInToss
             }
 
             if (tex != null && IsBrowserDecodeUsable(
-                    browserDecodeEnabled, useRaw, e.nonReadable, browserFailed.Contains(e.guid), e.encoding, browserBrotliBlocked))
+                    browserDecodeEnabled, useRaw, e.nonReadable, browserFailed.Contains(e.guid), e.encoding, browserBrotliBlocked, tex.isReadable))
             {
                 var outcome = new BrowserOutcome();
-                yield return TryBrowserRestore(e, tex, outcome);
-                if (outcome.restored || outcome.lost || outcome.unloaded)
+                yield return TryBrowserRestore(e, tex, outcome, null);
+                if (outcome.restored || outcome.unloaded)
                 {
                     loadingCount--;
                     inflight.Remove(e.guid);
@@ -402,18 +401,13 @@ namespace AppsInToss
                         HeldCount++;
                         RestoredCount++;
                         BrowserRestoredCount++;
-                        Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {outcome.width}x{outcome.height} path=browser fmt=RGBA32 readable=0 heldBytes=0");
-                    }
-                    else if (outcome.lost)
-                    {
-                        // 스텁을 non-readable RGBA32 로 바꾼 뒤 업로드가 실패한 드문 경우 — LoadImage 로 되돌릴 수 없어 포기(스텁 유지).
-                        Debug.LogWarning($"[AIT-StreamingTexture] 복원 {e.name} path=browser 업로드 실패({outcome.reason}) — 되돌릴 수 없어 포기(스텁 유지)");
+                        Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {outcome.width}x{outcome.height} path=browser-swap fmt=RGBA32 readable=0 heldBytes=0 mips={(tex.mipmapCount > 1 ? 1 : 0)}");
                     }
 
                     yield break;
                 }
 
-                // 폴백: 스텁은 손대지 않은 상태 → 아래 LoadImage 경로로 이어간다.
+                // 폴백: 교체 전에 실패했으므로 스텁은 그대로다. readable 스텁이면 아래 LoadImage, non-readable(작은 스텁)이면 받은 바이트를 JS 로 넘겨 교체한다.
                 browserFailed.Add(e.guid);
                 if (outcome.reason != null && outcome.reason.StartsWith("이미지 아님") && e.encoding == "br")
                 {
@@ -421,7 +415,7 @@ namespace AppsInToss
                 }
 
                 restoredInstanceIds.Add(tex.GetInstanceID());
-                Debug.LogWarning($"[AIT-StreamingTexture] 브라우저 디코드 폴백 {e.name}: {outcome.reason} → LoadImage");
+                Debug.LogWarning($"[AIT-StreamingTexture] 브라우저 디코드 폴백 {e.name}: {outcome.reason} → {(tex.isReadable ? "LoadImage" : "바이트 다운로드 후 브라우저 교체(non-readable 스텁은 LoadImage 불가)")}");
             }
 
             string url = ResolveStreamingUrl(StreamDirRelativePath + (useRaw ? e.rawFile : e.file));
@@ -470,6 +464,48 @@ namespace AppsInToss
             {
                 // 대상 텍스처가 그 사이 언로드됨 — 복원 불필요로 간주하고 pending 에서 제거.
                 pending.RemoveAll(x => x.guid == e.guid);
+                yield break;
+            }
+
+            if (!useRaw && !tex.isReadable)
+            {
+                // non-readable 스텁(작은 스텁)에는 LoadImage 를 쓸 수 없다. 바이트(필요하면 managed brotli 해제)를 JS 로 넘겨 교체한다.
+                // 이 경로는 압축 이미지 바이트가 잠시 managed 에 있다(힙 증가는 압축 크기만큼 일시적).
+                byte[] bytesForJs = null;
+                try
+                {
+                    bytesForJs = AITStreamingCodec.DecodePayload(e.encoding, data, AITStreamingCodec.LooksLikeImage, e.name);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[AIT-StreamingTexture] 페이로드 해제 예외 {e.name}: {ex.Message}");
+                }
+
+                data = null;
+                var bytesOutcome = new BrowserOutcome();
+                if (bytesForJs != null && browserDecodeEnabled)
+                {
+                    yield return TryBrowserRestore(e, tex, bytesOutcome, bytesForJs);
+                }
+                else
+                {
+                    bytesOutcome.reason = browserDecodeEnabled ? "페이로드 없음" : "브라우저 디코드 불가(WebGL 2/createImageBitmap 없음)";
+                }
+
+                bytesForJs = null;
+                pending.RemoveAll(x => x.guid == e.guid);
+                if (bytesOutcome.restored)
+                {
+                    HeldCount++;
+                    RestoredCount++;
+                    BrowserRestoredCount++;
+                    Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {bytesOutcome.width}x{bytesOutcome.height} path=browser-swap-bytes fmt=RGBA32 readable=0 heldBytes=0");
+                }
+                else if (!bytesOutcome.unloaded)
+                {
+                    Debug.LogWarning($"[AIT-StreamingTexture] 복원 포기 {e.name}: non-readable 스텁이라 LoadImage 불가, 브라우저 교체 실패({bytesOutcome.reason}) — 스텁 유지");
+                }
+
                 yield break;
             }
 
@@ -570,11 +606,12 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 브라우저 디코드 한 건. 1) JS 가 fetch+createImageBitmap 2) 스텁을 비트맵 크기의 RGBA32 non-readable 로 맞춤
-        /// 3) GL 텍스처 이름으로 JS 가 texSubImage2D. 실패하면 outcome.reason 을 채우고(restored=false) 돌아간다 —
-        /// lost=true 는 스텁을 이미 바꾼 뒤 실패한 경우라 폴백할 수 없다. 압축 바이트는 managed 로 오지 않는다.
+        /// 브라우저 디코드 한 건. 1) JS 가 fetch(또는 넘겨받은 바이트)+createImageBitmap 2) JS 가 새 WebGL 텍스처를 만들어 GL.textures[name] 을 교체.
+        /// 스텁은 non-readable 압축이라 C# 은 Reinitialize/Apply 를 하지 않는다(CPU 사본이 힙에 생기므로) — GetNativeTexturePtr 만 쓴다.
+        /// 실패하면 outcome.reason 을 채우고 돌아간다. 교체 전에 실패하면 스텁이 그대로라 호출부가 폴백할 수 있다.
+        /// <paramref name="bytes"/> 가 null 이 아니면 URL 대신 그 바이트를 디코드한다(서버가 brotli 를 해제하지 않아 managed 가 푼 경우).
         /// </summary>
-        private IEnumerator TryBrowserRestore(Entry e, Texture2D tex, BrowserOutcome o)
+        private IEnumerator TryBrowserRestore(Entry e, Texture2D tex, BrowserOutcome o, byte[] bytes)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             if (!EnsureBrowserSelfTest())
@@ -585,19 +622,26 @@ namespace AppsInToss
 
             int id = ++browserReqSeq;
             int status;
-            string w0 = null;
+            string startError = null;
             try
             {
-                __AITTexDecode_Fetch(ResolveStreamingUrl(StreamDirRelativePath + e.file), id);
+                if (bytes != null)
+                {
+                    __AITTexDecode_Start(null, bytes, bytes.Length, id);
+                }
+                else
+                {
+                    __AITTexDecode_Start(ResolveStreamingUrl(StreamDirRelativePath + e.file), null, 0, id);
+                }
             }
             catch (System.Exception ex)
             {
-                w0 = "Fetch 예외 " + ex.Message;
+                startError = "Start 예외 " + ex.Message;
             }
 
-            if (w0 != null)
+            if (startError != null)
             {
-                o.reason = w0;
+                o.reason = startError;
                 yield break;
             }
 
@@ -642,41 +686,28 @@ namespace AppsInToss
                 yield break;
             }
 
-            bool hasMips = tex.mipmapCount > 1;
-            if (NeedsReinitialize(tex.width, tex.height, (int)tex.format, w, h) && !TryReinitializeRgba32(tex, w, h, hasMips))
-            {
-                __AITTexDecode_Release(id);
-                o.reason = "RGBA32 재할당 불가";
-                yield break;
-            }
-
             int glName = 0;
-            bool prepared = false;
+            string prepError = null;
             try
             {
-                // 업로드된 스텁 위에 JS 가 직접 쓰므로 CPU 사본은 이 시점에 버린다(non-readable). 이후부터는 LoadImage 폴백이 불가하다.
-                tex.Apply(false, true);
                 glName = (int)tex.GetNativeTexturePtr().ToInt64();
-                prepared = true;
             }
             catch (System.Exception ex)
             {
-                o.reason = "스텁 준비 예외 " + ex.Message;
+                prepError = "GetNativeTexturePtr 예외 " + ex.Message;
             }
 
-            if (!prepared || glName == 0)
+            if (glName == 0)
             {
                 __AITTexDecode_Release(id);
-                o.lost = prepared; // Apply 가 성공했으면 non-readable 이 이미 적용됐다.
-                o.reason = o.reason ?? "GL 텍스처 이름 0";
+                o.reason = prepError ?? "GL 텍스처 이름 0";
                 yield break;
             }
 
-            int up = __AITTexDecode_Upload(id, glName, hasMips ? 1 : 0);
-            if (up != 1)
+            int swap = __AITTexDecode_Swap(id, glName, tex.mipmapCount > 1 ? 1 : 0);
+            if (swap != 1)
             {
-                o.lost = true;
-                o.reason = BrowserFailureText(up);
+                o.reason = "교체 " + BrowserFailureText(swap);
                 yield break;
             }
 
@@ -748,23 +779,6 @@ namespace AppsInToss
 #endif
         }
 
-        private static bool TryReinitializeRgba32(Texture2D tex, int w, int h, bool hasMips)
-        {
-#if UNITY_2021_2_OR_NEWER
-            try
-            {
-                tex.Reinitialize(w, h, TextureFormat.RGBA32, hasMips);
-                return true;
-            }
-            catch (System.Exception)
-            {
-                return false;
-            }
-#else
-            return false;
-#endif
-        }
-
         // ─────────────────────── 순수 판정(EditMode 테스트 대상) ───────────────────────
 
         /// <summary>매니페스트 browserDecode 플래그(1)와 런타임 능력(2 = WebGL 2 + createImageBitmap)이 모두 충족될 때만 true.</summary>
@@ -774,24 +788,18 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 이 엔트리가 브라우저 디코드 경로를 탈 수 있는지. 원본이 non-readable 인 PNG/JPG(raw 아님)만 대상이다 — 이 경로는 스텁을
-        /// non-readable 로 만들기 때문이다. 이전 실패 엔트리, 서버가 해제하지 않은 brotli 는 제외.
+        /// 이 엔트리가 브라우저 디코드 경로를 탈 수 있는지. 원본이 non-readable 이고 스텁도 non-readable(작은 스텁)인 PNG/JPG(raw 아님)만 대상이다. 이전 실패 엔트리, 서버가 해제하지 않은 brotli 는 제외.
         /// </summary>
         internal static bool IsBrowserDecodeUsable(
-            bool enabled, bool useRaw, int nonReadableFlag, bool failedBefore, string encoding, bool brotliBlocked)
+            bool enabled, bool useRaw, int nonReadableFlag, bool failedBefore, string encoding, bool brotliBlocked, bool stubReadable)
         {
-            if (!enabled || useRaw || failedBefore || nonReadableFlag == 0)
+            // stubReadable: 스텁이 readable 이면(빌드가 작은 스텁을 못 만든 경우 등) LoadImage 가 가능하고 CPU 사본도 이미 있으므로 기존 경로.
+            if (!enabled || useRaw || failedBefore || nonReadableFlag == 0 || stubReadable)
             {
                 return false;
             }
 
             return !(encoding == "br" && brotliBlocked);
-        }
-
-        /// <summary>스텁이 이미 비트맵 크기의 RGBA32 가 아니면 Reinitialize 가 필요하다.</summary>
-        internal static bool NeedsReinitialize(int curWidth, int curHeight, int curFormat, int width, int height)
-        {
-            return curWidth != width || curHeight != height || curFormat != (int)TextureFormat.RGBA32;
         }
 
         /// <summary>jslib 상태 코드를 로그용 문구로. "이미지 아님" 접두는 br 미해제 판정에 쓰인다.</summary>

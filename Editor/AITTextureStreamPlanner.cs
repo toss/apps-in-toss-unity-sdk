@@ -235,6 +235,45 @@ namespace AppsInToss.Editor
             return ComputeMipChainBytes(w, h, mips, 1, 1, 4);
         }
 
+        /// <summary>
+        /// 브라우저 디코드용 "작은 스텁"의 임포터 포맷 이름(WebGL 서브타겟별 가장 작은 압축 포맷). 스텁은 복원 전 자리표시일 뿐이라 화질은 무관하다.
+        /// ASTC 서브타겟 = ASTC_12x12(0.89bpp), ETC2 = ETC2_RGB4(4bpp), 그 외(DXT/Generic/미상) = DXT1(4bpp, 이 SDK 의 기본 서브타겟).
+        /// 반환값은 <c>TextureImporterFormat</c> 이름이다(Enum.TryParse 로 푼다).
+        /// </summary>
+        internal static string ChooseCompactStubFormat(string webglSubtarget)
+        {
+            switch (webglSubtarget)
+            {
+                case "ASTC":
+                    return "ASTC_12x12";
+                case "ETC2":
+                    return "ETC2_RGB4";
+                default:
+                    return "DXT1";
+            }
+        }
+
+        /// <summary><see cref="ChooseCompactStubFormat"/> 의 임포터 포맷 이름 → 같은 포맷의 TextureFormat 이름(바이트 추정용).</summary>
+        internal static string CompactStubTextureFormatName(string importerFormatName)
+        {
+            return importerFormatName == "ETC2_RGB4" ? "ETC2_RGB" : importerFormatName;
+        }
+
+        /// <summary>작은 스텁의 GPU 바이트 추정(mip 체인 포함). 원본과 같은 mip 수를 쓴다.</summary>
+        internal static long EstimateCompactStubBytes(string webglSubtarget, int w, int h, int mips)
+        {
+            return EstimateGpuBytes(CompactStubTextureFormatName(ChooseCompactStubFormat(webglSubtarget)), w, h, mips);
+        }
+
+        /// <summary>
+        /// 작은 스텁(non-readable 압축)을 쓸지. 브라우저 디코드가 켜져 있고, 원본이 non-readable 이며(런타임 브라우저 경로의 대상과 같다),
+        /// raw(GPU 포맷 보존)로 가지 않을 때만. readable 원본/raw 는 기존 스텁(readable RGBA32 또는 원본 포맷)을 쓴다.
+        /// </summary>
+        internal static bool UseCompactStub(bool browserDecode, bool originalReadable, bool rawPath)
+        {
+            return browserDecode && !originalReadable && !rawPath;
+        }
+
         /// <summary>외부화로 늘어나는 메모리(스텁 RGBA32 − 원본 GPU). 음수/0 이면 메모리 중립 이하.</summary>
         internal static long ComputeMemoryDelta(long stubBytes, long originalGpuBytes)
         {

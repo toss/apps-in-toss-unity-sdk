@@ -65,7 +65,23 @@ public class HeavyTexStreamProbe : MonoBehaviour
                 }
             }
 
-            Debug.Log($"[HeavyTexStreamProbe] t={m:0}s restored={restored}/{total}");
+            // non-readable 로 복원된 텍스처는 위 GetPixel 로 복원 여부를 가릴 수 없으므로(UnityException 을 복원으로 센다)
+            // AITStreamingTexture 의 실제 복원 카운터(internal)도 리플렉션으로 함께 남긴다. browser = 브라우저 디코드 경로로 복원된 수.
+            Debug.Log($"[HeavyTexStreamProbe] t={m:0}s restored={restored}/{total} streamRestored={ReadStreamCounter("RestoredCount")} browser={ReadStreamCounter("BrowserRestoredCount")}");
+        }
+    }
+
+    private static int ReadStreamCounter(string field)
+    {
+        try
+        {
+            var type = System.Type.GetType("AppsInToss.AITStreamingTexture, AppsInToss.Helpers");
+            var f = type?.GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return f != null ? (int)f.GetValue(null) : -1;
+        }
+        catch (System.Exception)
+        {
+            return -1;
         }
     }
 

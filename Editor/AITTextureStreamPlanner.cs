@@ -27,6 +27,9 @@ namespace AppsInToss.Editor
         /// <summary>설정 필드 이름(AITEditorScriptObject.textureStreamKeepGpuFormat, tri-state int). 필드가 없으면 -1(자동)로 본다.</summary>
         internal const string KeepGpuFormatFieldName = "textureStreamKeepGpuFormat";
 
+        /// <summary>브라우저 디코드를 환경 변수로 덮어쓰는 이름. "1"=강제 켬, "0"=끔, 그 외/미설정=설정값.</summary>
+        internal const string BrowserDecodeEnvVar = "AIT_TEXTURE_STREAM_BROWSER_DECODE";
+
         /// <summary>raw 스트림 사본 확장자(점 포함). 내용은 mip 체인 전체를 이어 붙인 GPU 블록 바이트.</summary>
         internal const string RawExtension = ".astc";
 
@@ -423,7 +426,14 @@ namespace AppsInToss.Editor
         /// <summary>매니페스트 전체 JSON.</summary>
         internal static string BuildManifestJson(int maxConcurrent, IList<string> entryJsons)
         {
-            return "{\"maxConcurrent\":" + maxConcurrent + ",\"entries\":[" + string.Join(",", entryJsons) + "]}";
+            return BuildManifestJson(maxConcurrent, entryJsons, false);
+        }
+
+        /// <summary>매니페스트 전체 JSON. browserDecode=true 면 최상위에 <c>"browserDecode":1</c> 을 쓴다(꺼짐이면 쓰지 않아 구 런타임/매니페스트와 호환).</summary>
+        internal static string BuildManifestJson(int maxConcurrent, IList<string> entryJsons, bool browserDecode)
+        {
+            return "{\"maxConcurrent\":" + maxConcurrent + (browserDecode ? ",\"browserDecode\":1" : string.Empty)
+                + ",\"entries\":[" + string.Join(",", entryJsons) + "]}";
         }
 
         internal static string JsonStr(string s)

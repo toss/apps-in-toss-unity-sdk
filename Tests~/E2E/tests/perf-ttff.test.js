@@ -1143,7 +1143,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
     expect(bTtffValues.length,
       `at least one valid TTFF sample required for B (got ${bTtffValues.length}/${ITERATIONS}). ` +
       `Draw counts: ${samplesB.map(s => s.firstDrawCount).join(',')}`).toBeGreaterThan(0);
-    expectTexDrawCheck(resultB, LABEL_B);
+    expectTexDrawCheck(summarize(samplesB, PAIR_PROJECT), LABEL_B); // resultB 는 위 PAIR_MODE 블록 스코프라 여기서 다시 집계한다
   }
 });
 

@@ -160,8 +160,9 @@
                 bar.style.bottom = 'auto';
             }
             function placeInputBar(bar) {
+                // 키보드(하드웨어 키보드면 액세서리 바만)가 떠서 보이는 영역이 조금이라도 줄면 고정을 푼다.
                 if (bar.__aitPinned) {
-                    if (!keyboardUp()) return;
+                    if (fullHeight() - vv.height < 1) return;
                     bar.__aitPinned = false;
                     bar.style.top = '';
                 }

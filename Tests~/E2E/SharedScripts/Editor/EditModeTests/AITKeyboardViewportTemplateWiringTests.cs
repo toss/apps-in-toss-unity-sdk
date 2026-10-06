@@ -139,8 +139,8 @@ public class AITKeyboardViewportTemplateWiringTests
             "focusin 에서 키보드가 아직 없을 때만 Unity 입력 바를 고정해야 합니다.");
         string place = ExtractFunction(script, "placeInputBar");
         Assert.IsTrue(
-            Regex.IsMatch(place, @"if\s*\(\s*!keyboardUp\(\)\s*\)\s*return;[^}]*style\.top\s*=\s*''", RegexOptions.Singleline),
-            "키보드가 뜬 뒤에 고정을 풀고 바를 키보드 위로 옮기지 않습니다.");
+            Regex.IsMatch(place, @"if\s*\(\s*fullHeight\(\)\s*-\s*vv\.height\s*<\s*1\s*\)\s*return;[^}]*style\.top\s*=\s*''", RegexOptions.Singleline),
+            "보이는 영역이 줄면(키보드·하드웨어 키보드 액세서리 바) 고정을 풀고 바를 그 위로 옮겨야 합니다.");
     }
 
     [Test]

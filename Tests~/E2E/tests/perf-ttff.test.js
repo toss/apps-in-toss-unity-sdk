@@ -704,6 +704,26 @@ async function waitForCachePuts(page) {
 }
 
 /**
+ * tex-stream 프로브 콘솔 줄에서 draw-check 결과를 뽑는다. 프로브가 안 붙은 빌드면 null(다른 변형은 영향 없음).
+ * 반환: { line, pass, checked, restored, restoredTotal } 또는 draw-check 줄이 없으면 { line: null, restored..., restoredTotal... }.
+ */
+function parseTexDrawCheck(consoleLines) {
+  const probeLines = consoleLines.filter((l) => l.indexOf('[HeavyTexStreamProbe]') >= 0);
+  const dc = consoleLines.find((l) => l.indexOf('[AIT-TexStreamProbe] draw-check') >= 0);
+  if (!probeLines.length && !dc) return null;
+  const lastProbe = probeLines[probeLines.length - 1] || '';
+  const pm = /restored=(\d+)\/(\d+)/.exec(dc || lastProbe);
+  const dm = dc ? /draw-check pass=(\d+)\/(\d+)/.exec(dc) : null;
+  return {
+    line: dc || null,
+    pass: dm ? Number(dm[1]) : null,
+    checked: dm ? Number(dm[2]) : null,
+    restored: pm ? Number(pm[1]) : null,
+    restoredTotal: pm ? Number(pm[2]) : null,
+  };
+}
+
+/**
  * 오디오 메모리 진단: cold 방문에서 decodeAudioData 로 풀린 PCM 과 media element 경로 수를 남긴다.
  * 외부화 클립 재수화는 interactive 이후에 일어나므로 put 대기 뒤(첫 iter)에 읽는다.
  */
@@ -719,7 +739,15 @@ async function logAudioDecode(page, label, consoleLines) {
     const limit = Math.min(Date.now() + AUDIO_REHYDRATE_WAIT_MS, testDeadlineAt - SUMMARY_RESERVE_MS);
     while (Date.now() < limit && !has(/\[AIT-UnityMem\] t=first-frame\+30s/)) await page.waitForTimeout(500);
   };
+  // tex-stream 프로브(복원 후 Unity 샘플링 draw-check)도 같은 상한 안에서 결과 줄을 기다린다. 프로브는 부팅 후 ~28초 안에 끝낸다.
+  const texProbed = consoleLines.some((l) => l.indexOf('[HeavyTexStreamProbe]') >= 0);
+  const hasDrawCheck = () => consoleLines.some((l) => l.indexOf('[AIT-TexStreamProbe] draw-check') >= 0);
+  const waitTexDrawCheck = async () => {
+    const limit = Math.min(Date.now() + AUDIO_REHYDRATE_WAIT_MS, testDeadlineAt - SUMMARY_RESERVE_MS);
+    while (Date.now() < limit && !hasDrawCheck()) await page.waitForTimeout(500);
+  };
   await Promise.all([
+    texProbed ? waitTexDrawCheck().catch(() => {}) : Promise.resolve(),
     probed
       ? page.waitForFunction(() => window.__aitAudioPcmBytes > 1048576 || window.__aitAudioMediaEls > 0,
         undefined, { timeout: AUDIO_REHYDRATE_WAIT_MS }).catch(() => {})
@@ -756,6 +784,12 @@ async function logAudioDecode(page, label, consoleLines) {
   const diag = /AIT-WasmPath|AIT-UnityMem|AIT-CodeSize|AIT-Memory\] (first-frame|텔레메트리)|AIT-GL\] 텍스처 업로드|managed brotli/;
   const rest = consoleLines.filter((l) => !diag.test(l)).slice(0, 40);
   for (const l of [...consoleLines.filter((l) => diag.test(l)), ...rest]) console.log(`    console${tag}: ${l.slice(0, 260)}`);
+  const texDrawCheck = parseTexDrawCheck(consoleLines);
+  if (texDrawCheck) {
+    // 긴 줄(텍스처별 상세)은 잘리지 않게 따로 전부 남긴다.
+    console.log(`  tex-stream draw-check${tag}: ${texDrawCheck.line || '(draw-check 줄 없음)'}`);
+  }
+  return texDrawCheck;
 }
 
 /** 외부화 BGM 재수화를 기다리는 상한(첫 iter 에서만). */
@@ -797,7 +831,7 @@ async function measureIteration(browser, url, iter, label) {
   if (iter === 0) {
     page.on('console', (m) => {
       const t = m.text();
-      if (/AIT-Streaming|AIT-Audio|HeavyAudioProbe|Decode error|AIT-GL|AIT-Pacing|AIT-Memory|AIT-DataBuf|AIT-WasmPath|AIT-UnityMem|AIT-CodeSize/.test(t)) audioConsole.push(t);
+      if (/AIT-Streaming|AIT-Audio|HeavyAudioProbe|HeavyTexStreamProbe|AIT-TexStreamProbe|Decode error|AIT-GL|AIT-Pacing|AIT-Memory|AIT-DataBuf|AIT-WasmPath|AIT-UnityMem|AIT-CodeSize/.test(t)) audioConsole.push(t);
     });
   }
 
@@ -838,7 +872,7 @@ async function measureIteration(browser, url, iter, label) {
       try {
         const warm = await withDeadline((async () => {
           // 오디오 재수화 대기는 put 대기와 겹치도록 먼저 한다(warm 시간 예산 안에 들도록).
-          if (iter === 0) { await logAudioDecode(page, label, audioConsole); audioLogged = true; }
+          if (iter === 0) { sample.texDrawCheck = await logAudioDecode(page, label, audioConsole); audioLogged = true; }
           await waitForCachePuts(page);
           await page.close();
           const warmPage = await openThrottledPage(context);
@@ -857,7 +891,7 @@ async function measureIteration(browser, url, iter, label) {
       }
     }
 
-    if (iter === 0 && !audioLogged) await logAudioDecode(page, label, audioConsole);
+    if (iter === 0 && !audioLogged) sample.texDrawCheck = await logAudioDecode(page, label, audioConsole);
 
     console.log(`  iter ${iter + 1}/${ITERATIONS}${PAIR_MODE ? ` [${label}]` : ''}: TTFF=${ttff !== null ? ttff.toFixed(0) + 'ms' : 'N/A'} ` +
       `visible=${metrics.firstVisible !== null ? metrics.firstVisible.toFixed(0) + 'ms' : 'N/A'} ` +
@@ -911,6 +945,8 @@ function summarize(samples, projectPath) {
       total: { median: median(totalValues) },
     },
     ...(MEASURE_MEMORY ? { memory: summarizeMemory(samples) } : {}),
+    // tex-stream 프로브가 붙은 빌드에서만 존재(다른 변형의 결과 JSON 스키마는 그대로).
+    ...(samples.some((s) => s.texDrawCheck) ? { texDrawCheck: samples.find((s) => s.texDrawCheck).texDrawCheck } : {}),
     samples,
   };
 }
@@ -1101,10 +1137,28 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   expect(resultA.ttffMs.values.length,
     `at least one valid TTFF sample required for A (got ${resultA.ttffMs.values.length}/${ITERATIONS}). ` +
     `Draw counts: ${samplesA.map(s => s.firstDrawCount).join(',')}`).toBeGreaterThan(0);
+  expectTexDrawCheck(resultA, LABEL_A);
   if (PAIR_MODE) {
     const bTtffValues = samplesB.map(s => s.ttffMs).filter(v => typeof v === 'number' && v > 0);
     expect(bTtffValues.length,
       `at least one valid TTFF sample required for B (got ${bTtffValues.length}/${ITERATIONS}). ` +
       `Draw counts: ${samplesB.map(s => s.firstDrawCount).join(',')}`).toBeGreaterThan(0);
+    expectTexDrawCheck(resultB, LABEL_B);
   }
 });
+
+/**
+ * tex-stream 프로브가 붙은 빌드(결과에 texDrawCheck 가 있을 때)만 검사한다: 전부 복원됐는데(restored=N/N) Unity 샘플링 draw-check 가
+ * N/N 이 아니거나 draw-check 줄이 없으면 실패. 복원이 다 안 된 실행은 복원 쪽 문제라 여기서 판정하지 않는다.
+ */
+function expectTexDrawCheck(result, label) {
+  const t = result.texDrawCheck;
+  if (!t) return;
+  if (!(t.restoredTotal > 0 && t.restored === t.restoredTotal)) {
+    console.warn(`  tex-stream draw-check[${label}] 판정 생략: restored=${t.restored}/${t.restoredTotal}`);
+    return;
+  }
+  expect(t.line, `[${label}] 전부 복원(restored=${t.restored}/${t.restoredTotal})됐는데 [AIT-TexStreamProbe] draw-check 줄이 없다`).not.toBeNull();
+  expect(t.pass,
+    `[${label}] Unity 가 복원된 텍스처를 제대로 샘플링하지 못함: ${t.line}`).toBe(t.restoredTotal);
+}

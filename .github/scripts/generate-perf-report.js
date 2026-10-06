@@ -250,6 +250,25 @@ function generateReport(data, meta) {
     md += "\n";
   }
 
+  // ===== tex-stream draw-check (프로브가 붙은 빌드만; 없으면 섹션 생략) =====
+  const dcRows = [];
+  for (const v of UNITY_VERSIONS) {
+    const cur = data[v]?.current;
+    for (const [label, r] of [[cur?.pairing?.labelA ?? "현재", cur], [cur?.pairing?.labelB ?? "B", data[v]?.pairB]]) {
+      if (r?.texDrawCheck) dcRows.push([v, label, r.texDrawCheck]);
+    }
+  }
+  if (dcRows.length) {
+    md += "### 🖼️ 스트리밍 텍스처 draw-check\n\n";
+    md += "> 복원 뒤 Unity 가 스왑된 텍스처를 Graphics.Blit 로 실제 샘플링해 색·방향을 확인한 결과.\n\n";
+    md += "| Unity | 빌드 | draw-check | 복원 |\n|:------|:-----|:-----------|:-----|\n";
+    for (const [v, label, t] of dcRows) {
+      const res = t.pass == null ? "⚠️ 줄 없음" : `${t.pass === t.checked ? "✅" : "❌"} ${t.pass}/${t.checked}`;
+      md += `| ${v} | ${label} | ${res} | ${t.restored ?? "?"}/${t.restoredTotal ?? "?"} |\n`;
+    }
+    md += "\n";
+  }
+
   // ===== on-wire 바이트 표 =====
   md += "### 📦 On-wire 전송 바이트 (transferSize median)\n\n";
   md += "| Unity | wasm | data | total | Δ total vs main |\n";

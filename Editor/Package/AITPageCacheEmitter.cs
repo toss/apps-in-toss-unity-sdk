@@ -802,6 +802,15 @@ namespace AppsInToss.Editor.Package
             // only-if-cached 미스(WebKit 은 fetch 응답을 HTTP 캐시에 안 남기는 경우가 있다) 폴백: tier 0 이고 화면이 보일 때만
             // 네트워크 Response 를 그대로 put 한다(no-cache = 재검증, 304 면 캐시 본문). JS 버퍼링·clone·arrayBuffer·직접 만든 스트림 본문은 쓰지 않는다.
             // 호출은 drainDeferred 가 파일 하나씩 순차로 하므로 동시에 둘 이상 받지 않는다.
+            // fetch 를 Proxy 로 감싸는 페이지 스크립트(vConsole Network 패널 등)가 있으면 응답도 Proxy 라서 WebKit Cache.put 이
+            // 'must be an instance of FetchResponse' 로 거부한다. 본문을 읽기 전에 거부되므로 같은 네이티브 body 스트림을 새 Response 로
+            // 옮겨 한 번 더 put 한다(clone/tee·JS 버퍼링 없음).
+            function putResponse(c, url, r) {
+                return Promise.resolve().then(function () { return c.put(url, r); }).catch(function (e) {
+                    if (r.bodyUsed || !r.body) { throw e; }
+                    return c.put(url, new Response(r.body, { status: r.status, statusText: r.statusText, headers: r.headers }));
+                });
+            }
             function networkPut(url) {
                 var info = window.__aitCacheDeferred;
                 var t = 0;
@@ -812,7 +821,7 @@ namespace AppsInToss.Editor.Package
                 try { console.log('[AIT-PageCache] 지연 put: HTTP 캐시 miss → 네트워크로 저장 ' + url.split('/').pop().split('?')[0]); } catch (e) {}
                 return priorFetch(url, { cache: 'no-cache', mode: 'same-origin' }).then(function (r) {
                     if (!r || !r.ok || r.status !== 200 || r.body === undefined) { info.miss.push(url); return; }
-                    return getCache().then(function (c) { return c.put(url, r); }).then(function () {
+                    return getCache().then(function (c) { return putResponse(c, url, r); }).then(function () {
                         info.put.push(url);
                         info.net.push(url);
                         window.__aitCacheStats.puts.push(url);
@@ -832,7 +841,7 @@ namespace AppsInToss.Editor.Package
                 }).then(function (r) {
                     // 미스는 네트워크 오류(reject)이거나 비정상 상태(504 등)로 온다. 어느 쪽이든 put 하지 않는다.
                     if (!r || !r.ok || r.status !== 200 || r.body === undefined) { return networkPut(url); }
-                    return getCache().then(function (c) { return c.put(url, r); }).then(function () {
+                    return getCache().then(function (c) { return putResponse(c, url, r); }).then(function () {
                         info.put.push(url);
                         window.__aitCacheStats.puts.push(url);
                         markPopulated(url);

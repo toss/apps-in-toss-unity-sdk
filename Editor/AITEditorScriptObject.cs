@@ -737,6 +737,11 @@ namespace AppsInToss
                  "폰트 번들 로드 후 Unload(false) 로 번들 메모리를 해제합니다. TMP 동적 폴백에서 tofu 위험이 있어 기본 끔입니다.")]
         public int fontStreamingUnloadBundle = -1;
 
+        [Tooltip("텍스처 스트리밍 브라우저 디코드: -1 = 자동(WebGL 2 에서 활성), 0 = 비활성, 1 = 활성. " +
+                 "PNG/JPG 를 브라우저(fetch + createImageBitmap)에서 풀어 GL 텍스처에 직접 올립니다. 압축 바이트와 디코드 버퍼가 wasm 힙에 들어오지 않아 힙이 자라지 않습니다. " +
+                 "원본이 non-readable 인 텍스처에만 적용되며, 실패하면 항목별로 LoadImage 경로로 폴백합니다.")]
+        public int textureStreamBrowserDecode = -1;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -1284,6 +1289,12 @@ namespace AppsInToss
         public static bool GetDefaultTextureStreamKeepGpuFormat()
         {
             return false;
+        }
+
+        /// <summary>텍스처 스트리밍 브라우저 디코드 자동 실효값: true. 런타임이 WebGL 2 + createImageBitmap 을 확인하고, 아니면 LoadImage 로 폴백한다.</summary>
+        public static bool GetDefaultTextureStreamBrowserDecode()
+        {
+            return true;
         }
 
         /// <summary>폰트 번들 언로드 자동 실효값: false. TMP 동적 폴백 tofu 위험이 있어 opt-in.</summary>

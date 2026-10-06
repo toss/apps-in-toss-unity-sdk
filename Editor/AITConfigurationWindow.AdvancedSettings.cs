@@ -212,6 +212,11 @@ namespace AppsInToss.Editor
                 "ASTC 원본 블록을 스트리밍해 LoadRawTextureData 로 복원합니다. 미지원 시 PNG 로 폴백합니다. 실기기 검증 전이라 자동은 비활성입니다.",
                 AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat());
 
+            config.textureStreamBrowserDecode = DrawPerfTriState(
+                config.textureStreamBrowserDecode, "텍스처 브라우저 디코드",
+                "스트리밍 텍스처의 PNG/JPG 를 브라우저에서 디코드해 GL 텍스처에 직접 올립니다(wasm 힙 증가 없음). non-readable 텍스처만 대상이며 실패 시 LoadImage 로 폴백합니다. 자동은 활성입니다.",
+                AITDefaultSettings.GetDefaultTextureStreamBrowserDecode());
+
             config.fontStreamingUnloadBundle = DrawPerfTriState(
                 config.fontStreamingUnloadBundle, "폰트 번들 언로드",
                 "폰트 번들 로드 후 Unload(false) 로 번들 메모리를 해제합니다. TMP 동적 폴백 tofu 위험이 있어 자동은 비활성입니다.",

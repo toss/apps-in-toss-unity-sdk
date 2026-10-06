@@ -30,6 +30,9 @@ namespace AppsInToss.Editor
         /// <summary>브라우저 디코드를 환경 변수로 덮어쓰는 이름. "1"=강제 켬, "0"=끔, 그 외/미설정=설정값.</summary>
         internal const string BrowserDecodeEnvVar = "AIT_TEXTURE_STREAM_BROWSER_DECODE";
 
+        /// <summary>저사양 티어 다운스케일을 환경 변수로 덮어쓰는 이름. "1"=강제 켬, "0"=끔, 그 외/미설정=설정값.</summary>
+        internal const string LowTierDownscaleEnvVar = "AIT_TEXTURE_STREAM_LOW_TIER_DOWNSCALE";
+
         /// <summary>raw 스트림 사본 확장자(점 포함). 내용은 mip 체인 전체를 이어 붙인 GPU 블록 바이트.</summary>
         internal const string RawExtension = ".astc";
 
@@ -267,11 +270,14 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// 작은 스텁(non-readable 압축)을 쓸지. 브라우저 디코드가 켜져 있고, 원본이 non-readable 이며(런타임 브라우저 경로의 대상과 같다),
-        /// raw(GPU 포맷 보존)로 가지 않을 때만. readable 원본/raw 는 기존 스텁(readable RGBA32 또는 원본 포맷)을 쓴다.
+        /// readable 원본은 기존 스텁(readable RGBA32)을 쓴다. raw(GPU 포맷 보존)도 브라우저 디코드가 켜져 있으면 작은 스텁이다 —
+        /// 런타임이 raw-swap(원본 블록을 새 GL 텍스처로 교체)을 하므로 스텁이 raw 포맷과 같을 필요가 없다. 브라우저 디코드가 꺼지면
+        /// raw 는 원본 포맷의 readable 스텁에 LoadRawTextureData 로 올리는 기존 경로를 쓴다.
+        /// <paramref name="rawPath"/> 는 호환을 위해 남긴 인자로 판정에 쓰지 않는다.
         /// </summary>
         internal static bool UseCompactStub(bool browserDecode, bool originalReadable, bool rawPath)
         {
-            return browserDecode && !originalReadable && !rawPath;
+            return browserDecode && !originalReadable;
         }
 
         /// <summary>외부화로 늘어나는 메모리(스텁 RGBA32 − 원본 GPU). 음수/0 이면 메모리 중립 이하.</summary>
@@ -471,7 +477,17 @@ namespace AppsInToss.Editor
         /// <summary>매니페스트 전체 JSON. browserDecode=true 면 최상위에 <c>"browserDecode":1</c> 을 쓴다(꺼짐이면 쓰지 않아 구 런타임/매니페스트와 호환).</summary>
         internal static string BuildManifestJson(int maxConcurrent, IList<string> entryJsons, bool browserDecode)
         {
+            return BuildManifestJson(maxConcurrent, entryJsons, browserDecode, false);
+        }
+
+        /// <summary>
+        /// 매니페스트 전체 JSON. lowTierDownscale=true 면 <c>"lowTierDownscale":1</c> 도 쓴다(런타임이 티어 1 이상에서 디코드 크기를 줄인다).
+        /// 꺼짐이면 쓰지 않는다 — 구 매니페스트/런타임과 같은 동작(다운스케일 없음)이 옵트아웃이다.
+        /// </summary>
+        internal static string BuildManifestJson(int maxConcurrent, IList<string> entryJsons, bool browserDecode, bool lowTierDownscale)
+        {
             return "{\"maxConcurrent\":" + maxConcurrent + (browserDecode ? ",\"browserDecode\":1" : string.Empty)
+                + (lowTierDownscale ? ",\"lowTierDownscale\":1" : string.Empty)
                 + ",\"entries\":[" + string.Join(",", entryJsons) + "]}";
         }
 

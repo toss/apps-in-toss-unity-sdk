@@ -8,10 +8,10 @@
 // 부팅이 메모리로 죽은 기기를 다음 부팅에서 저메모리 모드로 올리는 정책의 C# 쪽 소비자.
 // 티어는 템플릿의 ait-mem.js 가 부팅 사망 횟수(localStorage 부팅 마커, 10분 창)와 24시간 만료 저장값으로 정한다.
 //   tier 0: 정상 기기. 이 파일은 아무것도 하지 않는다.
-//   tier 1: 부팅 사망 1회. 스트리밍 동시성을 1 로 제한한다(AITLowMemoryTier.ClampStreamingConcurrency 를 텍스처 헬퍼가 읽는다).
-//   tier 2: 같은 티어로 또 죽음. 위에 더해 QualitySettings 전역 텍스처 mip 제한을 1 로 올린다
+//   tier 1: 부팅 사망 1회. 스트리밍 동시성을 1 로 제한하고, QualitySettings 전역 텍스처 mip 제한을 1 로 올린다
 //           (2022.2+ globalTextureMipmapLimit, 2021.3 masterTextureLimit). mip 이 있는 텍스처의 GPU·업로드 일시 메모리가 약 75% 줄고,
-//           mip 이 없는 UI 텍스처는 영향이 없다.
+//           mip 이 없는 UI 텍스처는 영향이 없다. 동시성 제한만으로는 첫 씬 텍스처 업로드 사망을 못 막아 tier 1 에도 건다.
+//   tier 2: 같은 티어로 또 죽음. mip 제한을 2 로 더 올린다(약 94% 감소).
 // mip 제한은 BeforeSplashScreen 에서 건다 — 첫 씬이 원본 크기로 업로드된 뒤에 걸면 재업로드가 생긴다.
 // (게임이 이후 QualitySettings.SetQualityLevel 을 부르면 품질 레벨의 mip 설정으로 덮일 수 있다. 그 경우 이 제한은 풀린다.)
 //
@@ -29,8 +29,11 @@ namespace AppsInToss
     {
         internal const string LogTag = "[AIT-LowMem]";
 
-        /// <summary>tier 2 에서 거는 전역 텍스처 mip 제한(0 = 원본 해상도, 1 = 한 단계 낮춤).</summary>
-        internal const int Tier2MipmapLimit = 1;
+        /// <summary>tier 1 에서 거는 전역 텍스처 mip 제한(0 = 원본 해상도, 1 = 한 단계 낮춤).</summary>
+        internal const int Tier1MipmapLimit = 1;
+
+        /// <summary>tier 2 에서 거는 전역 텍스처 mip 제한(두 단계 낮춤).</summary>
+        internal const int Tier2MipmapLimit = 2;
 
         /// <summary>스트리밍 동시성 상한이 없을 때(tier 0)의 값.</summary>
         internal const int Unlimited = int.MaxValue;
@@ -60,10 +63,11 @@ namespace AppsInToss
             }
         }
 
-        /// <summary>티어별 전역 텍스처 mip 제한. tier 2 만 1, 나머지는 0.</summary>
+        /// <summary>티어별 전역 텍스처 mip 제한. tier 0 은 0, tier 1 은 1, tier 2 이상은 2.</summary>
         internal static int MipmapLimitFor(int tier)
         {
-            return tier >= 2 ? Tier2MipmapLimit : 0;
+            if (tier <= 0) return 0;
+            return tier >= 2 ? Tier2MipmapLimit : Tier1MipmapLimit;
         }
 
         /// <summary>티어별 스트리밍 동시성 상한. tier 1 이상이면 1, tier 0 이면 제한 없음.</summary>
@@ -92,9 +96,9 @@ namespace AppsInToss
         internal static void ApplyMipmapLimit(int limit)
         {
 #if UNITY_2022_2_OR_NEWER
-            QualitySettings.globalTextureMipmapLimit = limit;
+            QualitySettings.globalTextureMipmapLimit = Mathf.Clamp(limit, 0, 3);
 #else
-            QualitySettings.masterTextureLimit = limit;
+            QualitySettings.masterTextureLimit = Mathf.Clamp(limit, 0, 3);
 #endif
         }
 

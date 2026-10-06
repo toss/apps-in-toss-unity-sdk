@@ -677,8 +677,8 @@ test.describe('메모리 텔레메트리', () => {
     expect(logs.filter((l) => /first-frame t=/.test(l)).length).toBe(1);
   });
 
-  test('부팅 마커: stable(60초 — 여기서는 타이머를 줄여 검증)에 닿으면 사망 기록과 end 를 비운다', async ({ page }) => {
-    const scale = "(function(){var st=window.setTimeout;window.setTimeout=function(f,d){return st.call(window,f,d===60000?40:d)};})();";
+  test('부팅 마커: stable(15초 — 여기서는 타이머를 줄여 검증)에 닿으면 사망 기록과 end 를 비운다', async ({ page }) => {
+    const scale = "(function(){var st=window.setTimeout;window.setTimeout=function(f,d){return st.call(window,f,d===15000?40:d)};})();";
     await openHarness(page, { memoryTelemetry: true }, { pacing: false, virtualClock: false,
       preScript: scale + BOOT_SEED_SCRIPT, query: bootSeed({ stage: 'boot-start', fails: [60000] }) });
     expect((await memState(page)).fails).toBe(2);

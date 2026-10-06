@@ -18,7 +18,7 @@
  *      백그라운드(hidden)에서 죽은 세션은 crashCount 에 넣지 않고 bgKillCount 로 따로 센다(OS 가 숨은 탭을 정리한 것일 수 있다).
  *      한 세션이 STABLE_MS(60초) 넘게 살아 있으면 저장된 연속 횟수는 0 으로 되돌린다(그 세션의 crashCount 값은 부팅 때 값 그대로).
  *  - window.AITMemory.bootFailCount: number
- *      "부팅 중 사망" 횟수. localStorage '__ait_boot_v1' 마커(stage: boot-start → first-frame → stable)가 first-frame 뒤 60초(stable)에
+ *      "부팅 중 사망" 횟수. localStorage '__ait_boot_v1' 마커(stage: boot-start → first-frame → stable)가 first-frame 뒤 15초(stable, __AIT_PERF.bootStableMs 로 변경)에
  *      닿기 전에 pagehide/hidden 신호 없이 끝난 부팅의 최근 10분(BOOT_FAIL_WINDOW_MS) 이내 개수. sessionStorage crashCount 와 별개로 센다
  *      (앱이 통째로 죽으면 sessionStorage 가 같이 사라지는 WebView 가 있다). stable 에 닿으면 기록을 비운다.
  *      pagehide(exit)·hidden(bg) 로 끝난 부팅은 사망으로 세지 않는다. localStorage 를 못 쓰면 항상 0.
@@ -31,7 +31,7 @@
  *      전이 때 window 'ait:firstframe' 이벤트를 1회 발행한다(페이지 캐시 지연 put 이 "첫 프레임 + 10초"를 재는 기준. 이 파일이 꺼져 있으면(memoryTelemetry=false)
  *      그쪽이 AITMemory.bootStage / window.unityInstance 폴링으로 대신한다).
  *  - lowMemTier 소비자: 페이지 캐시 put 생략(Chromium 포함 tier>=1), early-fetch 의 data 선시작 생략과 ait-databuf.js 의 data 요청 보류(tier>=1),
- *      ait-gl.js DPR 상한(tier 1 → 1.5, tier 2 → 1.0), C# AITLowMemoryTier(tier 2 → 텍스처 mip 제한 1, tier>=1 → 스트리밍 동시성 1).
+ *      ait-gl.js DPR 상한(tier 1 → 1.5, tier 2 → 1.0), C# AITLowMemoryTier(tier 1 → 텍스처 mip 제한 1, tier 2 → mip 제한 2, tier>=1 → 스트리밍 동시성 1).
  *      페이지 캐시/early-fetch 인라인 스크립트는 이 파일보다 먼저 실행되므로 같은 규칙을 window.__aitPeekLowTier 로 동기 계산한다
  *      (AITPageCacheEmitter.PeekLowTierJs — 규칙을 바꾸면 양쪽을 함께 고친다).
  *  - 로그 태그: [AIT-Memory] 부팅 마커 줄(부팅 시 1회, 첫 프레임 1회).
@@ -53,7 +53,8 @@
     var enabled = flags.memoryTelemetry !== false;
 
     var STORAGE_KEY = '__ait_mem_v1';
-    var STABLE_MS = 60000;
+    var STABLE_MS = 60000;      // sessionStorage crashCount 리셋용(기존 값 유지)
+    var BOOT_STABLE_MS = (Number(flags.bootStableMs) > 0 ? Number(flags.bootStableMs) : 15000);
     var MAX_EVENTS = 128;
     var BRIDGE_GROW_MIN_INTERVAL_MS = 1000;
     var MB = 1048576;
@@ -218,7 +219,7 @@
                 bootState.fails = [];
                 mem.stableReached = true;
                 writeBoot();
-            }, STABLE_MS);
+            }, BOOT_STABLE_MS);
         } catch (e) { /* 타이머 실패 — stable 에 못 닿을 뿐 */ }
         return true;
     };

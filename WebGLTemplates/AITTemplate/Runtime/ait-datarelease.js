@@ -17,7 +17,7 @@
  *     첫 프레임(rAF, 최대 1.5초 대기) 뒤에 release 한다. 읽기가 한 번 더 일어나면(누적 > 크기) 해제를 영구 취소한다.
  *  3) release: metadata 뒤에 놓인 파일(default resources, 1.6~3.5MB)만 독립 버퍼로 복사해 옮기고, metadata 노드의 contents 를 비우고,
  *     부모 버퍼를 metadata 시작 오프셋으로 resize(shrink)한다. 순수 이득은 metadata 크기만큼이다(옮긴 파일은 새 버퍼가 되므로).
- *     shrink 는 물리 페이지를 돌려준다(Chromium macOS 실측). iOS(JSC)는 실기기 확인 전이라 기본 꺼짐(opt-in)이다.
+ *     shrink 는 물리 페이지를 돌려준다(Chromium macOS 실측). iOS(JSC)는 시뮬레이터 WebKit 에서 해제·생존을 확인했고 기본 켜짐이다(실기기 미확인).
  *
  * === 크로스 파일 계약 ===
  *  - window.__AIT_PERF: releaseConsumedData(true 일 때만 동작), dataRawSize(>0), unityweb(true 면 끔). 객체/키가 없으면 꺼짐(fail-open).

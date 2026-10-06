@@ -694,9 +694,9 @@ namespace AppsInToss
                  "측정에 실패하거나 Decompression Fallback(.unityweb) 이면 아무것도 하지 않습니다.")]
         public int exactDataBody = -1;
 
-        [Tooltip("소비한 data 버퍼 해제: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+        [Tooltip("소비한 data 버퍼 해제: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
                  "global-metadata.dat 처럼 한 번 읽고 다시 안 쓰는 data 구간을 읽은 뒤 해제해 정상 상태 메모리를 줄입니다. " +
-                 "Unity 버전별 FS 동작 검증 전이라 자동은 꺼 둡니다(Chrome 111 / iOS 16.4 이상 전용).")]
+                 "Chrome 111 / iOS 16.4 미만이면 아무것도 하지 않습니다.")]
         public int releaseConsumedData = -1;
 
         [Tooltip("긴 오디오 강제 압축 재생(framework 패치): -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
@@ -1266,10 +1266,13 @@ namespace AppsInToss
             return true;
         }
 
-        /// <summary>소비한 data 버퍼 해제(metadata 등) 자동 실효값: false. Unity 버전별 FS 동작 검증 전까지 opt-in.</summary>
+        /// <summary>
+        /// 소비한 data 버퍼 해제(metadata 등) 자동 실효값: true. Chromium(6000.0/6000.3/2021.3 쌍 측정)과 iOS 시뮬레이터 WebKit 에서
+        /// 해제·생존을 확인했다. 미지원 엔진(resizable ArrayBuffer 없음)·재읽기·mmap 은 런타임이 알아서 stock 으로 남는다.
+        /// </summary>
         public static bool GetDefaultReleaseConsumedData()
         {
-            return false;
+            return true;
         }
 
         /// <summary>저사양 기기 티어 판별 자동 실효값: true. 판별·진단만 켜며 게임 동작은 바꾸지 않는다.</summary>

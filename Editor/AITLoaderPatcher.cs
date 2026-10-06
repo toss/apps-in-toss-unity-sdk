@@ -17,7 +17,7 @@
 //  - 두 편집은 한 그룹이다. 각 앵커가 정확히 1회 일치할 때만 둘 다 적용하고, 아니면 로더를 그대로 둔다(경고만 남긴다).
 //  - 멱등: 이미 훅 이름이 있으면 아무것도 하지 않는다.
 //  - 결과가 `node --check` 를 통과할 때만 채택한다. Node 가 없으면 패치하지 않는다. 어떤 실패도 예외를 밖으로 던지지 않는다(fail-open).
-//  - releaseConsumedData 가 꺼져 있거나(자동 = 꺼짐), exactDataBody 가 꺼져 있으면(.data 크기가 정확하지 않으면 훅이 아무것도 못 한다) 건드리지 않는다.
+//  - releaseConsumedData 가 꺼져 있거나(자동 = 켜짐), exactDataBody 가 꺼져 있으면(.data 크기가 정확하지 않으면 훅이 아무것도 못 한다) 건드리지 않는다.
 //  - Decompression Fallback(.unityweb)은 호출부가 거르고, 여기서도 .unityweb 가 있으면 건너뛴다.
 //  - 패치한 파일은 AITPatchedFileNaming 의 ".aitpN-<hash>" 이름으로 옮기고 옛 이름 → 새 이름을 renames 에 기록한다.
 //  - Unity 원본 소스 텍스트를 저장소에 두지 않는다(공개 저장소). 앵커는 매칭에 필요한 짧은 패턴만 쓴다.

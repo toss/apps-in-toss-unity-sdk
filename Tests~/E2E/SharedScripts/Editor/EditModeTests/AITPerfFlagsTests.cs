@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------
 // AITPerfFlagsTests.cs - 모바일 런타임 최적화 플래그의 tri-state 해석과 JSON 직렬화 검증
 //   · 신규 필드 선언 기본값(-1 자동, audioForceCompressedMinSeconds 10)
-//   · 자동(-1) 실효값: adaptiveFrameRate / releaseConsumedData / audioForceCompressed / antialias drop 은 꺼짐, 나머지는 켜짐
+//   · 자동(-1) 실효값: adaptiveFrameRate / audioForceCompressed / antialias drop 은 꺼짐, 나머지는 켜짐
 //   · 명시 0/1 이 자동을 이김
 //   · __AIT_PERF JSON 키 계약과 AITJsStringEscaper 왕복
 //   · WebGLBuildCopier 패치 헬퍼(ResolveRenamed, IsUnitywebBuild, MeasureDataRawSizeIfEnabled)
@@ -73,7 +73,7 @@ public class AITPerfFlagsTests
         Assert.IsTrue(AITPerfFlags.EffectiveMobileLifecycle(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveMemoryTelemetry(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveExactDataBody(_config));
-        Assert.IsFalse(AITPerfFlags.EffectiveReleaseConsumedData(_config), "자동: releaseConsumedData 는 꺼짐");
+        Assert.IsTrue(AITPerfFlags.EffectiveReleaseConsumedData(_config), "자동: releaseConsumedData 는 켜짐");
         Assert.IsFalse(AITPerfFlags.EffectiveAudioForceCompressed(_config), "자동: 강제 압축 재생은 꺼짐");
         Assert.AreEqual(10f, AITPerfFlags.EffectiveAudioForceCompressedMinSeconds(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveLowMemoryTier(_config), "자동: 저사양 티어 판별은 켜짐");
@@ -187,7 +187,7 @@ public class AITPerfFlagsTests
                      "\"memoryTelemetry\":true",
                      "\"exactDataBody\":true",
                      "\"dataRawSize\":-1",
-                     "\"releaseConsumedData\":false",
+                     "\"releaseConsumedData\":true",
                      "\"audioForceCompressed\":false",
                      "\"audioForceCompressedMinSeconds\":10",
                      "\"unityweb\":false",

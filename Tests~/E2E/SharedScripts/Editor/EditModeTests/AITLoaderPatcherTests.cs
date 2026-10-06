@@ -5,7 +5,7 @@
 // (실제 3개 Unity 버전 loader 로는 로컬에서 따로 확인했다).
 //   · 순수 패치 엔진(PatchText): 두 앵커가 정확히 1회일 때만 둘 다 적용, 변수 이름이 달라도(2021.3 / 6000.x 모양) 적용,
 //     FS_createDataFile 이 buffer 할당보다 앞에 있어도 적용, 0회/2회/한쪽만 어긋나면 통째로 건너뜀, 멱등, CRLF 보존
-//   · 파일 파이프라인(Apply): 자동(-1)/exactDataBody 꺼짐/.unityweb/이미 패치된 이름은 건드리지 않고,
+//   · 파일 파이프라인(Apply): 명시 꺼짐/exactDataBody 꺼짐/.unityweb/이미 패치된 이름은 건드리지 않고,
 //     켜져 있으면 Node 로 --check 를 통과한 뒤 ".aitpN-<hash>" 이름으로 옮긴다(Node 없으면 건너뜀)
 //   · 템플릿 계약: ait-datarelease.js 가 로더 패치가 부르는 훅을 정의하고, 읽는 __AIT_PERF 키가 AITPerfFlags 와 일치하며,
 //     index.html 에서 ait-databuf.js 다음·Unity 로더 앞에 정확히 한 번 로드된다
@@ -187,17 +187,17 @@ public class AITLoaderPatcherTests
     // ─────────────────────────── 파일 파이프라인 ───────────────────────────
 
     [Test]
-    public void Apply_AutoSetting_TouchesNothing()
+    public void Apply_AutoSetting_PatchesLikeEnabled()
     {
+        RequireNode();
         string js = Path.Combine(_tempDir, "abc.loader.js");
         File.WriteAllText(js, Synth6000);
         var renames = new Dictionary<string, string>();
 
         int n = AITLoaderPatcher.Apply(_tempDir, NewConfig(-1, -1), renames);
 
-        Assert.AreEqual(0, n);
-        Assert.IsEmpty(renames);
-        Assert.AreEqual(Synth6000, File.ReadAllText(js));
+        Assert.AreEqual(1, n, "자동(-1)은 켜짐이다");
+        Assert.IsTrue(renames.ContainsKey("abc.loader.js"));
     }
 
     [Test]

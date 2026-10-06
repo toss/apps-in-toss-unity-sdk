@@ -27,7 +27,32 @@ run-name: "Memlimit${{ inputs.run_id && format(' [perf run #{0}]', inputs.run_id
 #   gh api -X POST repos/toss/apps-in-toss-unity-sdk/actions/workflows/memlimit.yml/dispatches \
 #     -f ref=main -f 'inputs[run_id]=<perf run id>' -f 'inputs[versions]=6000.0,2021.3'
 
+# workflow_call: perf.yml 의 memlimit 잡이 호출한다(`memlimit` dispatch 입력). 이 워크플로가 아직 기본 브랜치에
+#  없어 직접 workflow_dispatch 할 수 없는 동안의 실행 경로다. 호출 모드에서 run_id 가 비면 호출자(perf) run 자신의
+#  heavy 아티팩트를 쓴다(같은 run 안에서 build-heavy 가 올린 ait-build-heavy-macos-<버전>).
+#
 on:
+  workflow_call:
+    inputs:
+      run_id:
+        description: 'heavy 아티팩트를 받을 perf.yml run id. 비우면 호출자 run(github.run_id)'
+        type: string
+        default: ''
+      versions:
+        type: string
+        default: '6000.0,2021.3'
+      start_mb:
+        type: string
+        default: '704'
+      step_mb:
+        type: string
+        default: '32'
+      max_levels:
+        type: string
+        default: '12'
+      baseline_mb:
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       run_id:
@@ -88,17 +113,18 @@ jobs:
           IN_START: ${{ inputs.start_mb }}
           IN_STEP: ${{ inputs.step_mb }}
           IN_BASELINE: ${{ inputs.baseline_mb }}
+          IN_MAX_LEVELS: ${{ inputs.max_levels }}
           # 브랜치 이름은 신뢰 불가 입력 → env 로만 전달
           HEAD_REF: ${{ github.head_ref }}
         run: |
           VERSIONS="${IN_VERSIONS:-6000.0,2021.3}"
           START="${IN_START:-704}"
           STEP="${IN_STEP:-32}"
-          MAX_LEVELS=12
+          MAX_LEVELS="${IN_MAX_LEVELS:-12}"
           if [ "$EVENT_NAME" = "pull_request" ]; then
             VERSIONS="6000.0"; START=640; MAX_LEVELS=6
           fi
-          for v in "$START" "$STEP" "$IN_BASELINE" "$IN_RUN_ID"; do
+          for v in "$START" "$STEP" "$IN_BASELINE" "$IN_RUN_ID" "$IN_MAX_LEVELS"; do
             [ -z "$v" ] && continue
             case "$v" in *[!0-9]*) echo "::error::숫자 입력이 아닙니다: '$v'"; exit 1;; esac
           done
@@ -108,8 +134,12 @@ jobs:
           RUN_ID="$IN_RUN_ID"
           if [ -z "$RUN_ID" ]; then
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-              echo "::error::workflow_dispatch 는 run_id 가 필요합니다"; exit 1
+              # 직접 dispatch 는 run_id 가 required 라 여기 올 수 없다. workflow_call(perf.yml 호출)에서는
+              # github.event_name 이 호출자 이벤트(workflow_dispatch)이고 github.run_id 가 호출자 run 이다.
+              RUN_ID="$GITHUB_RUN_ID"
             fi
+          fi
+          if [ -z "$RUN_ID" ]; then
             latest() { # $1 = 브랜치(빈 값이면 전체)
               gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/perf.yml/runs" \
                 -f status=success -f per_page=1 ${1:+-f branch="$1"} --jq '.workflow_runs[0].id // empty'

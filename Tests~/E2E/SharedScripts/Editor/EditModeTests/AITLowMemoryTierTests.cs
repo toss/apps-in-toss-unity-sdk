@@ -13,10 +13,10 @@ using AppsInToss;
 public class AITLowMemoryTierTests
 {
     [TestCase(0, 0)]
-    [TestCase(1, 0)]
-    [TestCase(2, 1)]
-    [TestCase(3, 1)]
-    public void MipmapLimitFor_OnlyTier2Lowers(int tier, int expected)
+    [TestCase(1, 1)]
+    [TestCase(2, 2)]
+    [TestCase(3, 2)]
+    public void MipmapLimitFor_Tier1Lowers1_Tier2Lowers2(int tier, int expected)
     {
         Assert.AreEqual(expected, AITLowMemoryTier.MipmapLimitFor(tier));
     }

@@ -317,27 +317,69 @@ for (const engine of ENGINES) {
     });
 
     // ------------------------------------------------------------------
-    test('HTTP 캐시 미스(no-store): put 을 생략하고 네트워크 요청이 늘지 않는다(only-if-cached 미스 = 0 요청)', async () => {
+    test('HTTP 캐시 미스(no-store): 첫 프레임+지연 뒤에만 네트워크로 한 파일씩 받아 저장한다(wasm 제외, 부팅 중 요청 증가 0)', async () => {
       server.state.noStore = true;
       const token = newToken();
       const url = registerPage(server, token, {
-        perf: { pageCacheDeferDelayMs: 200, pageCacheDeferredPut: 1 },
+        perf: { pageCacheDeferDelayMs: 300, pageCacheDeferredPut: 1 },
         head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
       });
       const { context, page } = await newPage();
+      const logs = [];
+      page.on('console', (m) => { const t = m.text(); if (/\[AIT-PageCache\]/.test(t)) logs.push(t); });
       try {
         await page.goto(url);
         await page.evaluate(() => window['__boot']());
         expect(server.hits.length, '부팅 fetch 3건').toBe(3);
+        // 첫 프레임 신호 전에는 네트워크 폴백도 없다.
+        await page.waitForTimeout(700);
+        expect(server.hits.length, '첫 프레임 전 추가 요청 없음').toBe(3);
         await fireFirstFrame(page);
+        await page.waitForTimeout(100);
+        expect(server.hits.length, '지연(300ms) 이전에는 추가 요청 없음').toBe(3);
         await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
         const info = await page.evaluate(() => JSON.parse(JSON.stringify(window['__aitCacheDeferred'])));
-        expect(info.put, 'no-store 응답은 HTTP 캐시에 없으므로 put 없음').toEqual([]);
-        expect(info.miss.length).toBe(2);
         expect(info.errors).toEqual([]);
-        expect(server.hits.length, 'only-if-cached 미스는 네트워크를 타지 않는다').toBe(3);
+        expect(info.net.length, 'data/framework 2건만 네트워크 저장').toBe(2);
+        expect(info.put.length).toBe(2);
+        expect(info.miss).toEqual([]);
+        expect(info.net.some((/** @type {string} */ u) => u.endsWith('.wasm'))).toBe(false);
+        expect(server.hits.length, '네트워크 저장은 파일당 정확히 1건씩').toBe(5);
+        expect(server.count(`${token}.data`)).toBe(2);
+        expect(server.count(`${token}.framework.js`)).toBe(2);
+        expect(server.count(`${token}.wasm`)).toBe(1);
         const puts = await page.evaluate(() => window['__spy'].puts.length);
-        expect(puts).toBe(0);
+        expect(puts).toBe(2);
+        expect(logs.some((l) => /HTTP 캐시 miss → 네트워크로 저장 /.test(l))).toBe(true);
+        expect(logs.some((l) => /지연 put 완료: put=2 net=2 miss=0/.test(l))).toBe(true);
+        const keys = await page.evaluate(async () => {
+          const out = [];
+          for (const n of await caches.keys()) { for (const r of await (await caches.open(n)).keys()) out.push(r.url); }
+          return out;
+        });
+        expect(keys.length).toBe(2);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    test('HTTP 캐시 미스(no-store) + tier>=1: 네트워크 저장도 하지 않는다(요청 증가 0)', async () => {
+      server.state.noStore = true;
+      const token = newToken();
+      const url = registerPage(server, token, {
+        perf: { pageCacheDeferDelayMs: 100, pageCacheDeferredPut: 1 },
+        head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
+      });
+      const { context, page } = await newPage({ seed: tierSeed(1) });
+      try {
+        await page.goto(url);
+        await page.evaluate(() => window['__boot']());
+        await fireFirstFrame(page);
+        await page.waitForTimeout(800);
+        expect(server.hits.length, 'tier>=1 은 첫 프레임 뒤에도 추가 요청 없음').toBe(3);
+        expect(await page.evaluate(() => window['__spy'].puts.length)).toBe(0);
+        expect(await page.evaluate(() => window['__aitCacheDeferred'].net.length)).toBe(0);
       } finally {
         await context.close();
       }

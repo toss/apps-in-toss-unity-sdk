@@ -648,7 +648,7 @@ namespace AppsInToss.Editor
                 // 저사양 티어에서는 런타임이 이 값과 무관하게 1 로 강제한다.
                 int maxConcurrent = AITTextureStreamPlanner.ResolveMaxConcurrent(config.textureStreamingMaxConcurrent);
                 File.WriteAllText(Path.Combine(projectRoot, StreamRootAssets, "manifest.json"),
-                    AITTextureStreamPlanner.BuildManifestJson(maxConcurrent, entries));
+                    AITTextureStreamPlanner.BuildManifestJson(maxConcurrent, entries, ResolveBrowserDecode(config)));
                 AssetDatabase.Refresh();
 
                 handle.Active = n > 0;
@@ -745,6 +745,19 @@ namespace AppsInToss.Editor
             stored = AITTextureStreamPlanner.ParseTriStateEnv(
                 Environment.GetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar), stored);
             return AITTextureStreamPlanner.ResolveTriState(stored, false);
+        }
+
+        /// <summary>
+        /// 브라우저 디코드 사용 여부(매니페스트 browserDecode). 설정(tri-state, 자동=켬) 위에 환경 변수
+        /// <c>AIT_TEXTURE_STREAM_BROWSER_DECODE</c>(1/0)가 우선한다. 런타임이 WebGL 2/createImageBitmap 을 다시 확인한다.
+        /// </summary>
+        internal static bool ResolveBrowserDecode(AITEditorScriptObject config)
+        {
+            int stored = config != null ? config.textureStreamBrowserDecode : -1;
+
+            stored = AITTextureStreamPlanner.ParseTriStateEnv(
+                Environment.GetEnvironmentVariable(AITTextureStreamPlanner.BrowserDecodeEnvVar), stored);
+            return AITTextureStreamPlanner.ResolveTriState(stored, AITDefaultSettings.GetDefaultTextureStreamBrowserDecode());
         }
 
         /// <summary>후보의 포맷·mip·메모리 영향·raw 적격을 산출한다(임포트된 텍스처 기준 — 빌드에 실리는 상태).</summary>

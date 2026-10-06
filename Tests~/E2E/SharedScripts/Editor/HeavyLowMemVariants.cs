@@ -111,6 +111,17 @@ public static class HeavyLowMemVariants
         Debug.Log($"[heavy] tex-stream-gpu: tex-stream + {AITTextureStreamPlanner.KeepGpuFormatEnvVar}=1 (원본 ASTC 블록 스트리밍)");
     }
 
+    [HeavyVariant("tex-stream-legacy")]
+    public static void ApplyTexStreamLegacy(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+
+        ApplyTexStream(config);
+        // 브라우저 디코드(기본 켬)를 끄고 LoadImage(wasm 디코드) 경로와 비교한다.
+        System.Environment.SetEnvironmentVariable(AITTextureStreamPlanner.BrowserDecodeEnvVar, "0");
+        Debug.Log($"[heavy] tex-stream-legacy: tex-stream + {AITTextureStreamPlanner.BrowserDecodeEnvVar}=0 (LoadImage 경로)");
+    }
+
     [HeavyVariant("exc-explicit")]
     public static void ApplyExcExplicit(AITEditorScriptObject config)
     {

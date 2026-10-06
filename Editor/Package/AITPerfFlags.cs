@@ -114,6 +114,11 @@ namespace AppsInToss.Editor.Package
             return c.textureStreamingMemoryBudgetMB > 0 ? c.textureStreamingMemoryBudgetMB : 0;
         }
 
+        internal static bool EffectiveTextureStreamBrowserDecode(AITEditorScriptObject c)
+        {
+            return c == null || Resolve(c.textureStreamBrowserDecode, AITDefaultSettings.GetDefaultTextureStreamBrowserDecode());
+        }
+
         internal static bool EffectiveFontStreamingUnloadBundle(AITEditorScriptObject c)
         {
             return c != null && Resolve(c.fontStreamingUnloadBundle, AITDefaultSettings.GetDefaultFontStreamingUnloadBundle());

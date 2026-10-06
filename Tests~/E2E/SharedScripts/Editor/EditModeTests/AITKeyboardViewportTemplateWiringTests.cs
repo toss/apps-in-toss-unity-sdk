@@ -134,12 +134,14 @@ public class AITKeyboardViewportTemplateWiringTests
         string pin = ExtractFunction(script, "pinInputBar");
         Assert.IsTrue(Regex.IsMatch(pin, @"style\.top\s*=\s*'0px'"), "키보드가 뜨기 전에 입력 바를 맨 위에 두지 않습니다.");
         Assert.IsTrue(Regex.IsMatch(pin, @"style\.bottom\s*=\s*'auto'"), "고정 중에 bottom 을 풀지 않으면 바가 화면 전체로 늘어납니다.");
+        Assert.IsTrue(Regex.IsMatch(pin, @"style\.opacity\s*=\s*'0'"), "고정한 바가 맨 위에 잠깐 보이지 않게 투명하게 둬야 합니다.");
+        Assert.IsTrue(Regex.IsMatch(pin, @"setTimeout\(function\s*\(\)\s*\{\s*if\s*\(bar\.__aitPinned\)\s*bar\.style\.opacity\s*=\s*''", RegexOptions.Singleline), "키보드 영역 변화가 없으면 일정 시간 뒤 바를 다시 보여야 합니다.");
         Assert.IsTrue(
             Regex.IsMatch(script, @"bar\.input\s*===\s*e\.target\s*&&\s*!keyboardUp\(\)\)\s*pinInputBar\(bar\)"),
             "focusin 에서 키보드가 아직 없을 때만 Unity 입력 바를 고정해야 합니다.");
         string place = ExtractFunction(script, "placeInputBar");
         Assert.IsTrue(
-            Regex.IsMatch(place, @"if\s*\(\s*fullHeight\(\)\s*-\s*vv\.height\s*<\s*1\s*\)\s*return;[^}]*style\.top\s*=\s*''", RegexOptions.Singleline),
+            Regex.IsMatch(place, @"if\s*\(\s*fullHeight\(\)\s*-\s*vv\.height\s*<\s*1\s*\)\s*return;[^}]*style\.top\s*=\s*''\s*;\s*bar\.style\.opacity\s*=\s*''", RegexOptions.Singleline),
             "보이는 영역이 줄면(키보드·하드웨어 키보드 액세서리 바) 고정을 풀고 바를 그 위로 옮겨야 합니다.");
     }
 

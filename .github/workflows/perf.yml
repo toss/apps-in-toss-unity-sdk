@@ -76,6 +76,12 @@ on:
         description: '반복 횟수(median-of-N). 미지정 시 5(기존 동작).'
         type: string
         default: ''
+      memlimit:
+        description: >-
+          true 면 heavy 빌드 후 memlimit.yml(최소 생존 메모리 한도 스윕)을 같은 run 의 heavy 아티팩트로 이어서 실행한다
+          (6000.0·2021.3, 704MB 시작, 32MB 간격, 최대 8단계). 기본 false 면 기존 동작과 동일.
+        type: boolean
+        default: false
 
 concurrency:
   group: perf-${{ github.event.pull_request.number || github.ref }}
@@ -474,3 +480,26 @@ jobs:
               -X POST -F body=@comment-body.md
             echo "Posted new perf comment on PR #${PR_NUMBER}"
           fi
+
+  # =====================================================
+  # 메모리 제한 최소 생존 한도(memlimit) — dispatch memlimit=true 일 때만
+  # =====================================================
+  memlimit:
+    name: Memlimit
+    needs: [setup, build-heavy]
+    # base_run_id 지정 시 build-heavy 는 스킵되므로 그 run 의 아티팩트를 쓴다. 빌드가 돈 경우엔 성공해야 한다.
+    if: >-
+      !cancelled() && inputs.memlimit == true && needs.setup.outputs.should_run == 'true' && (
+        needs.build-heavy.result == 'success' ||
+        (needs.setup.outputs.base_run_id != '' && needs.build-heavy.result == 'skipped')
+      )
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/memlimit.yml
+    with:
+      run_id: ${{ needs.setup.outputs.base_run_id }} # 빈 값이면 memlimit 이 이번 run(github.run_id)을 쓴다
+      versions: '6000.0,2021.3'
+      start_mb: '704'
+      step_mb: '32'
+      max_levels: '8'

@@ -1,0 +1,261 @@
+#!/bin/bash
+
+# 내부 호스트명 / 자격증명 URL / 사설 프로젝트 식별자가 공개 원격으로 push되기 전에 차단하는 훅.
+#
+# 검사 표면(모두 push 경계, 노출 직전):
+#   (A) ref(브랜치/태그) 이름   (B) 커밋 메시지   (C) annotated 태그 메시지
+#   (D) 파일 경로명(파일명 자체)  (1) tip 트리 내용(경고)  (2) push 범위 추가 라인 내용(차단)
+#   — (A)(B)(C)(D)는 metadata 표면이라 파일 '내용' 스캔만으로는 잡히지 않던 유출 벡터다
+#     (예: 브랜치명/커밋 메시지/워크플로 파일명에 박힌 사설 프로젝트 코드네임).
+#
+# 배경: CI의 String Check(scan) 워크플로는 사후(push 이후) 탐지 계층이라, feature 브랜치를
+#       public 원격에 push하는 "노출 순간" 자체는 막지 못한다. 이 훅은 push 경계(노출 직전)에서
+#       검사해 그 갭을 예방한다. (권위 있는 백스톱은 여전히 CI String Check다.)
+#
+# 민감성 원칙: 실제 내부 도메인은 이 저장소(public)에 절대 넣지 않는다. 조직별 denylist는
+#       아래 두 소스에서만 읽는다 —
+#         1) 환경변수 STRING_CHECK_PATTERN (CI의 secret과 동일 값)
+#         2) 로컬 .githooks/patterns.local (gitignore됨; 1줄 = 1 ERE, '#' 주석 허용)
+#       저장소에는 오탐 위험이 낮은 '일반' 패턴(자격증명 URL / 사설 IP / 일반 내부 TLD)만 내장한다.
+#
+# 강제성: git 훅은 client-side라 setup.sh(core.hooksPath) 실행이 있어야 동작하고 --no-verify로
+#       우회 가능하다(모든 git 훅 공통). 완전(우회 불가) 차단은 서버 측 push protection 또는
+#       전 브랜치 CI 스캔이 담당한다.
+#
+# 한계(의도된 스코프):
+#   - 이 훅은 '텍스트' 설정 유출을 대상으로 한다. git이 바이너리로 분류하는 파일(NUL 바이트 포함)은
+#     -I 로 건너뛴다 — Unity 바이너리 에셋을 바이트 스캔하면 오탐이 폭증하므로 의도된 스코프다.
+#     (동일 한계가 서버 측 CI String Check에도 존재; 텍스트가 아닌 유출은 코드리뷰/정책으로 커버.)
+#   - tip 트리 스캔은 '이미 공개된' 내용까지 매치할 수 있어 '경고'만 한다. 실제 push 차단은
+#     '새로 push되는 커밋의 추가 라인' 스캔(range)만 담당한다(무관한 push 영구 차단 방지).
+#
+# 옵션:
+#   PREPUSH_STRICT=1  조직 denylist(env/patterns.local) 미설정 시 경고 대신 push 거부(fail-closed).
+
+set -u
+
+# 바이트 단위 매칭 강제: UTF-8 로케일에서는 grep/git grep 이 '유효하지 않은 UTF-8 바이트'가 든 줄을
+# 조용히 건너뛰어(매칭 실패) fail-open 될 수 있다. C 로케일에서 바이트 기준으로 검사해 이를 차단한다.
+# (한국어 메시지는 printf 가 바이트를 그대로 출력하므로 표시에 영향 없음. export 는 이 훅 프로세스에만
+#  적용되며 사용자 셸로 새지 않는다.)
+export LC_ALL=C
+
+z40="0000000000000000000000000000000000000000"
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+RED='\033[0;31m'; YEL='\033[1;33m'; NC='\033[0m'
+
+# 훅 자신의 '패턴 정의' 파일은 self-match 방지를 위해 스캔에서 제외한다.
+# (그 파일들의 실제 유출은 CI String Check가 secret 패턴으로 백스톱한다 — CI는 제외하지 않음.)
+EXC1=':!.githooks/pre-push'
+EXC2=':!.githooks/patterns.local.example'
+
+# --- 패턴 조립 ---------------------------------------------------------------
+# 내장 일반 패턴(비민감, 저오탐). 호스트명은 대소문자 무의미하므로 스캔은 -i로 수행한다.
+#   - URL에 박힌 자격증명(user:pass@host)
+#   - http(s) URL의 사설 IP 호스트(10./192.168./172.16-31.)
+#   - 일반 내부 TLD(호스트 위치 한정): internal / intranet / corp
+BUILTIN='(://[^/@[:space:]]+:[^/@[:space:]]+@)|(https?://(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.))|(\.(internal|intranet|corp)(:[0-9]|/|["'"'"'[:space:]]|$))'
+
+PATTERNS="$BUILTIN"
+have_org=0
+
+if [ -n "${STRING_CHECK_PATTERN:-}" ]; then
+  PATTERNS="$PATTERNS|($STRING_CHECK_PATTERN)"
+  have_org=1
+fi
+
+LOCAL_FILE="$HOOK_DIR/patterns.local"
+if [ -f "$LOCAL_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|\#*) continue ;; esac
+    PATTERNS="$PATTERNS|($line)"
+    have_org=1
+  done < "$LOCAL_FILE"
+fi
+
+# 조립된 정규식이 유효한지 사전 검증(잘못된 patterns.local/env가 스캔을 조용히 무력화하는 것 방지).
+# grep 종료코드: 0=매치, 1=미매치(정상), >=2=정규식 오류.
+printf '' | grep -E "$PATTERNS" >/dev/null 2>&1
+if [ "$?" -ge 2 ]; then
+  printf "${RED}[pre-push] 오류: denylist 정규식이 유효하지 않습니다.${NC} patterns.local / STRING_CHECK_PATTERN 를 확인하세요.\n" >&2
+  exit 1   # fail-closed
+fi
+
+if [ "$have_org" = "0" ]; then
+  if [ "${PREPUSH_STRICT:-0}" = "1" ]; then
+    printf "${RED}[pre-push] STRICT: 조직 내부호스트 denylist가 설정되지 않아 push를 거부합니다.${NC}\n" >&2
+    printf "  .githooks/patterns.local 을 만들거나 STRING_CHECK_PATTERN 을 지정하세요 (템플릿: patterns.local.example).\n" >&2
+    exit 1
+  fi
+  printf "${YEL}[pre-push] 경고: 조직별 내부호스트 denylist가 설정되지 않았습니다.${NC}\n" >&2
+  printf "  일반 패턴만으로 검사합니다. 완전한 보호를 위해 .githooks/patterns.local 을 설정하거나\n" >&2
+  printf "  STRING_CHECK_PATTERN 환경변수를 지정하세요 (템플릿: .githooks/patterns.local.example).\n" >&2
+fi
+
+# --- shallow clone 가드 ---------------------------------------------------------
+# 얕은(shallow) 클론에서는 range 기반 스캔(커밋 메시지 / 경로 / diff)이 조상 커밋 부재로 조용히
+# 잘려 fail-open 될 수 있다. STRICT 면 거부, 아니면 강하게 경고한다(서버 CI String Check 가 백스톱).
+if git rev-parse --is-shallow-repository 2>/dev/null | grep -qx true; then
+  if [ "${PREPUSH_STRICT:-0}" = "1" ]; then
+    printf "${RED}[pre-push] STRICT: 얕은(shallow) 클론이라 range 스캔이 불완전할 수 있어 push를 거부합니다.${NC}\n" >&2
+    printf "  'git fetch --unshallow' 후 다시 시도하세요.\n" >&2
+    exit 1
+  fi
+  printf "${YEL}[pre-push] 경고: 얕은(shallow) 클론입니다 — range 기반 스캔이 불완전할 수 있습니다. 'git fetch --unshallow' 권장.${NC}\n" >&2
+fi
+
+# --- push되는 각 ref 검사 ----------------------------------------------------
+# 새 브랜치 range 스캔은 '이 push의 대상 원격'을 기준으로 한정한다. bare '--not --remotes'는
+# 다른 원격(사설 미러/포크/stale ref)에 있는 커밋까지 제외해 유출을 놓칠 수 있으므로, 대상 원격이
+# 이름으로 식별되면 그 원격만 기준으로 삼는다(식별 불가한 URL push 등은 보수적으로 모든 원격 기준).
+REMOTE_NAME="${1:-}"
+if [ -n "$REMOTE_NAME" ] && git config "remote.$REMOTE_NAME.url" >/dev/null 2>&1; then
+  NOT_REMOTES="--remotes=$REMOTE_NAME"
+else
+  NOT_REMOTES="--remotes"
+fi
+
+# 참고(메타 self-block 회피): 이 훅/워크플로의 denylist '동작'을 서술하는 커밋 메시지·경로에는
+# 실제 내부 호스트/자격증명/사설 IP 리터럴을 넣지 않는다(넣으면 아래 (A)(B)(D) 스캔이 자기 자신을
+# 차단한다). 내용 스캔(1)(2)만 pathspec 으로 정의 파일을 제외할 수 있고, 이름/메시지 스캔은 제외 불가.
+
+fail=0
+while read -r localref localsha remoteref remotesha; do
+  [ -z "${localsha:-}" ] && continue
+  [ "$localsha" = "$z40" ] && continue   # 삭제 push: 스캔할 tip 없음
+
+  # ref 종류/이름 도출. ref 이름 자체가 토큰일 수 있으므로 $ref_name 은 어떤 경우에도 출력하지 않는다.
+  case "$localref" in
+    refs/tags/*) is_tag=1 ;;
+    *)           is_tag=0 ;;
+  esac
+  ref_name="${localref#refs/heads/}"
+  ref_name="${ref_name#refs/tags/}"
+
+  # push 범위 계산(이하 (B) 메시지 / (D) 경로 / (2) diff 스캔이 공유). origin/main 에 의존하지 않는다.
+  #   --full-history: pathspec(-- .)로 인한 history simplification 이 --no-ff 머지에서 정리된
+  #   side-branch 유출 커밋을 walk에서 누락시키는 것을 방지.
+  if [ "$remotesha" != "$z40" ]; then
+    RANGE="$remotesha..$localsha"                 # 기존 브랜치 업데이트: 정확한 범위
+  else
+    RANGE="$localsha --not $NOT_REMOTES"          # 새 브랜치/태그: 대상 원격에 없는 모든 커밋
+  fi
+
+  # (A) ref(브랜치/태그) 이름 스캔 — 차단. 이름은 metadata 라 기존 어떤 스캔도 보지 않던 표면이며
+  #     이름 자체가 노출 대상이므로 매치해도 내용을 출력하지 않는다.
+  #     grep 종료코드: 0=매치, 1=미매치, >=2=오류(fail-closed).
+  if printf '%s' "$ref_name" | grep -qiE "$PATTERNS"; then
+    printf "${RED}[pre-push] 차단: ref(브랜치/태그) 이름에 금지 패턴이 있습니다 (tip %s).${NC}\n" "${localsha:0:12}" >&2
+    printf "  이름 자체가 노출 대상이라 내용을 출력하지 않습니다. 브랜치/태그명을 바꿔 다시 시도하세요.\n" >&2
+    fail=1
+  elif [ "$?" -ge 2 ]; then
+    printf "${RED}[pre-push] 오류: ref 이름 스캔 실패(grep rc>=2). 안전을 위해 push를 중단합니다.${NC}\n" >&2
+    fail=1
+  fi
+
+  # (B) 커밋 메시지 스캔 — 차단. git log -p 의 '^+' 필터는 메시지 라인을 못 보므로 별도 스캔한다.
+  #     pathspec/exclude 를 쓰지 않는다(경로에 안 걸리는 orphan/메시지-only 유출 커밋 누락 방지).
+  #     새 브랜치/태그(before=40-zero)도 위 $RANGE 의 '--not $NOT_REMOTES' 로 첫 푸시 커밋까지 포함.
+  #     매치 시 메시지 원문은 비출력, 건수만 보고.
+  # shellcheck disable=SC2086
+  mlog="$(git log --no-color --format=%B $RANGE 2>/dev/null)"
+  mrc=$?
+  if [ "$mrc" -ne 0 ]; then
+    printf "${RED}[pre-push] 오류: 커밋 메시지 범위 스캔 실패(git log rc=%s). 안전을 위해 push를 중단합니다.${NC}\n" "$mrc" >&2
+    fail=1
+  else
+    mhits="$(printf '%s\n' "$mlog" | grep -icE "$PATTERNS")"
+    mghrc=$?
+    if [ "$mghrc" -ge 2 ]; then
+      printf "${RED}[pre-push] 오류: 커밋 메시지 스캔 실패(grep rc>=2). 안전을 위해 push를 중단합니다.${NC}\n" >&2
+      fail=1
+    elif [ "${mhits:-0}" -gt 0 ] 2>/dev/null; then
+      printf "${RED}[pre-push] 차단: push 범위 커밋 메시지에서 금지 패턴 %s건 감지 (tip %s).${NC}\n" "$mhits" "${localsha:0:12}" >&2
+      fail=1
+    fi
+  fi
+
+  # (C) annotated 태그 메시지 스캔 — 차단. 태그 객체 메시지는 커밋 walk(git log)로는 안 보인다
+  #     (이 저장소는 release/beta-release 에서 'git tag -m' 로 annotated 태그를 만든다).
+  if [ "$is_tag" = "1" ]; then
+    tmsg="$(git for-each-ref --format='%(contents)' "refs/tags/$ref_name" 2>/dev/null)"
+    tfrc=$?
+    if [ "$tfrc" -ne 0 ]; then
+      printf "${RED}[pre-push] 오류: 태그 메시지 조회 실패(git for-each-ref rc=%s). 안전을 위해 push를 중단합니다.${NC}\n" "$tfrc" >&2
+      fail=1
+    else
+      thits="$(printf '%s\n' "$tmsg" | grep -icE "$PATTERNS")"
+      tghrc=$?
+      if [ "$tghrc" -ge 2 ]; then
+        printf "${RED}[pre-push] 오류: 태그 메시지 스캔 실패(grep rc>=2). 안전을 위해 push를 중단합니다.${NC}\n" >&2
+        fail=1
+      elif [ "${thits:-0}" -gt 0 ] 2>/dev/null; then
+        printf "${RED}[pre-push] 차단: annotated 태그 메시지에서 금지 패턴 %s건 감지 (tip %s).${NC}\n" "$thits" "${localsha:0:12}" >&2
+        fail=1
+      fi
+    fi
+  fi
+
+  # (D) 파일 경로명 스캔 — 차단. 경로(파일명) 자체가 토큰인 유출(#718: 워크플로 파일명)은
+  #     내용 grep(-r 은 매치 '내용'만 경로로 prefix)도 diff '^+' 필터('+++ b/path' 제외)도 못 잡는다.
+  #     경로가 곧 토큰이므로 매치 경로를 절대 출력하지 않고 정적 마커만 낸다. git 오류는 grep 전에 fail-closed.
+  # shellcheck disable=SC2086
+  nlog="$(git log --name-only --format= -m --full-history $RANGE 2>/dev/null)"
+  nrc=$?
+  if [ "$nrc" -ne 0 ]; then
+    printf "${RED}[pre-push] 오류: 경로명 범위 스캔 실패(git log rc=%s). 안전을 위해 push를 중단합니다.${NC}\n" "$nrc" >&2
+    fail=1
+  elif printf '%s\n' "$nlog" | grep -qiE "$PATTERNS"; then
+    printf "${RED}[pre-push] 차단: push 범위에서 금지 패턴을 포함한 파일 경로가 감지되었습니다 (tip %s).${NC}\n" "${localsha:0:12}" >&2
+    printf "  경로 자체가 노출 대상이라 경로를 출력하지 않습니다. 파일명/경로를 바꿔 다시 시도하세요.\n" >&2
+    fail=1
+  elif [ "$?" -ge 2 ]; then
+    printf "${RED}[pre-push] 오류: 경로명 스캔 실패(grep rc>=2). 안전을 위해 push를 중단합니다.${NC}\n" >&2
+    fail=1
+  fi
+
+  # (1) tip tree 스캔 — 경고 전용. tip 트리 '전체'를 훑기 때문에 이미 공개된 내용까지 매치할 수
+  #     있어(예: 오래전 머지된 문서의 사설 IP 예시) 여기서 차단하면 무관한 push가 영구히 막힌다.
+  #     따라서 tip 매치는 '경고'만 하고, 실제 차단은 아래 (2) range 스캔이 담당한다.
+  #     (트리 전체 청결성 강제는 서버 측 CI String Check가 맡는다.)
+  #     git grep 종료코드: 0=매치, 1=미매치, >=2=오류. 오류는 스캔 불능이므로 fail-closed.
+  hits="$(git grep -I -i -n -E "$PATTERNS" "$localsha" -- . "$EXC1" "$EXC2" 2>/dev/null)"
+  rc=$?
+  if [ "$rc" -ge 2 ]; then
+    printf "${RED}[pre-push] 오류: tip 스캔 실패(git grep rc=%s). 안전을 위해 push를 중단합니다.${NC}\n" "$rc" >&2
+    printf "  git 버전/pathspec 지원을 확인하세요(:! exclude 는 git 1.9+ 필요).\n" >&2
+    fail=1
+  elif [ "$rc" -eq 0 ] && [ -n "$hits" ]; then
+    printf "${YEL}[pre-push] 경고: tip 트리에 내부 호스트/자격증명 패턴이 있습니다 (tip %s).${NC}\n" "${localsha:0:12}" >&2
+    printf '%s\n' "$hits" | awk -F: '{print "    " $2 ":" $3 "  (redacted)"}' | sort -u >&2
+    printf "  이미 공개된 내용이면 정리를 권장합니다. (이 항목만으로는 push를 막지 않습니다.)\n" >&2
+  fi
+
+  # (2) push 범위 커밋별 추가 라인(내용) 스캔 — 차단의 핵심. 중간 커밋에서 add된 뒤 tip에서 지워졌더라도
+  #     그 커밋 객체는 push되어 공개되므로 함께 검사. merge 커밋의 충돌 해소 내용도 보도록 -m 추가
+  #     (-m 은 부모별 2-way diff 라 '^+'/'+++ ' 필터가 그대로 유효; 과다 카운트는 안전한 방향).
+  # shellcheck disable=SC2086  # RANGE/NOT_REMOTES 는 의도적으로 여러 토큰으로 분리
+  plog="$(git log -p -m --no-color --full-history $RANGE -- . "$EXC1" "$EXC2" 2>/dev/null)"
+  lrc=$?
+  if [ "$lrc" -ne 0 ]; then
+    printf "${RED}[pre-push] 오류: 범위 diff 스캔 실패(git log rc=%s). 안전을 위해 push를 중단합니다.${NC}\n" "$lrc" >&2
+    fail=1
+  else
+    # 추가된 실제 내용 라인만 검사: '^+' 중 diff 헤더('+++ b/path')는 제외해, 파일 경로가 패턴과
+    # 겹치는 것만으로 오탐하지 않게 한다.
+    dhits="$(printf '%s\n' "$plog" | grep -E "^\+" | grep -vE "^\+\+\+ " | grep -icE "$PATTERNS")"
+    if [ "${dhits:-0}" -gt 0 ] 2>/dev/null; then
+      printf "${RED}[pre-push] 차단: push 범위 커밋에서 추가된 금지 패턴 %s건 감지 (tip %s).${NC}\n" "$dhits" "${localsha:0:12}" >&2
+      fail=1
+    fi
+  fi
+done
+
+if [ "$fail" != "0" ]; then
+  printf "${RED}[pre-push] push를 중단했습니다.${NC} 위에 표시된 표면(이름/메시지/경로/내용)에서 금지 패턴을 제거한 뒤 다시 시도하세요.\n" >&2
+  printf "  이 차단은 public 저장소로의 내부 인프라 정보 / 사설 프로젝트 식별자 유출을 막기 위한 것입니다. --no-verify 우회 금지.\n" >&2
+  exit 1
+fi
+
+exit 0

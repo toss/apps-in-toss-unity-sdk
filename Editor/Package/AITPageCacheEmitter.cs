@@ -57,7 +57,7 @@ namespace AppsInToss.Editor.Package
     ///    본문 전체가 버퍼에 남고, WebKit 의 Cache.put 은 본문을 WebContent 에서 다 모은 뒤 Network 프로세스로 넘기므로
     ///    wasm 컴파일 피크와 겹친다(put 만 미루면 메모리는 그대로라서 clone 자체를 하지 않는다).
     ///  · 첫 프레임 + 10초 뒤 파일 하나씩 fetch(url, { cache: 'only-if-cached', mode: 'same-origin' }) 로 HTTP 캐시에서 다시 읽어
-    ///    put 한다. 미지원이거나 미스면 put 을 생략한다(재다운로드 금지: only-if-cached 는 네트워크를 타지 않는다).
+    ///    put 한다. 미스면 tier 0·화면 보임일 때만 네이티브 네트워크 Response 를 그대로 put 한다(networkPut, net=N 으로 집계).
     ///  · WebKit 에서는 wasm 을 put 대상(ALLOW_ABS)에서 뺀다. JSC 에는 V8 같은 code cache 이득이 없고, CDN 이 ETag 와 max-age=0 을
     ///    주므로 재방문은 HTTP 캐시 재검증(304)으로 받는다.
     ///  · Chromium 경로는 그대로다. 단 저메모리 tier(window.AITMemory.lowMemTier &gt;= 1, ait-mem.js 가 부팅 사망 횟수로 정함)에서는
@@ -453,7 +453,7 @@ namespace AppsInToss.Editor.Package
                 if (typeof _dd === 'number' && _dd >= 0) { DEFER_DELAY_MS = _dd; }
             } catch (e) {}
             // 진단 훅(perf CI/검증용, 운영 무영향): 큐에 넣은 URL, put 성공, HTTP 캐시 미스(put 생략), 건너뜀(wasm/저메모리 tier), 오류.
-            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, state: 'idle', queued: [], put: [], miss: [], skipped: [], errors: [] };
+            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
             var WASM_ABS = {};
             for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
                 try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
@@ -799,6 +799,27 @@ namespace AppsInToss.Editor.Package
                 deferPut(url);
                 return true;
             }
+            // only-if-cached 미스(WebKit 은 fetch 응답을 HTTP 캐시에 안 남기는 경우가 있다) 폴백: tier 0 이고 화면이 보일 때만
+            // 네트워크 Response 를 그대로 put 한다(no-cache = 재검증, 304 면 캐시 본문). JS 버퍼링·clone·arrayBuffer·직접 만든 스트림 본문은 쓰지 않는다.
+            // 호출은 drainDeferred 가 파일 하나씩 순차로 하므로 동시에 둘 이상 받지 않는다.
+            function networkPut(url) {
+                var info = window.__aitCacheDeferred;
+                var t = 0;
+                try { t = window.__aitPeekLowTier() | 0; } catch (e) {}
+                var visible = true;
+                try { visible = document.visibilityState !== 'hidden'; } catch (e) {}
+                if (t > 0 || !visible) { info.miss.push(url); return Promise.resolve(); }
+                try { console.log('[AIT-PageCache] 지연 put: HTTP 캐시 miss → 네트워크로 저장 ' + url.split('/').pop().split('?')[0]); } catch (e) {}
+                return priorFetch(url, { cache: 'no-cache', mode: 'same-origin' }).then(function (r) {
+                    if (!r || !r.ok || r.status !== 200 || r.body === undefined) { info.miss.push(url); return; }
+                    return getCache().then(function (c) { return c.put(url, r); }).then(function () {
+                        info.put.push(url);
+                        info.net.push(url);
+                        window.__aitCacheStats.puts.push(url);
+                        markPopulated(url);
+                    });
+                }, function () { info.miss.push(url); });
+            }
             function deferredPutOne(url) {
                 var info = window.__aitCacheDeferred;
                 if (skipPutForLowMem(url)) { return Promise.resolve(); }
@@ -810,14 +831,14 @@ namespace AppsInToss.Editor.Package
                     return priorFetch(url, { cache: 'only-if-cached', mode: 'same-origin' });
                 }).then(function (r) {
                     // 미스는 네트워크 오류(reject)이거나 비정상 상태(504 등)로 온다. 어느 쪽이든 put 하지 않는다.
-                    if (!r || !r.ok || r.status !== 200 || r.body === undefined) { info.miss.push(url); return; }
+                    if (!r || !r.ok || r.status !== 200 || r.body === undefined) { return networkPut(url); }
                     return getCache().then(function (c) { return c.put(url, r); }).then(function () {
                         info.put.push(url);
                         window.__aitCacheStats.puts.push(url);
                         markPopulated(url);
                     });
                 }, function () {
-                    info.miss.push(url);
+                    return networkPut(url);
                 }).catch(function (e) {
                     info.errors.push('deferred-put ' + url + ': ' + (e && e.message || e));
                 });
@@ -830,7 +851,7 @@ namespace AppsInToss.Editor.Package
                     var url = deferQueue.shift();
                     if (!url) {
                         info.state = 'done';
-                        try { console.log('[AIT-PageCache] 지연 put 완료: put=' + info.put.length + ' miss=' + info.miss.length + ' skip=' + info.skipped.length + ' error=' + info.errors.length); } catch (e) {}
+                        try { console.log('[AIT-PageCache] 지연 put 완료: put=' + info.put.length + ' net=' + info.net.length + ' miss=' + info.miss.length + ' skip=' + info.skipped.length + ' error=' + info.errors.length); } catch (e) {}
                         return Promise.resolve();
                     }
                     return deferredPutOne(url).then(next, next);

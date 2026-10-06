@@ -64,7 +64,7 @@ public class AITLowMemTierEmitterTests
         StringAssert.Contains("function putResponse(c, url, r)", js);
         StringAssert.Contains("new Response(r.body, { status: r.status, statusText: r.statusText, headers: r.headers })", js,
             "fetch Proxy(vConsole 등) 응답을 WebKit Cache.put 이 거부하면 같은 body 로 새 Response 를 만들어 다시 put 해야 한다");
-        StringAssert.DoesNotContain("c.put(url, r); })", js, "지연 put 은 putResponse 를 거쳐야 한다");
+        StringAssert.DoesNotContain("function (c) { return c.put(url, r); }", js, "지연 put 은 putResponse 를 거쳐야 한다");
     }
 
     [Test]

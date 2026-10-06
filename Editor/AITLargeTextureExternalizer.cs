@@ -448,7 +448,7 @@ namespace AppsInToss.Editor
                         }
                     }
 
-                    if (rawBytes != null && !StubMatchesOriginal(path, w, h, ci))
+                    if (rawBytes != null && !compactStub && !StubMatchesOriginal(path, w, h, ci))
                     {
                         Debug.LogWarning($"[AIT-StreamingTexture] 스텁 포맷/mip 이 원본({ci.FormatName}, mip {ci.Mips})과 달라 GPU 포맷 보존을 포기하고 PNG/JPG 로 내립니다: {path}");
                         if (!explicitOn && ci.PngDelta > 0)
@@ -677,7 +677,7 @@ namespace AppsInToss.Editor
                 // 저사양 티어에서는 런타임이 이 값과 무관하게 1 로 강제한다.
                 int maxConcurrent = AITTextureStreamPlanner.ResolveMaxConcurrent(config.textureStreamingMaxConcurrent);
                 File.WriteAllText(Path.Combine(projectRoot, StreamRootAssets, "manifest.json"),
-                    AITTextureStreamPlanner.BuildManifestJson(maxConcurrent, entries, ResolveBrowserDecode(config)));
+                    AITTextureStreamPlanner.BuildManifestJson(maxConcurrent, entries, ResolveBrowserDecode(config), ResolveLowTierDownscale(config)));
                 AssetDatabase.Refresh();
 
                 handle.Active = n > 0;
@@ -787,6 +787,19 @@ namespace AppsInToss.Editor
             stored = AITTextureStreamPlanner.ParseTriStateEnv(
                 Environment.GetEnvironmentVariable(AITTextureStreamPlanner.BrowserDecodeEnvVar), stored);
             return AITTextureStreamPlanner.ResolveTriState(stored, AITDefaultSettings.GetDefaultTextureStreamBrowserDecode());
+        }
+
+        /// <summary>
+        /// 저사양 티어 다운스케일 사용 여부(매니페스트 lowTierDownscale). 설정(tri-state, 자동=켬) 위에 환경 변수
+        /// <c>AIT_TEXTURE_STREAM_LOW_TIER_DOWNSCALE</c>(1/0)가 우선한다. 티어 0 기기에서는 켜져 있어도 런타임이 아무것도 하지 않는다.
+        /// </summary>
+        internal static bool ResolveLowTierDownscale(AITEditorScriptObject config)
+        {
+            int stored = config != null ? config.textureStreamLowTierDownscale : -1;
+
+            stored = AITTextureStreamPlanner.ParseTriStateEnv(
+                Environment.GetEnvironmentVariable(AITTextureStreamPlanner.LowTierDownscaleEnvVar), stored);
+            return AITTextureStreamPlanner.ResolveTriState(stored, AITDefaultSettings.GetDefaultTextureStreamLowTierDownscale());
         }
 
         /// <summary>후보의 포맷·mip·메모리 영향·raw 적격을 산출한다(임포트된 텍스처 기준 — 빌드에 실리는 상태).</summary>

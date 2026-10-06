@@ -1401,6 +1401,7 @@ namespace AppsInToss.Editor
             if (config.textureStreamingMemoryBudgetMB != AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB) count++;
             if (config.textureStreamKeepGpuFormat >= 0 && (config.textureStreamKeepGpuFormat == 1) != AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat()) count++;
             if (config.textureStreamBrowserDecode >= 0 && (config.textureStreamBrowserDecode == 1) != AITDefaultSettings.GetDefaultTextureStreamBrowserDecode()) count++;
+            if (config.textureStreamLowTierDownscale >= 0 && (config.textureStreamLowTierDownscale == 1) != AITDefaultSettings.GetDefaultTextureStreamLowTierDownscale()) count++;
             if (config.fontStreamingUnloadBundle >= 0 && (config.fontStreamingUnloadBundle == 1) != AITDefaultSettings.GetDefaultFontStreamingUnloadBundle()) count++;
 
             return count;
@@ -1653,6 +1654,7 @@ namespace AppsInToss.Editor
             config.textureStreamingMemoryBudgetMB = AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB;
             config.textureStreamKeepGpuFormat = -1;
             config.textureStreamBrowserDecode = -1;
+            config.textureStreamLowTierDownscale = -1;
             config.fontStreamingUnloadBundle = -1;
         }
 

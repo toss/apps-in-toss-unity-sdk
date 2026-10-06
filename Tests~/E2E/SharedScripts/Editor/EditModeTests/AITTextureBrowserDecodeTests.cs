@@ -5,6 +5,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -149,7 +151,8 @@ public class AITTextureBrowserDecodeTests
         Assert.IsTrue(AITTextureStreamPlanner.UseCompactStub(true, false, false));
         Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(false, false, false), "브라우저 디코드 꺼짐 → 기존 readable 스텁");
         Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(true, true, false), "readable 원본은 LoadImage 가 필요");
-        Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(true, false, true), "raw 는 원본 포맷 스텁");
+        Assert.IsTrue(AITTextureStreamPlanner.UseCompactStub(true, false, true), "raw 도 브라우저 디코드가 켜져 있으면 raw-swap 이라 작은 스텁");
+        Assert.IsFalse(AITTextureStreamPlanner.UseCompactStub(false, false, true), "브라우저 디코드 꺼짐 → raw 는 원본 포맷 readable 스텁(LoadRawTextureData)");
     }
 
     [Test]
@@ -167,5 +170,210 @@ public class AITTextureBrowserDecodeTests
         string r = AITStreamingTexture.RawSkipReason("a.astc", false, 48, 12, 100, true, dxt5, 12);
         StringAssert.Contains("스텁 포맷", r);
         StringAssert.Contains("미지원", AITStreamingTexture.RawSkipReason("a.astc", false, 48, 12, 100, false, 48, 12));
+    }
+
+    // ─────────────────────── raw-swap ───────────────────────
+
+    [Test]
+    public void IsRawSwapUsable_Gates()
+    {
+        int astc6 = (int)TextureFormat.ASTC_6x6;
+        Assert.IsTrue(AITStreamingTexture.IsRawSwapUsable("a.astc", false, astc6, 12, 1000, true, false, true));
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("", false, astc6, 12, 1000, true, false, true), "raw 사본 없음");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", true, astc6, 12, 1000, true, false, true), "이전 실패");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", false, astc6, 12, 1000, true, true, true), "readable 스텁은 LoadRawTextureData 경로");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", false, astc6, 12, 1000, true, false, false), "브라우저 경로 불가");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", false, astc6, 12, 1000, false, false, true), "JS 확장 미지원");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", false, 0, 12, 1000, true, false, true), "필드 누락");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", false, astc6, 0, 1000, true, false, true), "필드 누락");
+        Assert.IsFalse(AITStreamingTexture.IsRawSwapUsable("a.astc", false, astc6, 12, 0, true, false, true), "필드 누락");
+    }
+
+    [Test]
+    public void IsRawSwapUsable_DoesNotNeedStubFormatEquality()
+    {
+        // 스텁이 작은 DXT1/ASTC_12x12 여도 raw-swap 은 판정에 스텁 포맷을 받지 않는다(시그니처에 없다).
+        Assert.IsTrue(AITStreamingTexture.IsRawSwapUsable("a.astc", false, (int)TextureFormat.ASTC_4x4, 11, 123, true, false, true));
+    }
+
+    [Test]
+    public void RawSkipReason_NonReadableStub_DoesNotReportFormatMismatch()
+    {
+        int dxt1 = (int)TextureFormat.DXT1;
+        string unsupported = AITStreamingTexture.RawSkipReason("a.astc", false, 50, 12, 100, false, dxt1, 1, false, true);
+        StringAssert.Contains("미지원", unsupported);
+        StringAssert.DoesNotContain("스텁 포맷", unsupported);
+
+        string noBrowser = AITStreamingTexture.RawSkipReason("a.astc", false, 50, 12, 100, true, dxt1, 1, false, false);
+        StringAssert.Contains("raw-swap 불가", noBrowser);
+        StringAssert.DoesNotContain("스텁 포맷", noBrowser);
+
+        // readable 스텁(기존 raw 경로)은 그대로 포맷 불일치를 보고한다.
+        StringAssert.Contains("스텁 포맷", AITStreamingTexture.RawSkipReason("a.astc", false, 50, 12, 100, true, dxt1, 12, true, true));
+    }
+
+    [Test]
+    public void BrowserFailureText_RawCodes()
+    {
+        StringAssert.Contains("raw", AITStreamingTexture.BrowserFailureText(-7));
+        StringAssert.Contains("raw", AITStreamingTexture.BrowserFailureText(-8));
+    }
+
+    // ─────────────────────── 저사양 티어 다운스케일 ───────────────────────
+
+    [TestCase(1, 0, 0)]
+    [TestCase(0, 1, 0)]
+    [TestCase(1, 1, 1)]
+    [TestCase(1, 2, 2)]
+    [TestCase(1, 5, 2)]
+    public void ResolveDownscaleTier_NeedsManifestFlagAndTier(int manifestFlag, int tier, int expected)
+    {
+        Assert.AreEqual(expected, AITStreamingTexture.ResolveDownscaleTier(manifestFlag, tier));
+    }
+
+    [TestCase(2048, 2048, 0, 2048, 2048)]
+    [TestCase(2048, 2048, 1, 1024, 1024)]
+    [TestCase(512, 512, 1, 512, 512)]
+    [TestCase(513, 100, 1, 257, 50)]
+    [TestCase(2048, 1024, 2, 512, 256)]
+    [TestCase(1024, 1024, 2, 512, 512)]
+    [TestCase(1025, 1025, 2, 257, 257)]
+    [TestCase(300, 300, 2, 150, 150)]
+    [TestCase(256, 256, 2, 256, 256)]
+    [TestCase(4096, 8, 2, 1024, 2)]
+    [TestCase(4096, 1, 2, 1024, 1)]
+    public void ComputeDownscaleSize_Math(int w, int h, int tier, int ew, int eh)
+    {
+        AITStreamingTexture.ComputeDownscaleSize(w, h, tier, out int rw, out int rh);
+        Assert.AreEqual(ew, rw);
+        Assert.AreEqual(eh, rh);
+    }
+
+    [Test]
+    public void ComputeDownscaleSize_Tier2_LongestSideNeverBelow256WhenShrunk()
+    {
+        for (int w = 257; w <= 4096; w += 37)
+        {
+            AITStreamingTexture.ComputeDownscaleSize(w, w / 2 + 1, 2, out int rw, out int rh);
+            Assert.GreaterOrEqual(Mathf.Max(rw, rh), 128, $"w={w}");
+            Assert.GreaterOrEqual(rw, 1);
+            Assert.GreaterOrEqual(rh, 1);
+        }
+
+        // 긴 변이 1024 를 넘을 때만 1/4 — 결과 긴 변은 항상 256 이상이다.
+        for (int w = 1025; w <= 4096; w += 31)
+        {
+            AITStreamingTexture.ComputeDownscaleSize(w, 64, 2, out int rw, out _);
+            Assert.GreaterOrEqual(rw, 256, $"w={w}");
+        }
+    }
+
+    [TestCase(0, 12, 0)]
+    [TestCase(1, 1, 0)]
+    [TestCase(1, 2, 1)]
+    [TestCase(1, 12, 1)]
+    [TestCase(2, 12, 2)]
+    [TestCase(2, 2, 1)]
+    public void RawSkipLevels_Math(int tier, int mips, int expected)
+    {
+        Assert.AreEqual(expected, AITStreamingTexture.RawSkipLevels(tier, mips));
+    }
+
+    [Test]
+    public void ManifestJson_WritesLowTierDownscale_OnlyWhenEnabled()
+    {
+        var entries = new List<string>();
+        string on = AITTextureStreamPlanner.BuildManifestJson(1, entries, true, true);
+        StringAssert.Contains("\"lowTierDownscale\":1", on);
+        Assert.AreEqual(1, JsonUtility.FromJson<DownscaleManifestProbe>(on).lowTierDownscale, "런타임 Manifest.lowTierDownscale 필드와 같은 이름이어야 한다.");
+        StringAssert.DoesNotContain("lowTierDownscale", AITTextureStreamPlanner.BuildManifestJson(1, entries, true, false));
+        StringAssert.DoesNotContain("lowTierDownscale", AITTextureStreamPlanner.BuildManifestJson(1, entries, true), "구 시그니처는 쓰지 않는다.");
+    }
+
+    [Serializable]
+    private class DownscaleManifestProbe
+    {
+        public int lowTierDownscale;
+    }
+
+    [Test]
+    public void ResolveLowTierDownscale_AutoOn_ExplicitAndEnvOverride()
+    {
+        string prev = Environment.GetEnvironmentVariable(AITTextureStreamPlanner.LowTierDownscaleEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(AITTextureStreamPlanner.LowTierDownscaleEnvVar, null);
+            var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+            try
+            {
+                Assert.AreEqual(-1, config.textureStreamLowTierDownscale);
+                Assert.IsTrue(AITLargeTextureExternalizer.ResolveLowTierDownscale(config), "자동은 켬.");
+                Assert.IsTrue(AITLargeTextureExternalizer.ResolveLowTierDownscale(null));
+
+                config.textureStreamLowTierDownscale = 0;
+                Assert.IsFalse(AITLargeTextureExternalizer.ResolveLowTierDownscale(config), "0 = 옵트아웃");
+
+                config.textureStreamLowTierDownscale = 1;
+                Assert.IsTrue(AITLargeTextureExternalizer.ResolveLowTierDownscale(config));
+
+                Environment.SetEnvironmentVariable(AITTextureStreamPlanner.LowTierDownscaleEnvVar, "0");
+                Assert.IsFalse(AITLargeTextureExternalizer.ResolveLowTierDownscale(config), "환경 변수가 설정값보다 우선.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(config);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AITTextureStreamPlanner.LowTierDownscaleEnvVar, prev);
+        }
+    }
+
+    // ─────────────────────── jslib 문자열 대조 ───────────────────────
+
+    private static string ThisFile([CallerFilePath] string path = null) => path;
+
+    private static string ReadRepoFile(string relative)
+    {
+        string dir = Path.GetDirectoryName(ThisFile());
+        if (string.IsNullOrEmpty(dir)) return null;
+        string full = Path.GetFullPath(Path.Combine(dir, "../../../../../", relative));
+        return File.Exists(full) ? File.ReadAllText(full) : null;
+    }
+
+    [Test]
+    public void Jslib_RawSwapAndDownscale_ContractStrings()
+    {
+        string js = ReadRepoFile("Runtime/Helpers/Plugins/AppsInToss-TextureDecode.jslib");
+        string cs = ReadRepoFile("Runtime/Helpers/AIT.StreamingTexture.cs");
+        if (js == null || cs == null)
+        {
+            Assert.Ignore("소스 경로를 찾지 못했다(패키지가 복사된 환경). 대조를 건너뛴다.");
+        }
+
+        StringAssert.Contains("__AITTexDecode_RawSupported: function(format)", js);
+        StringAssert.Contains("__AITTexDecode_RawStart: function(urlPtr, reqId, format, srgb, mips, rawSize, skipLevels, width, height)", js);
+        StringAssert.Contains("compressedTexImage2D", js);
+        StringAssert.Contains("WEBGL_compressed_texture_astc", js);
+        StringAssert.Contains("resizeWidth: resizeW", js);
+        StringAssert.Contains("resizeQuality: 'medium'", js);
+        StringAssert.Contains("imageOrientation: 'flipY'", js);
+
+        // raw 경로에는 이미지 디코드 옵션(imageOrientation)이 없다 — Unity 네이티브 업로드와 같은 방향으로 뒤집지 않고 올린다.
+        int rawStart = js.IndexOf("__AITTexDecode_RawStart", StringComparison.Ordinal);
+        int pollStart = js.IndexOf("__AITTexDecode_Poll", StringComparison.Ordinal);
+        Assert.Greater(pollStart, rawStart);
+        StringAssert.DoesNotContain("imageOrientation", js.Substring(rawStart, pollStart - rawStart));
+
+        // C# extern 인자 개수와 jslib 함수 인자 개수가 같다.
+        foreach (string name in new[] { "Start", "RawSupported", "RawStart", "Swap" })
+        {
+            var csM = System.Text.RegularExpressions.Regex.Match(cs, @"static extern \w+ __AITTexDecode_" + name + @"\(([^)]*)\)");
+            var jsM = System.Text.RegularExpressions.Regex.Match(js, @"__AITTexDecode_" + name + @"\s*:\s*function\s*\(([^)]*)\)");
+            Assert.IsTrue(csM.Success, "C# extern 없음: " + name);
+            Assert.IsTrue(jsM.Success, "jslib 함수 없음: " + name);
+            Assert.AreEqual(csM.Groups[1].Value.Split(',').Length, jsM.Groups[1].Value.Split(',').Length, name + " 인자 개수");
+        }
     }
 }

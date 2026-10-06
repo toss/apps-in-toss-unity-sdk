@@ -742,6 +742,11 @@ namespace AppsInToss
                  "원본이 non-readable 인 텍스처에만 적용되며, 실패하면 항목별로 LoadImage 경로로 폴백합니다.")]
         public int textureStreamBrowserDecode = -1;
 
+        [Tooltip("텍스처 스트리밍 저사양 티어 다운스케일: -1 = 자동(활성), 0 = 비활성, 1 = 강제 활성. " +
+                 "lowMemoryTier 1 이상인 기기에서 브라우저 디코드가 이미지를 줄여(tier 1: 512 초과 시 절반, tier 2: 256 초과 절반/1024 초과 1/4) GL 텍스처를 작게 올립니다. " +
+                 "mip 이 없는 스프라이트/UI 텍스처는 전역 mip 제한이 먹지 않아 이 경로로만 줄일 수 있습니다. raw(GPU 포맷 보존)는 위쪽 mip 레벨을 건너뜁니다.")]
+        public int textureStreamLowTierDownscale = -1;
+
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();
 
@@ -1293,6 +1298,12 @@ namespace AppsInToss
 
         /// <summary>텍스처 스트리밍 브라우저 디코드 자동 실효값: true. 런타임이 WebGL 2 + createImageBitmap 을 확인하고, 아니면 LoadImage 로 폴백한다.</summary>
         public static bool GetDefaultTextureStreamBrowserDecode()
+        {
+            return true;
+        }
+
+        /// <summary>텍스처 스트리밍 저사양 티어 다운스케일 자동 실효값: true. 티어 0(정상 기기)에서는 어차피 아무 일도 하지 않는다.</summary>
+        public static bool GetDefaultTextureStreamLowTierDownscale()
         {
             return true;
         }

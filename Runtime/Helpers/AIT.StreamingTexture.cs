@@ -77,7 +77,13 @@ namespace AppsInToss
         private static extern int __AITTexDecode_SelfTest(int glTexName);
 
         [DllImport("__Internal")]
-        private static extern void __AITTexDecode_Start(string url, byte[] bytes, int bytesLen, int reqId);
+        private static extern void __AITTexDecode_Start(string url, byte[] bytes, int bytesLen, int reqId, int resizeW, int resizeH);
+
+        [DllImport("__Internal")]
+        private static extern int __AITTexDecode_RawSupported(int format);
+
+        [DllImport("__Internal")]
+        private static extern void __AITTexDecode_RawStart(string url, int reqId, int format, int srgb, int mips, int rawSize, int skipLevels, int width, int height);
 
         [DllImport("__Internal")]
         private static extern int __AITTexDecode_Poll(int reqId);
@@ -154,6 +160,9 @@ namespace AppsInToss
             /// <summary>1 = 브라우저 디코드 허용(빌드 설정 textureStreamBrowserDecode 의 실효값). 없으면 0(구 매니페스트 = LoadImage).</summary>
             public int browserDecode;
 
+            /// <summary>1 = 저사양 티어(1 이상)에서 브라우저 디코드/raw-swap 이 텍스처를 줄여 올린다(빌드 설정 textureStreamLowTierDownscale 의 실효값). 없으면 0(다운스케일 없음).</summary>
+            public int lowTierDownscale;
+
             public Entry[] entries;
         }
 
@@ -205,7 +214,19 @@ namespace AppsInToss
             public string reason;
             public int width;
             public int height;
+
+            /// <summary>실제로 크기를 줄인 경우 그 티어(1/2), 줄이지 않았으면 0. 로그의 downscale= 값.</summary>
+            public int downscaleTier;
+
+            /// <summary>raw-swap 으로 올린 mip 레벨 수.</summary>
+            public int mips;
         }
+
+        /// <summary>브라우저 디코드/raw-swap 에 적용할 다운스케일 티어(0 = 없음). 매니페스트 lowTierDownscale=1 이고 저사양 티어가 1 이상일 때만 1/2.</summary>
+        private int downscaleTier;
+
+        /// <summary>raw 포맷별 JS 지원 조회 캐시(포맷 정수 → 지원 여부).</summary>
+        private readonly Dictionary<int, bool> rawSupportCache = new Dictionary<int, bool>();
 
         private int maxConcurrent = DefaultMaxConcurrent;
         private int loadingCount;
@@ -285,6 +306,7 @@ namespace AppsInToss
 
                     maxConcurrent = ResolveMaxConcurrent(m.maxConcurrent, tier);
                     browserDecodeEnabled = ResolveBrowserDecodeEnabled(m.browserDecode, QueryBrowserCapability());
+                    downscaleTier = ResolveDownscaleTier(m.lowTierDownscale, tier);
 
                     if (m.entries != null)
                     {
@@ -298,7 +320,7 @@ namespace AppsInToss
                     }
 
                     ready = true;
-                    Debug.Log($"[AIT-StreamingTexture] 매니페스트 로드: {pending.Count}개 외부화 텍스처 (동시 {maxConcurrent}, lowMemTier={tier}, browserDecode={(browserDecodeEnabled ? 1 : 0)}/manifest={m.browserDecode})");
+                    Debug.Log($"[AIT-StreamingTexture] 매니페스트 로드: {pending.Count}개 외부화 텍스처 (동시 {maxConcurrent}, lowMemTier={tier}, browserDecode={(browserDecodeEnabled ? 1 : 0)}/manifest={m.browserDecode}, downscale={downscaleTier}/manifest={m.lowTierDownscale})");
                 }
                 catch (System.Exception ex)
                 {
@@ -376,21 +398,57 @@ namespace AppsInToss
 #if AIT_HAS_UNITYWEBREQUEST && AIT_HAS_IMAGECONVERSION
             // raw(GPU 포맷 보존) 사본은 스텁 포맷·mip 이 매니페스트와 정확히 같고 기기가 그 포맷을 지원할 때만 쓴다.
             // 그렇지 않으면 PNG/JPG 사본(file)으로 폴백 — 사본 선택은 다운로드 전에 정해 불필요한 쪽을 받지 않는다.
-            bool useRaw = tex != null && IsRawUsable(
+            //
+            // 스텁이 non-readable(작은 스텁)이면 raw-swap: JS 가 원본 블록을 받아 새 GL 텍스처에 compressedTexImage2D 로 올리고 교체한다.
+            // 스텁 포맷이 raw 와 같을 필요가 없고(스텁은 자리표시일 뿐) C# 힙에 바이트가 오지 않는다. 실패하면 아래 브라우저 디코드 → 바이트 경로로 간다.
+            // 스텁이 readable 이면 기존 LoadRawTextureData 경로(포맷·mip 이 같을 때만).
+            bool stubReadable = tex != null && tex.isReadable;
+            bool rawSwapSupported = tex != null && !stubReadable && browserDecodeEnabled && !string.IsNullOrEmpty(e.rawFile) && QueryRawSwapSupport(e.rawFormat);
+            bool useRawSwap = tex != null && IsRawSwapUsable(
+                e.rawFile, rawFailed.Contains(e.guid), e.rawFormat, e.rawMips, e.rawSize, rawSwapSupported, stubReadable, browserDecodeEnabled);
+
+            if (useRawSwap)
+            {
+                var rawOutcome = new BrowserOutcome();
+                yield return TryBrowserRestore(e, tex, rawOutcome, null, true);
+                if (rawOutcome.restored || rawOutcome.unloaded)
+                {
+                    loadingCount--;
+                    inflight.Remove(e.guid);
+                    pending.RemoveAll(x => x.guid == e.guid);
+                    if (rawOutcome.restored)
+                    {
+                        HeldCount++;
+                        RestoredCount++;
+                        BrowserRestoredCount++;
+                        Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {rawOutcome.width}x{rawOutcome.height} path=raw-swap fmt={(TextureFormat)e.rawFormat} mips={rawOutcome.mips} heldBytes=0 downscale={rawOutcome.downscaleTier}");
+                    }
+
+                    yield break;
+                }
+
+                // 교체 전에 실패했으므로 스텁은 그대로다 — 이 엔트리는 이후 raw 를 건너뛰고 PNG/JPG 브라우저 디코드로 간다.
+                rawFailed.Add(e.guid);
+                restoredInstanceIds.Add(tex.GetInstanceID());
+                Debug.LogWarning($"[AIT-StreamingTexture] raw-swap 실패 {e.name}: {rawOutcome.reason} → 브라우저 디코드 폴백");
+            }
+
+            bool useRaw = tex != null && stubReadable && IsRawUsable(
                 e.rawFile, rawFailed.Contains(e.guid), e.rawFormat, e.rawMips, e.rawSize,
                 SupportsRawFormat(e.rawFormat), (int)tex.format, tex.mipmapCount);
 
-            if (!useRaw && !string.IsNullOrEmpty(e.rawFile) && rawSkipLogged.Add(e.guid))
+            if (!useRaw && !useRawSwap && !string.IsNullOrEmpty(e.rawFile) && rawSkipLogged.Add(e.guid))
             {
                 // raw 사본이 실렸는데 쓰지 않는 이유를 한 번 남긴다(스텁 포맷이 raw 와 다르면 PNG/JPG 로 가므로 사용자가 알아야 한다).
-                Debug.Log($"[AIT-StreamingTexture] raw 건너뜀 {e.name}: {RawSkipReason(e.rawFile, rawFailed.Contains(e.guid), e.rawFormat, e.rawMips, e.rawSize, SupportsRawFormat(e.rawFormat), (int)tex.format, tex.mipmapCount)}");
+                // non-readable 스텁은 raw-swap 기준(JS 지원·브라우저 경로)으로 사유를 낸다 — 스텁 포맷 불일치는 이 경로의 사유가 아니다.
+                Debug.Log($"[AIT-StreamingTexture] raw 건너뜀 {e.name}: {RawSkipReason(e.rawFile, rawFailed.Contains(e.guid), e.rawFormat, e.rawMips, e.rawSize, stubReadable ? SupportsRawFormat(e.rawFormat) : rawSwapSupported, (int)tex.format, tex.mipmapCount, stubReadable, browserDecodeEnabled)}");
             }
 
             if (tex != null && IsBrowserDecodeUsable(
                     browserDecodeEnabled, useRaw, e.nonReadable, browserFailed.Contains(e.guid), e.encoding, browserBrotliBlocked, tex.isReadable))
             {
                 var outcome = new BrowserOutcome();
-                yield return TryBrowserRestore(e, tex, outcome, null);
+                yield return TryBrowserRestore(e, tex, outcome, null, false);
                 if (outcome.restored || outcome.unloaded)
                 {
                     loadingCount--;
@@ -401,7 +459,7 @@ namespace AppsInToss
                         HeldCount++;
                         RestoredCount++;
                         BrowserRestoredCount++;
-                        Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {outcome.width}x{outcome.height} path=browser-swap fmt=RGBA32 readable=0 heldBytes=0 mips={(tex.mipmapCount > 1 ? 1 : 0)}");
+                        Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {outcome.width}x{outcome.height} path=browser-swap fmt=RGBA32 readable=0 heldBytes=0 mips={(tex.mipmapCount > 1 ? 1 : 0)} downscale={outcome.downscaleTier}");
                     }
 
                     yield break;
@@ -485,7 +543,7 @@ namespace AppsInToss
                 var bytesOutcome = new BrowserOutcome();
                 if (bytesForJs != null && browserDecodeEnabled)
                 {
-                    yield return TryBrowserRestore(e, tex, bytesOutcome, bytesForJs);
+                    yield return TryBrowserRestore(e, tex, bytesOutcome, bytesForJs, false);
                 }
                 else
                 {
@@ -499,7 +557,7 @@ namespace AppsInToss
                     HeldCount++;
                     RestoredCount++;
                     BrowserRestoredCount++;
-                    Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {bytesOutcome.width}x{bytesOutcome.height} path=browser-swap-bytes fmt=RGBA32 readable=0 heldBytes=0");
+                    Debug.Log($"[AIT-StreamingTexture] 복원 {e.name} {bytesOutcome.width}x{bytesOutcome.height} path=browser-swap-bytes fmt=RGBA32 readable=0 heldBytes=0 downscale={bytesOutcome.downscaleTier}");
                 }
                 else if (!bytesOutcome.unloaded)
                 {
@@ -609,9 +667,11 @@ namespace AppsInToss
         /// 브라우저 디코드 한 건. 1) JS 가 fetch(또는 넘겨받은 바이트)+createImageBitmap 2) JS 가 새 WebGL 텍스처를 만들어 GL.textures[name] 을 교체.
         /// 스텁은 non-readable 압축이라 C# 은 Reinitialize/Apply 를 하지 않는다(CPU 사본이 힙에 생기므로) — GetNativeTexturePtr 만 쓴다.
         /// 실패하면 outcome.reason 을 채우고 돌아간다. 교체 전에 실패하면 스텁이 그대로라 호출부가 폴백할 수 있다.
+        /// <paramref name="raw"/> 가 true 면 PNG/JPG 대신 raw(GPU 블록) 사본을 받아 compressedTexImage2D 로 올린다(raw-swap).
+        /// 저사양 티어 다운스케일이 켜져 있으면 PNG/JPG 는 디코드 크기를 줄이고(createImageBitmap resize), raw 는 위쪽 mip 레벨을 건너뛴다.
         /// <paramref name="bytes"/> 가 null 이 아니면 URL 대신 그 바이트를 디코드한다(서버가 brotli 를 해제하지 않아 managed 가 푼 경우).
         /// </summary>
-        private IEnumerator TryBrowserRestore(Entry e, Texture2D tex, BrowserOutcome o, byte[] bytes)
+        private IEnumerator TryBrowserRestore(Entry e, Texture2D tex, BrowserOutcome o, byte[] bytes, bool raw)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             if (!EnsureBrowserSelfTest())
@@ -623,15 +683,40 @@ namespace AppsInToss
             int id = ++browserReqSeq;
             int status;
             string startError = null;
+
+            // 기대 크기(JS 가 올릴 실제 크기). 스텁은 원본 차원이고 PNG 사본은 sw/sh 로 이미 줄었을 수 있다.
+            int baseW = e.sw > 0 ? e.sw : e.width;
+            int baseH = e.sh > 0 ? e.sh : e.height;
+            int expW, expH;
+            int skipLevels = 0;
+            if (raw)
+            {
+                skipLevels = RawSkipLevels(downscaleTier, e.rawMips);
+                expW = Mathf.Max(1, e.width >> skipLevels);
+                expH = Mathf.Max(1, e.height >> skipLevels);
+                o.mips = Mathf.Max(1, e.rawMips - skipLevels);
+                o.downscaleTier = skipLevels > 0 ? downscaleTier : 0;
+            }
+            else
+            {
+                ComputeDownscaleSize(baseW, baseH, downscaleTier, out expW, out expH);
+                o.downscaleTier = (expW != baseW || expH != baseH) ? downscaleTier : 0;
+            }
+
             try
             {
-                if (bytes != null)
+                if (raw)
                 {
-                    __AITTexDecode_Start(null, bytes, bytes.Length, id);
+                    int srgb = QualitySettings.activeColorSpace == ColorSpace.Linear ? 1 : 0;
+                    __AITTexDecode_RawStart(ResolveStreamingUrl(StreamDirRelativePath + e.rawFile), id, e.rawFormat, srgb, e.rawMips, e.rawSize, skipLevels, e.width, e.height);
+                }
+                else if (bytes != null)
+                {
+                    __AITTexDecode_Start(null, bytes, bytes.Length, id, o.downscaleTier > 0 ? expW : 0, o.downscaleTier > 0 ? expH : 0);
                 }
                 else
                 {
-                    __AITTexDecode_Start(ResolveStreamingUrl(StreamDirRelativePath + e.file), null, 0, id);
+                    __AITTexDecode_Start(ResolveStreamingUrl(StreamDirRelativePath + e.file), null, 0, id, o.downscaleTier > 0 ? expW : 0, o.downscaleTier > 0 ? expH : 0);
                 }
             }
             catch (System.Exception ex)
@@ -713,10 +798,14 @@ namespace AppsInToss
 
             o.width = w;
             o.height = h;
-            int expW = e.sw > 0 ? e.sw : e.width;
-            int expH = e.sh > 0 ? e.sh : e.height;
             if (w != expW || h != expH)
             {
+                // 다운스케일을 요청했는데 브라우저가 리사이즈를 무시해 원본 크기로 올라온 경우도 여기 걸린다(UV 는 정규화라 렌더는 정상).
+                if (o.downscaleTier > 0 && w == baseW && h == baseH)
+                {
+                    o.downscaleTier = 0;
+                }
+
                 Debug.LogWarning($"[AIT-StreamingTexture] 차원 불일치 {e.name}: 기대 {expW}x{expH} → 실제 {w}x{h} (스텁 {e.width}x{e.height})");
             }
 
@@ -763,6 +852,34 @@ namespace AppsInToss
         }
 #endif
 
+        /// <summary>raw 포맷을 JS 가 올릴 수 있는지(WEBGL_compressed_texture_astc 확장 등). 결과는 포맷별로 캐시한다.</summary>
+        private bool QueryRawSwapSupport(int format)
+        {
+            if (format <= 0)
+            {
+                return false;
+            }
+
+            if (rawSupportCache.TryGetValue(format, out bool cached))
+            {
+                return cached;
+            }
+
+            bool supported = false;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try
+            {
+                supported = __AITTexDecode_RawSupported(format) == 1;
+            }
+            catch (System.Exception)
+            {
+                supported = false;
+            }
+#endif
+            rawSupportCache[format] = supported;
+            return supported;
+        }
+
         private static int QueryBrowserCapability()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -802,6 +919,90 @@ namespace AppsInToss
             return !(encoding == "br" && brotliBlocked);
         }
 
+        /// <summary>
+        /// raw-swap 을 쓸 수 있는지. raw 사본이 있고, 이전에 실패하지 않았고, 매니페스트 raw 필드가 유효하고, 스텁이 non-readable 이며
+        /// (readable 스텁은 LoadRawTextureData 경로), 브라우저 경로가 켜져 있고, JS 가 그 포맷을 올릴 수 있을 때만 true.
+        /// 스텁 포맷이 raw 와 같을 필요는 없다(새 GL 텍스처로 통째로 교체).
+        /// </summary>
+        internal static bool IsRawSwapUsable(
+            string rawFile, bool failedBefore, int rawFormat, int rawMips, int rawSize,
+            bool jsSupportsFormat, bool stubReadable, bool browserEnabled)
+        {
+            if (string.IsNullOrEmpty(rawFile) || failedBefore || stubReadable || !browserEnabled)
+            {
+                return false;
+            }
+
+            if (rawFormat <= 0 || rawMips <= 0 || rawSize <= 0)
+            {
+                return false;
+            }
+
+            return jsSupportsFormat;
+        }
+
+        /// <summary>매니페스트 lowTierDownscale 플래그(1)와 저사양 티어(0..2)로 실효 다운스케일 티어(0 = 없음, 1, 2)를 정한다.</summary>
+        internal static int ResolveDownscaleTier(int manifestFlag, int lowMemTier)
+        {
+            if (manifestFlag != 1 || lowMemTier < 1)
+            {
+                return 0;
+            }
+
+            return lowMemTier >= 2 ? 2 : 1;
+        }
+
+        /// <summary>
+        /// 티어별 다운스케일 배율(긴 변 기준). tier 1: 512 초과 → 1/2. tier 2: 1024 초과 → 1/4, 256 초과 → 1/2.
+        /// 1/4 는 긴 변이 1024 를 넘을 때만이라 결과의 긴 변은 항상 256 이상이다(최소 256 유지). 나머지는 1(원본 유지).
+        /// </summary>
+        internal static int DownscaleDivisor(int width, int height, int tier)
+        {
+            int longest = Mathf.Max(width, height);
+            if (tier <= 0)
+            {
+                return 1;
+            }
+
+            if (tier == 1)
+            {
+                return longest > 512 ? 2 : 1;
+            }
+
+            if (longest > 1024)
+            {
+                return 4;
+            }
+
+            return longest > 256 ? 2 : 1;
+        }
+
+        /// <summary>다운스케일 결과 크기(올림, 최소 1). 배율이 1 이면 입력 그대로. 비율은 올림 오차 안에서 유지된다.</summary>
+        internal static void ComputeDownscaleSize(int width, int height, int tier, out int outWidth, out int outHeight)
+        {
+            int d = DownscaleDivisor(width, height, tier);
+            if (d <= 1 || width <= 0 || height <= 0)
+            {
+                outWidth = width;
+                outHeight = height;
+                return;
+            }
+
+            outWidth = Mathf.Max(1, (width + d - 1) / d);
+            outHeight = Mathf.Max(1, (height + d - 1) / d);
+        }
+
+        /// <summary>raw-swap 이 건너뛸 위쪽 mip 레벨 수. mip 이 1 개뿐이면 0(건너뛸 레벨이 없다), 아니면 티어만큼(최대 mips-1).</summary>
+        internal static int RawSkipLevels(int tier, int mips)
+        {
+            if (tier <= 0 || mips <= 1)
+            {
+                return 0;
+            }
+
+            return Mathf.Min(tier, mips - 1);
+        }
+
         /// <summary>jslib 상태 코드를 로그용 문구로. "이미지 아님" 접두는 br 미해제 판정에 쓰인다.</summary>
         internal static string BrowserFailureText(int code)
         {
@@ -813,6 +1014,8 @@ namespace AppsInToss
                 case -4: return "JS 예외";
                 case -5: return "요청 없음";
                 case -6: return "시간 초과";
+                case -7: return "raw 크기 불일치(brotli 미해제 등)";
+                case -8: return "raw 포맷 미지원/확장 없음";
                 case -10: return "GL 컨텍스트 없음";
                 case -11: return "GL 텍스처 이름 무효";
                 case -12: return "texSubImage2D 실패/GL 오류";
@@ -864,12 +1067,16 @@ namespace AppsInToss
         /// <summary>IsRawUsable 이 false 일 때의 사유(로그용). 스텁 포맷 불일치(예: 스텁 DXT5 vs raw ASTC)가 가장 흔하다.</summary>
         internal static string RawSkipReason(
             string rawFile, bool failedBefore, int expectedFormat, int expectedMips, int expectedSize,
-            bool supportsFormat, int actualFormat, int actualMips)
+            bool supportsFormat, int actualFormat, int actualMips, bool stubReadable = true, bool browserEnabled = true)
         {
             if (string.IsNullOrEmpty(rawFile)) return "raw 사본 없음";
             if (failedBefore) return "이전 raw 복원 실패";
             if (expectedFormat <= 0 || expectedMips <= 0 || expectedSize <= 0) return "매니페스트 raw 필드 누락";
+            if (!stubReadable && !browserEnabled) return "non-readable 스텁인데 브라우저 경로 불가(raw-swap 불가)";
             if (!supportsFormat) return $"기기가 raw 포맷({expectedFormat}) 미지원";
+
+            // non-readable 스텁은 raw-swap 이라 스텁 포맷·mip 이 raw 와 달라도 사유가 아니다.
+            if (!stubReadable) return "알 수 없음";
             if (actualFormat != expectedFormat) return $"스텁 포맷 {actualFormat} != raw 포맷 {expectedFormat}";
             if (actualMips != expectedMips) return $"스텁 mip {actualMips} != raw mip {expectedMips}";
             return "알 수 없음";

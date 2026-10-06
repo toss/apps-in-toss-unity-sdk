@@ -9,7 +9,7 @@
  *     자동 UnloadUnusedAssets 같은 동작은 하지 않는다(C# 쪽 opt-in 플래그뿐).
  *
  * === 크로스 파일 계약 ===
- *  - window.__AIT_PERF (index.html head 맨 위 인라인 스크립트가 정의, 이 파일보다 먼저 실행됨)
+ *  - window.__AIT_PERF (index.html head 맨 위 인라인 스크립트가 정의, 이 파일보다 먼저 실행됨). 테스트용 forceLowMemTier(0|1|2)가 티어를 강제한다.
  *      읽는 키: memoryTelemetry(기본 true). 객체가 없거나 키가 없으면 기본값으로 동작한다(fail-open).
  *      선택 키(C# 이 내보내지 않는다. 실험용): memHighMB(기본 256), memCriticalMB(기본 384) — 둘 다 실기기 검증 전 추정치다.
  *  - window.AITMemory.crashCount: number
@@ -185,6 +185,12 @@
                 // 같은 티어면 만료 기준 시각을 유지한다(24시간 뒤 자연 해제). 올라갔을 때만 새로 찍는다.
                 if (tier !== storedTier || !storedTs) writeLocal(TIER_KEY, { tier: tier, ts: now });
             }
+        }
+        // 테스트용 강제 티어: __AIT_PERF.forceLowMemTier(0|1|2). 저장값은 건드리지 않고 이번 세션의 lowMemTier 만 덮는다(lowMemoryTier 가 꺼져 있으면 무시).
+        var forced = flags.forceLowMemTier;
+        if (lowMemEnabled && (forced === 0 || forced === 1 || forced === 2)) {
+            mem.lowMemTier = forced;
+            mem.lowMemReason = forced > 0 ? 'forced' : '';
         }
         writeBoot();
     })();

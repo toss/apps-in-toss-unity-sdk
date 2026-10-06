@@ -18,6 +18,11 @@ run-name: "Memlimit${{ inputs.run_id && format(' [perf run #{0}]', inputs.run_id
 #  - schedule: main 에서 가장 최근 성공한 perf.yml run 을 자동 선택한다. 아티팩트 retention(7일)이 지나
 #    heavy 아티팩트가 없으면 경고만 남기고 건너뛴다(perf 가 main push 에서 돌 때만 갱신되므로 정상 경로).
 #
+# pull_request: 이 워크플로·드라이버 파일이 바뀐 PR 에서만 돈다(paths 필터). 비용을 줄이려 6000.0 만,
+#  start 640MB, 최대 6단계로 고정한다. run_id 는 PR head 브랜치의 최근 성공 perf run, 없으면 아무 브랜치의
+#  최근 성공 perf run 이다. 권한은 contents/actions read 뿐이며 시크릿을 쓰지 않는다. fork PR 은 토큰이
+#  읽기 전용이라 아티팩트 교차 다운로드가 안 되므로 setup 에서 건너뛴다(같은 repo PR 은 기본 GITHUB_TOKEN 으로 동작).
+#
 # 수동 실행 예:
 #   gh api -X POST repos/toss/apps-in-toss-unity-sdk/actions/workflows/memlimit.yml/dispatches \
 #     -f ref=main -f 'inputs[run_id]=<perf run id>' -f 'inputs[versions]=6000.0,2021.3'
@@ -45,6 +50,10 @@ on:
         description: '(선택) 기준 min viable MB. 측정값이 기준보다 64MB 넘게 크면 ::warning:: 를 남긴다'
         type: string
         default: ''
+  pull_request:
+    paths:
+      - '.github/workflows/memlimit.yml'
+      - 'Tests~/E2E/tests/memlimit/**'
   schedule:
     - cron: '0 3 * * 1' # 매주 월요일 03:00 UTC
 
@@ -65,6 +74,9 @@ jobs:
       matrix: ${{ steps.resolve.outputs.matrix }}
       start_mb: ${{ steps.resolve.outputs.start_mb }}
       step_mb: ${{ steps.resolve.outputs.step_mb }}
+      max_levels: ${{ steps.resolve.outputs.max_levels }}
+    # fork PR 은 건너뜀(토큰 권한 없음)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Resolve inputs
         id: resolve
@@ -76,10 +88,16 @@ jobs:
           IN_START: ${{ inputs.start_mb }}
           IN_STEP: ${{ inputs.step_mb }}
           IN_BASELINE: ${{ inputs.baseline_mb }}
+          # 브랜치 이름은 신뢰 불가 입력 → env 로만 전달
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           VERSIONS="${IN_VERSIONS:-6000.0,2021.3}"
           START="${IN_START:-704}"
           STEP="${IN_STEP:-32}"
+          MAX_LEVELS=12
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            VERSIONS="6000.0"; START=640; MAX_LEVELS=6
+          fi
           for v in "$START" "$STEP" "$IN_BASELINE" "$IN_RUN_ID"; do
             [ -z "$v" ] && continue
             case "$v" in *[!0-9]*) echo "::error::숫자 입력이 아닙니다: '$v'"; exit 1;; esac
@@ -92,11 +110,19 @@ jobs:
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               echo "::error::workflow_dispatch 는 run_id 가 필요합니다"; exit 1
             fi
-            # schedule: main 에서 가장 최근 성공한 perf.yml run
-            RUN_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/perf.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+            latest() { # $1 = 브랜치(빈 값이면 전체)
+              gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/perf.yml/runs" \
+                -f status=success -f per_page=1 ${1:+-f branch="$1"} --jq '.workflow_runs[0].id // empty'
+            }
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              # PR head 브랜치의 최근 성공 run → 없으면 아무 브랜치의 최근 성공 run
+              RUN_ID=$(latest "$HEAD_REF")
+              [ -z "$RUN_ID" ] && RUN_ID=$(latest "")
+            else
+              RUN_ID=$(latest main) # schedule: main 의 최근 성공 run
+            fi
             if [ -z "$RUN_ID" ]; then
-              echo "::warning::main 의 성공한 perf run 이 없어 memlimit 을 건너뜁니다"
-              RUN_ID=""
+              echo "::warning::성공한 perf run 이 없어 memlimit 을 건너뜁니다"
             fi
           fi
 
@@ -106,6 +132,7 @@ jobs:
             echo "matrix=$MATRIX"
             echo "start_mb=$START"
             echo "step_mb=$STEP"
+            echo "max_levels=$MAX_LEVELS"
           } >> "$GITHUB_OUTPUT"
 
   measure:
@@ -166,7 +193,7 @@ jobs:
             --dist "$DIST_WEB" \
             --start "${{ needs.setup.outputs.start_mb }}" \
             --step "${{ needs.setup.outputs.step_mb }}" \
-            --max-levels 12 \
+            --max-levels "${{ needs.setup.outputs.max_levels }}" \
             --image "$PW_IMAGE" \
             --out "$GITHUB_WORKSPACE/memlimit-${{ matrix.version }}.json"
 

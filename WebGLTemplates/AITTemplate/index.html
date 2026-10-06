@@ -115,7 +115,8 @@
          Android WebView 는 WebView 자체를 줄여 innerHeight 도 같이 줄기 때문이다. pan 모드는 Android 에서 컨테이너 높이를
          그 기준 높이로 고정해 캔버스가 줄지 않게 한다.
          모든 모드에서 Unity 가 body 에 붙이는 입력 바(position:fixed; bottom:0)를 보이는 영역 맨 아래, 곧 키보드 바로 위로
-         옮긴다. 레이아웃 뷰포트가 줄지 않는 iOS 에서는 그대로 두면 바가 키보드 뒤에 가려져 입력 중인 글자가 안 보인다. -->
+         옮긴다. 레이아웃 뷰포트가 줄지 않는 iOS 에서는 그대로 두면 바가 키보드 뒤에 가려져 입력 중인 글자가 안 보인다.
+         키보드가 뜨기 전까지는 바를 맨 위에 두어 WKWebView 가 바를 드러내려고 문서를 스크롤하지 않게 한다(iOS 27). -->
     <script>
         (function () {
             var vv = window.visualViewport;
@@ -150,7 +151,26 @@
                 }
                 return null;
             }
+            // 키보드가 뜨기 전에는 바를 화면 맨 위에 둔다. 맨 아래(bottom:0)에 두면 iOS 27 WKWebView 가 바를 드러내려고
+            // 문서를 키보드 높이만큼 스크롤하는데, visualViewport·scrollY 는 처음부터 최종값을 알려 주고 실제 화면은
+            // 키보드와 함께 천천히 스크롤된다. 그 사이 위치 보정이 앞서가 화면이 아래로 떨어졌다 올라오고, 닫을 때는 반대로 튄다.
+            // 고정한 동안은 맨 위에 바가 번쩍 보이지 않게 투명하게 둔다. 1초가 지나도 보이는 영역이 그대로면
+            // (액세서리 바 없는 하드웨어 키보드 등) 입력 내용을 볼 수 있게 맨 위에 둔 채 다시 보인다.
+            function pinInputBar(bar) {
+                bar.__aitPinned = true;
+                bar.style.top = '0px';
+                bar.style.bottom = 'auto';
+                bar.style.opacity = '0';
+                setTimeout(function () { if (bar.__aitPinned) bar.style.opacity = ''; }, 1000);
+            }
             function placeInputBar(bar) {
+                // 키보드(하드웨어 키보드면 액세서리 바만)가 떠서 보이는 영역이 조금이라도 줄면 고정을 푼다.
+                if (bar.__aitPinned) {
+                    if (fullHeight() - vv.height < 1) return;
+                    bar.__aitPinned = false;
+                    bar.style.top = '';
+                    bar.style.opacity = '';
+                }
                 var gap = Math.max(0, Math.round(window.innerHeight - vv.offsetTop - vv.height));
                 bar.style.bottom = gap + 'px';
             }
@@ -216,7 +236,13 @@
 
             function isTextField(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }
             // 입력 바가 새로 생기면(focusin) 키보드 애니메이션 전에 한 번 자리를 잡는다. 이후는 vv 이벤트가 따라간다.
-            window.addEventListener('focusin', function (e) { if (isTextField(e.target)) schedule(); }, true);
+            // 키보드가 아직 없으면 바를 맨 위에 고정해 WKWebView 의 문서 스크롤을 막는다(pinInputBar).
+            window.addEventListener('focusin', function (e) {
+                if (!isTextField(e.target)) return;
+                var bar = unityInputBar();
+                if (bar && bar.input === e.target && !keyboardUp()) pinInputBar(bar);
+                schedule();
+            }, true);
 
             if (mode !== 'pan') return;
             function recordPointer(e) {

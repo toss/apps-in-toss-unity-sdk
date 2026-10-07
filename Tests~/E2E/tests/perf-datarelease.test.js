@@ -28,10 +28,12 @@ const MB = 1048576;
 /**
  * 스크립트를 격리된 가짜 window 로 로드한다. 타이머는 큐에 쌓고 flush() 로 비운다.
  * @param {any} perf  window.__AIT_PERF 값(undefined 면 객체 자체가 없다)
+ * @param {string} [ua]  window.navigator.userAgent(없으면 navigator 자체가 없다)
  */
-function load(perf) {
+function load(perf, ua) {
   const win = /** @type {any} */ ({});
   if (perf !== undefined) win.__AIT_PERF = perf;
+  if (ua !== undefined) win.navigator = { userAgent: ua };
   win.unityConfig = { dataUrl: 'Build/x.data' };
   /** @type {Array<() => void>} */
   const timers = [];
@@ -165,6 +167,22 @@ test.describe('ait-datarelease', () => {
     expect(hook.alloc(999, { url: '' })).toBeNull();
     expect(hook.alloc(2000, { url: '' })).toBeNull();
     expect(hook.getState().allocated).toBe(false);
+  });
+
+  test('releaseConsumedDataWebKit=false 면 WebKit 전용 엔진에서만 끈다', () => {
+    const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+    const IOS_CHROME = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0 Mobile/15E148 Safari/604.1';
+    const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0 Mobile Safari/537.36';
+    const AUTO = { ...ON(1000), releaseConsumedDataWebKit: false };
+    for (const ua of [IOS, IOS_CHROME]) {
+      const { hook } = load(AUTO, ua);
+      expect(hook.alloc(1000, { url: '' }), ua).toBeNull();
+      expect(hook.getState().reason, ua).toBe('auto-webkit');
+    }
+    expect(load(AUTO, ANDROID).hook.alloc(1000, { url: '' })).not.toBeNull();
+    expect(load(AUTO).hook.alloc(1000, { url: '' }), 'UA 미상').not.toBeNull();
+    expect(load({ ...ON(1000), releaseConsumedDataWebKit: true }, IOS).hook.alloc(1000, { url: '' }), '강제 켬').not.toBeNull();
+    expect(load(ON(1000), IOS).hook.alloc(1000, { url: '' }), '키 없음').not.toBeNull();
   });
 
   test('data 가 아닌 URL 의 응답은 거른다', () => {

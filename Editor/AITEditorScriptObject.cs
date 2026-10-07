@@ -1267,8 +1267,9 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 소비한 data 버퍼 해제(metadata 등) 자동 실효값: true. Chromium(6000.0/6000.3/2021.3 쌍 측정)과 iOS 시뮬레이터 WebKit 에서
-        /// 해제·생존을 확인했다. 미지원 엔진(resizable ArrayBuffer 없음)·재읽기·mmap 은 런타임이 알아서 stock 으로 남는다.
+        /// 소비한 data 버퍼 해제(metadata 등) 자동 실효값: true. Chromium(6000.0/6000.3/2021.3 쌍 측정)과 Android WebView 에서
+        /// 해제·생존을 확인했다. 자동일 때 WebKit 전용 엔진(iOS)에서는 런타임이 끈다(AITPerfFlags.EffectiveReleaseConsumedDataWebKit).
+        /// 미지원 엔진(resizable ArrayBuffer 없음)·재읽기·mmap 은 런타임이 알아서 stock 으로 남는다.
         /// </summary>
         public static bool GetDefaultReleaseConsumedData()
         {

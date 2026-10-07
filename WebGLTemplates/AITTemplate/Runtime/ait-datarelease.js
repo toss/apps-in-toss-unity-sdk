@@ -17,10 +17,13 @@
  *     첫 프레임(rAF, 최대 1.5초 대기) 뒤에 release 한다. 읽기가 한 번 더 일어나면(누적 > 크기) 해제를 영구 취소한다.
  *  3) release: metadata 뒤에 놓인 파일(default resources, 1.6~3.5MB)만 독립 버퍼로 복사해 옮기고, metadata 노드의 contents 를 비우고,
  *     부모 버퍼를 metadata 시작 오프셋으로 resize(shrink)한다. 순수 이득은 metadata 크기만큼이다(옮긴 파일은 새 버퍼가 되므로).
- *     shrink 는 물리 페이지를 돌려준다(Chromium macOS 실측). iOS(JSC)는 시뮬레이터 WebKit 에서 해제·생존을 확인했고 기본 켜짐이다(실기기 미확인).
+ *     shrink 는 물리 페이지를 돌려준다(Chromium macOS 실측). iOS(JSC)는 시뮬레이터 WebKit 에서 해제·생존을 확인했지만 정상 상태 이득이
+ *     노이즈 수준이고 실기기에서 켠 빌드만 오디오 재생 시간이 멈춘 사례(3/5, 끈 빌드 0/10)가 있어, 자동(-1)이면 WebKit 전용 엔진에서는 끈다
+ *     (__AIT_PERF.releaseConsumedDataWebKit=false). 강제 켬(1)이면 WebKit 에서도 켠다.
  *
  * === 크로스 파일 계약 ===
  *  - window.__AIT_PERF: releaseConsumedData(true 일 때만 동작), dataRawSize(>0), unityweb(true 면 끔). 객체/키가 없으면 꺼짐(fail-open).
+ *      releaseConsumedDataWebKit 이 false 면 WebKit 전용 엔진에서 끈다(키가 없으면 엔진 구분 없음).
  *      data 가 정확한 Content-Length 로 도착해야(ait-databuf.js 의 exactDataBody) d 가 RAW 와 같다. 아니면 alloc 은 null 이고 stock 동작이다.
  *  - window.__AIT_DATAREL: { alloc, created, getState } — 로더 패치가 호출한다. 로더만 패치되고 이 파일이 없으면 로더가 stock 으로 돌아간다.
  *  - 크기 조절 ArrayBuffer 의 뷰는 TextDecoder.decode 가 거부한다(Chromium: 6000.x 로더가 파일명을 TextDecoder 로 디코드한다).
@@ -87,6 +90,17 @@
         }
     }
 
+    // WebKit 전용 엔진(iOS WKWebView/Safari) 판정. AITPageCacheEmitter 의 IS_WEBKIT 와 같은 규칙이다. UA 를 모르면 false.
+    function isWebKitOnly() {
+        try {
+            var ua = (window.navigator && window.navigator.userAgent) || '';
+            var chromium = /Chrome\/|Chromium\/|Android/.test(ua) && !/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua);
+            return !chromium && /AppleWebKit\/|iPhone|iPad|iPod/.test(ua);
+        } catch (e) {
+            return false;
+        }
+    }
+
     function canResizable() {
         try {
             return typeof ArrayBuffer === 'function' &&
@@ -103,6 +117,7 @@
         var raw = (typeof perf.dataRawSize === 'number' && isFinite(perf.dataRawSize)) ? Math.floor(perf.dataRawSize) : -1;
         state.rawSize = raw;
         if (perf.releaseConsumedData !== true) { state.reason = 'releaseConsumedData=off'; return false; }
+        if (perf.releaseConsumedDataWebKit === false && isWebKitOnly()) { state.reason = 'auto-webkit'; return false; }
         if (perf.unityweb === true) { state.reason = 'unityweb'; return false; }
         if (!(raw > 0)) { state.reason = 'dataRawSize=' + raw; return false; }
         if (!canResizable()) { state.reason = 'no-resizable-arraybuffer'; return false; }

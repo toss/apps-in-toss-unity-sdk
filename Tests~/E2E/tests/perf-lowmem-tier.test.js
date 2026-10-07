@@ -112,6 +112,11 @@ function initScript(opt) {
       Cache.prototype.put = function (req) { window.__spy.puts.push(String((req && req.url) || req)); return p.apply(this, arguments); };
     } catch (e) {}
     try {
+      // 네트워크 저장(networkPut)은 cache.add 를 쓴다. 저장 횟수로 put 과 함께 센다(네이티브 add 는 JS put 을 거치지 않는다).
+      const a = Cache.prototype.add;
+      Cache.prototype.add = function (req) { window.__spy.puts.push(String((req && req.url) || req)); return a.apply(this, arguments); };
+    } catch (e) {}
+    try {
       const seed = ${JSON.stringify(seed)};
       for (const k of Object.keys(seed)) { if (localStorage.getItem(k) === null) localStorage.setItem(k, seed[k]); }
     } catch (e) {}

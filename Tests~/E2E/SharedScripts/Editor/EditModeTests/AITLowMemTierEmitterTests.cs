@@ -68,6 +68,15 @@ public class AITLowMemTierEmitterTests
     }
 
     [Test]
+    public void PageCache_DeferredPut_NetworkMissUsesCacheAdd()
+    {
+        string js = Emit();
+        StringAssert.Contains("c.add(new Request(url, { cache: 'no-cache', mode: 'same-origin' }))", js,
+            "HTTP 캐시 미스 폴백은 cache.add 로 받아 본문이 WebContent 를 거치지 않아야 한다");
+        StringAssert.Contains("typeof c.add === 'function'", js, "add 가 없는 IndexedDB 어댑터는 fetch→put 으로 폴백한다");
+    }
+
+    [Test]
     public void PageCache_CacheFirst_SkipsCloneWhenLowTierOrDeferred()
     {
         string js = Emit();

@@ -18,7 +18,8 @@
 //   memoryTelemetry    bool     Memory.grow 기록 + crashCount 추적                                          기본 true
 //   exactDataBody      bool     data Response 를 정확한 Content-Length 로 재포장                             기본 true
 //   dataRawSize        number   .data 압축 해제 크기(바이트). 측정 실패/비활성이면 -1
-//   releaseConsumedData bool    소비한 data 구간(metadata 등) 해제                                           기본 false
+//   releaseConsumedData bool    소비한 data 구간(metadata 등) 해제                                           기본 true
+//   releaseConsumedDataWebKit bool  WebKit 전용 엔진에서도 해제할지. 강제 켬(1)일 때만 true                   기본 false
 //   audioForceCompressed bool   긴 클립 강제 압축 재생(framework 패치로 적용; 런타임은 로그용)               기본 false
 //   audioForceCompressedMinSeconds number  강제 대상 최소 길이(초)                                           기본 10
 //   unityweb           bool     Decompression Fallback(.unityweb) 빌드 여부 — true 면 data/framework 훅 비활성
@@ -93,6 +94,13 @@ namespace AppsInToss.Editor.Package
         internal static bool EffectiveReleaseConsumedData(AITEditorScriptObject c)
         {
             return c != null && Resolve(c.releaseConsumedData, AITDefaultSettings.GetDefaultReleaseConsumedData());
+        }
+
+        // 자동(-1)은 WebKit 전용 엔진에서 끈다(실기기 iOS 에서 켠 빌드만 오디오 재생 시간이 멈춘 사례, 정상 상태 이득은 노이즈 수준).
+        // 강제 켬(1)이면 WebKit 에서도 켠다. 엔진 판정은 런타임(ait-datarelease.js)이 한다.
+        internal static bool EffectiveReleaseConsumedDataWebKit(AITEditorScriptObject c)
+        {
+            return c != null && c.releaseConsumedData == 1;
         }
 
         internal static bool EffectiveLowMemoryTier(AITEditorScriptObject c)
@@ -175,6 +183,7 @@ namespace AppsInToss.Editor.Package
             AppendBool(sb, "exactDataBody", EffectiveExactDataBody(config));
             AppendLong(sb, "dataRawSize", dataRawSize);
             AppendBool(sb, "releaseConsumedData", EffectiveReleaseConsumedData(config));
+            AppendBool(sb, "releaseConsumedDataWebKit", EffectiveReleaseConsumedDataWebKit(config));
             AppendBool(sb, "audioForceCompressed", EffectiveAudioForceCompressed(config));
             sb.Append(",\"audioForceCompressedMinSeconds\":")
               .Append(EffectiveAudioForceCompressedMinSeconds(config).ToString("0.###", CultureInfo.InvariantCulture));

@@ -35,7 +35,6 @@
  *      index.html 이 createUnityInstance 직전에 호출한다. true 를 돌려주면 이 레이어가 webglcontextlost 를
  *      전담하고 index.html 의 기본 핸들러는 설치되지 않는다. false 면 index.html 이 기존 핸들러를 쓴다.
  *  - window.__AIT_EFFECTIVE_DPR / window.unityConfig: index.html 이 노출. 손실 시 tier 를 계산할 때 읽는다.
- *  - window.AITPacing.setHint(name, value): 손실이 났을 때 'glContextLost' 힌트를 선택적으로 전달한다(없으면 무시).
  *
  * ⚠️ Unity 로더(컨텍스트 생성)보다 먼저 로드되어야 한다 — index.html 에서 "Unity Loader Script" 앞에 위치한다.
  */
@@ -458,18 +457,27 @@
         if (lossHandled) return;
         lossHandled = true;
 
+        // 백그라운드 페이지의 GPU 자원을 OS 가 회수한 손실은 정상 동작이지 메모리 압박의 증거가 아니다.
+        // 그런 손실마다 DPR tier 를 낮춰 24시간 저장하지 않는다. 힙 레벨이 ok 가 아니면(압박) 숨김 상태여도 저장한다.
+        var hidden = false;
+        try { hidden = document.hidden === true; } catch (e) {}
+        var pressured = false;
         try {
-            if (window.AITPacing && typeof window.AITPacing.setHint === 'function') window.AITPacing.setHint('glContextLost', true);
+            pressured = !!(window.AITMemory && typeof window.AITMemory.getLevel === 'function' && window.AITMemory.getLevel() !== 'ok');
         } catch (e) {}
 
         var cap = 0;
-        try {
-            cap = nextTier();
-            writeStoredTier(cap);
-        } catch (e) {}
+        if (!hidden || pressured) {
+            try {
+                cap = nextTier();
+                writeStoredTier(cap);
+            } catch (e) {}
+        } else {
+            log(LOG, '백그라운드 손실 — DPR tier 저장 생략');
+        }
 
         var guard = recordLoss(Date.now());
-        GL.lastLoss = { tier: cap, prior: guard.prior, guardStorage: guard.ok, hidden: (function () { try { return document.hidden === true; } catch (e) { return false; } })() };
+        GL.lastLoss = { tier: cap, prior: guard.prior, guardStorage: guard.ok, hidden: hidden, pressured: pressured };
 
         // 120초 안 두 번째 손실이거나 가드 저장소를 못 쓰면 reload 루프를 막기 위해 reload 하지 않는다.
         if (!guard.ok || guard.prior >= 1) {
@@ -477,7 +485,7 @@
             showOverlay();
             return;
         }
-        log(LOG, '다음 부팅 DPR 상한 tier=' + cap);
+        if (cap) log(LOG, '다음 부팅 DPR 상한 tier=' + cap);
         reloadWhenVisible();
     }
 

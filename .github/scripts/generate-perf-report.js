@@ -32,6 +32,9 @@ const OS = process.env.PERF_OS || "macos";
 
 const MB = 1048576;
 
+// near-empty(posture=minimal) TTFF 목표(ms). 기록 전용 — 초과해도 실패하지 않는다.
+const NEAR_EMPTY_TARGET_MS = 1000;
+
 /**
  * 이번 실행의 perf 결과 로드 (artifacts/perf-results-<os>-<version>/perf-results-<version>.json)
  */
@@ -208,6 +211,25 @@ function generateReport(data, meta) {
     md += `| ${v} | ${fmtMs(curTtff)} | ${delta(curTtff, baseTtff, "ms")} | ${valid}/${cur.iterations ?? "?"} |\n`;
   }
   md += "\n";
+
+  // ===== near-empty 목표(posture=minimal 결과 전용; 아니면 줄을 추가하지 않아 출력 불변) =====
+  // 빈 씬 + SDK 의 TTFF 중앙값을 1초 목표와 대조해 기록만 한다(실패 종료 코드 없음).
+  const nearEmptyLines = [];
+  for (const v of UNITY_VERSIONS) {
+    const cur = data[v]?.current;
+    if (cur?.posture !== "minimal") continue;
+    const med = cur.ttffMs?.median;
+    if (med == null || isNaN(med)) {
+      nearEmptyLines.push(`- ${v} near-empty target < ${NEAR_EMPTY_TARGET_MS} ms: TTFF median - (측정값 없음)`);
+      continue;
+    }
+    nearEmptyLines.push(
+      `- ${v} near-empty target < ${NEAR_EMPTY_TARGET_MS} ms: TTFF median ${Math.round(med)} ms — ${med < NEAR_EMPTY_TARGET_MS ? "OK" : "OVER"}`
+    );
+  }
+  if (nearEmptyLines.length) {
+    md += nearEmptyLines.join("\n") + "\n\n";
+  }
 
   // ===== 페어 A/B 표 (pairing 데이터 없으면 섹션 자체를 추가하지 않음 — 기존 리포트와 바이트 동일) =====
   const anyPair = UNITY_VERSIONS.some((v) => data[v]?.current?.pairing);

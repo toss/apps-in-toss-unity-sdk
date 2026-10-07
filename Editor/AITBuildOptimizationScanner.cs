@@ -7,7 +7,8 @@ namespace AppsInToss.Editor
     public enum OptimizationIssueType
     {
         TextureCompression,
-        AudioCompression
+        AudioCompression,
+        ReadWriteEnabled
     }
 
     public enum OptimizationStatus
@@ -50,6 +51,7 @@ namespace AppsInToss.Editor
 
             issues.Add(ScanTextures());
             issues.Add(ScanAudio());
+            issues.Add(ScanReadable());
 
             return issues;
         }
@@ -73,6 +75,9 @@ namespace AppsInToss.Editor
                         break;
                     case OptimizationIssueType.AudioCompression:
                         results.Add(FixAudio(issue.assetPaths));
+                        break;
+                    case OptimizationIssueType.ReadWriteEnabled:
+                        results.Add(FixReadable(issue.assetPaths));
                         break;
                 }
             }
@@ -293,6 +298,175 @@ namespace AppsInToss.Editor
             finally
             {
                 EditorUtility.ClearProgressBar();
+            }
+
+            return result;
+        }
+
+        // Read/Write 이슈 판정 임계치: 텍스처 CPU 사본 합계(MB). 모델은 1개라도 있으면 이슈.
+        private const double ReadableTextureMbThreshold = 8.0;
+
+        /// <summary>
+        /// isReadable 텍스처가 wasm heap 에 남기는 CPU 사본 크기 추정(바이트).
+        /// 비압축 4 B/px, 밉맵이 있으면 ×4/3.
+        /// </summary>
+        internal static long EstimateTextureCpuBytes(int w, int h, bool mips)
+        {
+            return (long)(w * (long)h * 4 * (mips ? 4.0 / 3.0 : 1.0));
+        }
+
+        /// <summary>
+        /// 최장변이 maxSize 를 넘으면 비율을 유지한 채 maxSize 로 줄인다(각 변 최소 1).
+        /// </summary>
+        internal static void ClampToMaxTextureSize(ref int w, ref int h, int maxSize)
+        {
+            if (maxSize <= 0) return;
+            int longest = Mathf.Max(w, h);
+            if (longest <= maxSize) return;
+            double scale = (double)maxSize / longest;
+            w = Mathf.Max(1, (int)System.Math.Round(w * scale));
+            h = Mathf.Max(1, (int)System.Math.Round(h * scale));
+        }
+
+        // GetSourceTextureWidthAndHeight 는 버전에 따라 공개 여부가 달라(2021.3 호환) 리플렉션으로 호출한다.
+        private static readonly System.Reflection.MethodInfo s_getSourceSize =
+            typeof(TextureImporter).GetMethod(
+                "GetSourceTextureWidthAndHeight",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new[] { typeof(int).MakeByRefType(), typeof(int).MakeByRefType() },
+                null);
+
+        private static bool TryGetSourceSize(TextureImporter importer, out int w, out int h)
+        {
+            w = 0;
+            h = 0;
+            if (s_getSourceSize == null) return false;
+            try
+            {
+                var args = new object[] { 0, 0 };
+                s_getSourceSize.Invoke(importer, args);
+                w = (int)args[0];
+                h = (int)args[1];
+                return w > 0 && h > 0;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Read/Write 활성 텍스처·모델 스캔. WebGL 에서 isReadable 에셋은 GPU 사본 외에
+        /// wasm heap 에 CPU 사본을 따로 유지한다. 런타임 reader 가 있을 수 있어 기본 선택하지 않는다.
+        /// </summary>
+        internal static OptimizationIssue ScanReadable()
+        {
+            var issue = new OptimizationIssue
+            {
+                type = OptimizationIssueType.ReadWriteEnabled,
+                label = "Read/Write 활성 에셋",
+                recommendation = "Read/Write 해제 권장 (런타임에서 접근하는 에셋은 제외)",
+                isSelected = false
+            };
+
+            int textureCount = 0;
+            int modelCount = 0;
+            long textureBytes = 0;
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+                if (importer == null || !importer.isReadable) continue;
+
+                issue.assetPaths.Add(path);
+                textureCount++;
+
+                if (TryGetSourceSize(importer, out int w, out int h))
+                {
+                    var platformSettings = importer.GetPlatformTextureSettings("WebGL");
+                    int maxSize = platformSettings.overridden ? platformSettings.maxTextureSize : importer.maxTextureSize;
+                    ClampToMaxTextureSize(ref w, ref h, maxSize);
+                    textureBytes += EstimateTextureCpuBytes(w, h, importer.mipmapEnabled);
+                }
+            }
+
+            // 모델은 메시를 로드하지 않고 경로만 센다(크기 추정 없음).
+            foreach (string guid in AssetDatabase.FindAssets("t:Model", new[] { "Assets" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var importer = AssetImporter.GetAtPath(path) as ModelImporter;
+                if (importer == null || !importer.isReadable) continue;
+
+                issue.assetPaths.Add(path);
+                modelCount++;
+            }
+
+            double textureMb = textureBytes / 1e6; // 십진 MB (2048² 밉맵 텍스처 ≈ 22 MB)
+            if (textureMb >= ReadableTextureMbThreshold || modelCount >= 1)
+            {
+                issue.status = OptimizationStatus.Issue;
+                issue.description = $"{textureCount}개 텍스처(CPU 사본 약 {textureMb:F0} MB) · {modelCount}개 모델이 Read/Write 활성 — " +
+                    "wasm heap 에 CPU 사본이 남습니다. 런타임에서 GetPixels/ReadPixels 대상/Mesh.vertices 등을 쓰지 않는 에셋만 해제하세요.";
+            }
+            else
+            {
+                issue.status = OptimizationStatus.AlreadyOptimal;
+                issue.description = "Read/Write 활성 에셋의 CPU 사본이 작음";
+            }
+
+            return issue;
+        }
+
+        private static OptimizationFixResult FixReadable(List<string> assetPaths)
+        {
+            var result = new OptimizationFixResult
+            {
+                type = OptimizationIssueType.ReadWriteEnabled,
+                label = "Read/Write 활성 에셋"
+            };
+
+            try
+            {
+                int fixed_ = 0;
+
+                AssetDatabase.StartAssetEditing();
+                try
+                {
+                    for (int i = 0; i < assetPaths.Count; i++)
+                    {
+                        var importer = AssetImporter.GetAtPath(assetPaths[i]);
+                        var textureImporter = importer as TextureImporter;
+                        var modelImporter = importer as ModelImporter;
+
+                        if (textureImporter != null && textureImporter.isReadable)
+                        {
+                            textureImporter.isReadable = false;
+                            textureImporter.SaveAndReimport();
+                            fixed_++;
+                        }
+                        else if (modelImporter != null && modelImporter.isReadable)
+                        {
+                            modelImporter.isReadable = false;
+                            modelImporter.SaveAndReimport();
+                            fixed_++;
+                        }
+                    }
+                }
+                finally
+                {
+                    AssetDatabase.StopAssetEditing();
+                }
+
+                result.success = true;
+                result.fixedCount = fixed_;
+                result.message = $"{fixed_}개 에셋의 Read/Write 해제 완료";
+            }
+            catch (System.Exception e)
+            {
+                result.success = false;
+                result.message = $"Read/Write 해제 중 오류: {e.Message}";
             }
 
             return result;

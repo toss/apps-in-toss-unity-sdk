@@ -1,5 +1,5 @@
 name: Perf (WebGL load-time TTFF)
-run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}${{ inputs.variant && format(' [variant={0}]', inputs.variant) || '' }}${{ inputs.pair_run_id && format(' [pair #{0}]', inputs.pair_run_id) || '' }}"
+run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}${{ github.event_name == 'workflow_dispatch' && format(' [posture={0}, cf={1}, net={2}]', inputs.posture || 'default', inputs.compression_format || '1', inputs.net_profile || 'default') || '' }}${{ inputs.variant && format(' [variant={0}]', inputs.variant) || '' }}${{ inputs.pair_run_id && format(' [pair #{0}]', inputs.pair_run_id) || '' }}${{ github.event_name == 'schedule' && ' [posture=minimal, weekly]' || '' }}"
 
 # WebGL 로드타임 최적화 레버(L2~L12) PR별 효과(Δ)를 격리 측정하는 perf CI.
 #
@@ -11,6 +11,8 @@ run-name: "Perf TTFF${{ github.event.pull_request.number && format(' - PR #{0}',
 #  - TTFF 측정: ubuntu에서 빌드 산출물을 내려받아 pnpm run test:perf(perf-ttff.test.js) 실행.
 #  - baseline Δ: main 푸시(push 이벤트)가 동일 매트릭스를 측정해 Actions 캐시에 baseline 저장.
 #    PR 잡은 그 캐시를 복원해 Δ를 인라인 계산(부재 시 Δ 생략 — 부트스트랩 정상 경로).
+#  - 주간 near-empty: schedule(일 18:00 UTC)은 posture=minimal 로 돌려 빈 씬 + SDK 의 TTFF 를
+#    1초 목표와 대조해 리포트에 기록한다(heavy baseline 과는 비교하지 않음, 실패 게이트 아님).
 #  - 네트워크 프로파일: workflow_dispatch net_profile(default/mobile)이 measure-ttff 의 스로틀
 #    값만 바꿔 재측정한다(빌드는 재사용, build-heavy 는 이 입력을 참조하지 않음). mobile 은 저대역폭
 #    구간에서 전송-바운드/CPU-바운드 우선순위가 뒤집히는 크로스오버를 탐색하기 위한 축이며,
@@ -34,6 +36,10 @@ on:
       - '.github/workflows/unity-build.yml'
       - '.github/scripts/generate-perf-report.js'
       - '.github/scripts/unity-build/**'
+  # 주 1회(일요일 18:00 UTC) 빈 씬(posture=minimal) TTFF 를 1초 목표(near-empty)와 대조해 기록한다.
+  # 스케줄은 기본 브랜치에서만 돈다. self-hosted macOS 빌드 분이 주 1회 들어간다.
+  schedule:
+    - cron: '0 18 * * 0'
   workflow_dispatch:
     inputs:
       compression_format:
@@ -108,6 +114,7 @@ jobs:
       pair_mode: ${{ steps.gate.outputs.pair_mode }}
       pair_run_id: ${{ steps.gate.outputs.pair_run_id }}
       base_run_id: ${{ steps.gate.outputs.base_run_id }}
+      posture: ${{ steps.gate.outputs.posture }}
     steps:
       - name: Resolve gate
         id: gate
@@ -123,10 +130,14 @@ jobs:
           # 페어 A/B 입력(workflow_dispatch 전용) — 그 외 이벤트에서는 항상 빈 문자열
           PAIR_RUN_ID: ${{ inputs.pair_run_id }}
           BASE_RUN_ID: ${{ inputs.base_run_id }}
+          # posture 입력(workflow_dispatch 전용). 스케줄 이벤트에서는 비어 있으므로 아래에서 minimal 로 채운다.
+          INPUT_POSTURE: ${{ inputs.posture }}
         run: |
           if [ "$EVENT_NAME" = "push" ]; then
             SHOULD_RUN=true;  IS_BASELINE=true;  BUILD_REF="$PUSH_SHA"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHOULD_RUN=true;  IS_BASELINE=false; BUILD_REF="$PUSH_SHA"
+          elif [ "$EVENT_NAME" = "schedule" ]; then
             SHOULD_RUN=true;  IS_BASELINE=false; BUILD_REF="$PUSH_SHA"
           else
             SHOULD_RUN="$HAS_PERF_LABEL"; IS_BASELINE=false; BUILD_REF="$PR_HEAD_SHA"
@@ -143,6 +154,16 @@ jobs:
           PAIR_MODE=false
           [ -n "$PAIR_RUN_ID" ] && PAIR_MODE=true
 
+          # posture: 스케줄은 빈 입력일 때 minimal(near-empty 주간 레그). 허용 목록 밖 값은 실패시킨다.
+          POSTURE="$INPUT_POSTURE"
+          if [ -z "$POSTURE" ] && [ "$EVENT_NAME" = "schedule" ]; then
+            POSTURE=minimal
+          fi
+          case "$POSTURE" in
+            ''|default|full|fullmesh|speed|minimal|*-explicit|*-nostack) ;;
+            *) echo "::error::허용되지 않는 posture: '$POSTURE'"; exit 1;;
+          esac
+
           {
             echo "should_run=${SHOULD_RUN}"
             echo "is_baseline=${IS_BASELINE}"
@@ -152,8 +173,9 @@ jobs:
             echo "pair_mode=${PAIR_MODE}"
             echo "pair_run_id=${PAIR_RUN_ID}"
             echo "base_run_id=${BASE_RUN_ID}"
+            echo "posture=${POSTURE}"
           } >> "$GITHUB_OUTPUT"
-          echo "event=$EVENT_NAME perf_label=$HAS_PERF_LABEL should_run=$SHOULD_RUN baseline=$IS_BASELINE pair_mode=$PAIR_MODE"
+          echo "event=$EVENT_NAME perf_label=$HAS_PERF_LABEL should_run=$SHOULD_RUN baseline=$IS_BASELINE pair_mode=$PAIR_MODE posture=${POSTURE:-default}"
 
   # =====================================================
   # 무거운 WebGL 빌드 (재사용 unity-build.yml, self-hosted)
@@ -182,7 +204,7 @@ jobs:
       build-method: HeavyBuildRunner.CommandLineHeavyBuild
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
       compression-format: ${{ inputs.compression_format || '1' }} # fast-build 가 표현 못 하는 유일 노브: gzip/brotli 로 현실적 on-wire 측정 (dispatch 로 브로틀리 등 선택 가능)
-      perf-posture: ${{ (inputs.posture == 'full' || inputs.posture == 'fullmesh' || inputs.posture == 'speed' || inputs.posture == 'minimal' || endsWith(inputs.posture, '-explicit') || endsWith(inputs.posture, '-nostack')) && inputs.posture || '' }} # dispatch 에서 posture=full/fullmesh 면 opt-in 레버(HeavyBuildRunner) 활성 — fullmesh 는 full+meshCompression
+      perf-posture: ${{ (needs.setup.outputs.posture != '' && needs.setup.outputs.posture != 'default') && needs.setup.outputs.posture || '' }} # setup 게이트가 허용 목록을 검증한 값(스케줄은 minimal). dispatch 에서 posture=full/fullmesh 면 opt-in 레버(HeavyBuildRunner) 활성 — fullmesh 는 full+meshCompression
       perf-variant: ${{ inputs.variant || '' }} # dispatch 의 variant 입력 → AIT_PERF_VARIANT (HeavyBuildRunner 변형 레지스트리). 빈 값이면 변형 없음
       # net_profile(measure-ttff 스로틀 축)은 의도적으로 여기서 참조하지 않는다 — 네트워크/CPU
       # 스로틀은 브라우저 측 CDP 에뮬레이션(Emulation.setCPUThrottlingRate / Network.emulateNetworkConditions)
@@ -322,7 +344,7 @@ jobs:
           # 빌드와 동일 값으로 전파 — 결과 JSON의 buildType/compressionFormat/posture에 스탬프됨
           AIT_DEVELOPMENT_BUILD: "false"
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression_format || '1' }}
-          AIT_PERF_POSTURE: ${{ inputs.posture || 'default' }}
+          AIT_PERF_POSTURE: ${{ needs.setup.outputs.posture || 'default' }}
           # 빌드와 동일 값으로 전파 — 측정 스크립트가 결과에 변형 이름을 스탬프할 수 있게 한다(빈 값이면 변형 없음)
           AIT_PERF_VARIANT: ${{ inputs.variant || '' }}
           # net_profile 스로틀 매핑(값/근거는 build-heavy 잡의 perf-posture 옆 주석 참조).
@@ -416,7 +438,10 @@ jobs:
       - name: Restore baseline cache
         # baseline 자신을 만드는 main 푸시 런에서는 복원 불필요(자기 자신이 baseline).
         # 페어 모드에서도 스킵 — main 대비 Δ 와 페어 Δ 가 동시에 표시되면 오독을 유발한다.
-        if: needs.setup.outputs.is_baseline != 'true' && needs.setup.outputs.pair_mode != 'true'
+        # 기본이 아닌 posture(minimal 등) 런도 스킵 — heavy baseline 과 비교하면 Δ 가 무의미하다.
+        if: >-
+          needs.setup.outputs.is_baseline != 'true' && needs.setup.outputs.pair_mode != 'true' &&
+          (needs.setup.outputs.posture == '' || needs.setup.outputs.posture == 'default')
         uses: actions/cache/restore@v6
         with:
           path: baseline

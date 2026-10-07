@@ -615,6 +615,29 @@ test.describe('메모리 텔레메트리', () => {
     expect(s.prevSession).toBe('exit');
   });
 
+  test('crashCount: 세션 길이와 상관없이 포그라운드 사망이 누적되고(60초 리셋 없음) pagehide 가 0 으로 되돌린다', async ({ page }) => {
+    // 예전에는 STABLE_MS(60초) 타이머가 저장 횟수를 0 으로 되돌렸다. 타이머를 줄여 "오래 산 세션"을 흉내 내도 횟수가 남아야 한다.
+    const scale = "(function(){var st=window.setTimeout;window.setTimeout=function(f,d){return st.call(window,f,d===60000?40:d)};})();";
+    const seedScript = "(function(){var m=/[?&]seed=(fg|bg|exit):(\\d+)/.exec(location.search);" +
+      "if(m)try{sessionStorage.setItem('__ait_mem_v1',JSON.stringify({phase:m[1],crashes:+m[2],bgKills:0}))}catch(e){}})();";
+    await openHarness(page, { memoryTelemetry: true }, { pacing: false, virtualClock: false, preScript: scale + seedScript, query: '?seed=fg:1' });
+    expect(await page.evaluate(() => { /* @ts-ignore */ return window.AITMemory.crashCount; })).toBe(2);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('__ait_mem_v1') || '{}').crashes), '오래 산 세션도 횟수를 지우지 않는다').toBe(2);
+
+    // 포그라운드에서 또 죽으면(pagehide 없음) 이어서 쌓인다
+    await page.goto(`${HARNESS_ORIGIN}/index.html?seed=fg:2`);
+    expect(await page.evaluate(() => { /* @ts-ignore */ return window.AITMemory.crashCount; })).toBe(3);
+
+    // pagehide(정상 종료 신호)는 저장된 횟수를 0 으로 되돌린다
+    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('__ait_mem_v1') || '{}'))).toMatchObject({ phase: 'exit', crashes: 0 });
+    await page.goto(`${HARNESS_ORIGIN}/index.html`); // 시드 쿼리 없이 다시 연다
+    const s = await page.evaluate(() => { /* @ts-ignore */ return window.AITMemory.getState(); });
+    expect(s.crashCount).toBe(0);
+    expect(s.prevSession).toBe('exit');
+  });
+
   test('일반 reload 는 크래시로 세지 않는다(pagehide 가 마커를 정리)', async ({ page }) => {
     await openHarness(page, { memoryTelemetry: true }, { pacing: false, virtualClock: false });
     expect(await page.evaluate(() => { /* @ts-ignore */ return window.AITMemory.crashCount; })).toBe(0);
@@ -635,21 +658,28 @@ test.describe('메모리 텔레메트리', () => {
 
   // ---- 부팅 마커(P0-1): localStorage '__ait_boot_v1' stage 전이, bootFailCount(10분 창), lowMemTier(24시간) ----
   // ?bseed=<JSON> — 부팅 직전에 "이전 부팅이 이 상태로 끝났다"는 마커를 심는다(ago/fails/tierAgo 는 지금으로부터의 ms).
+  // lvl: 그 부팅이 도달한 압력 단계(0|1|2), post: { end, lvl } stable 뒤 종료 기록, sess: sessionStorage 마커 phase('fg'|'bg'|'exit').
   const BOOT_SEED_SCRIPT = "(function(){var m=/[?&]bseed=([^&]+)/.exec(location.search);if(!m)return;" +
     "try{var o=JSON.parse(decodeURIComponent(m[1]));var n=Date.now();" +
     "localStorage.setItem('__ait_boot_v1',JSON.stringify({stage:o.stage,end:o.end||'',t:n-(o.ago||1000),ff:0," +
-    "fails:(o.fails||[]).map(function(a){return n-a})}));" +
+    "fails:(o.fails||[]).map(function(a){return n-a}),lvl:o.lvl||0,post:o.post?{end:o.post.end||'',t:n-1000,lvl:o.post.lvl||0}:null}));" +
+    "if(o.sess)sessionStorage.setItem('__ait_mem_v1',JSON.stringify({phase:o.sess,crashes:0,bgKills:0}));" +
     "if(o.tier)localStorage.setItem('__ait_lowmem_v1',JSON.stringify({tier:o.tier,ts:n-(o.tierAgo||1000)}));}catch(e){}})();";
   const bootSeed = (o) => '?bseed=' + encodeURIComponent(JSON.stringify(o));
   const memState = (page) => page.evaluate(() => {
     // @ts-ignore
     const m = window.AITMemory;
     return {
-      fails: m.bootFailCount, tier: m.lowMemTier, reason: m.lowMemReason, prevBoot: m.prevBoot, stage: m.bootStage,
+      fails: m.bootFailCount, tier: m.lowMemTier, reason: m.lowMemReason, prevBoot: m.prevBoot, stage: m.bootStage, lateDeath: m.lateDeath,
       stored: JSON.parse(localStorage.getItem('__ait_boot_v1') || 'null'),
       tierStored: JSON.parse(localStorage.getItem('__ait_lowmem_v1') || 'null'),
     };
   });
+  // 같은 탭에서 이어 검증할 때 앞 단계가 저장한 티어('__ait_lowmem_v1')가 다음 단계에 섞이지 않게 비운다.
+  const gotoBoot = async (page, seed, keepTier = false) => {
+    if (!keepTier) await page.evaluate(() => { try { localStorage.removeItem('__ait_lowmem_v1'); } catch (e) { /* 무시 */ } });
+    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed(seed)}`);
+  };
   const openBoot = (page, flags, seed) =>
     openHarness(page, flags, { pacing: false, virtualClock: false, preScript: BOOT_SEED_SCRIPT, query: seed ? bootSeed(seed) : '' });
 
@@ -693,22 +723,108 @@ test.describe('메모리 텔레메트리', () => {
     expect(n).toMatchObject({ fails: 0, prevBoot: 'stable' });
   });
 
-  test('부팅 마커: 부팅 중 신호 없이 끝났으면 사망 1회 → 티어 1, 같은 티어로 또 죽으면 티어 2', async ({ page }) => {
+  test('부팅 마커: 설명 안 되는 사망 1회는 티어 0(bootFailCount 만), 10분 안 2회째 → 1, 3회째 → 2', async ({ page }) => {
+    // 첫 사망: 로딩 중 사용자가 닫은 것일 수 있다(WKWebView 는 pagehide 를 안 쏜다). 티어를 올리지 않는다 → 다음 실행도 캐시 put 을 한다.
     await openBoot(page, { memoryTelemetry: true }, { stage: 'boot-start' });
     let s = await memState(page);
-    expect(s).toMatchObject({ fails: 1, tier: 1, prevBoot: 'boot-start' });
+    expect(s).toMatchObject({ fails: 1, tier: 0, prevBoot: 'boot-start', lateDeath: false });
+    expect(s.tierStored).toBeNull();
+
+    // 10분 안에 또 죽음 → 1 (first-frame 이후 stable 전 사망도 사망)
+    await gotoBoot(page, { stage: 'first-frame', fails: [60000] });
+    s = await memState(page);
+    expect(s).toMatchObject({ fails: 2, tier: 1, prevBoot: 'first-frame' });
     expect(s.reason).toMatch(/^boot-fail/);
     expect(s.tierStored.tier).toBe(1);
 
-    // first-frame 이후 stable 전에 죽은 것도 사망. 저장 티어 1 에서 올라가 2.
-    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'first-frame', tier: 1, tierAgo: 5000 })}`);
+    // 세 번째 → 2
+    await gotoBoot(page, { stage: 'boot-start', fails: [60000, 120000], tier: 1, tierAgo: 5000 }, true);
     s = await memState(page);
-    expect(s).toMatchObject({ fails: 1, tier: 2, prevBoot: 'first-frame' });
+    expect(s).toMatchObject({ fails: 3, tier: 2 });
     expect(s.tierStored.tier).toBe(2);
 
     // 티어 2 가 최대
-    await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed({ stage: 'boot-start', tier: 2, tierAgo: 5000, fails: [1000, 2000] })}`);
+    await gotoBoot(page, { stage: 'boot-start', tier: 2, tierAgo: 5000, fails: [1000, 2000, 3000] }, true);
     expect((await memState(page)).tier).toBe(2);
+  });
+
+  test('부팅 마커: 사망 1회라도 설명 근거(prev.lvl>=1, sessionStorage phase=fg)가 있으면 티어 1, 근거 없는 phase=bg 는 0', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true }, { stage: 'first-frame', lvl: 1 });
+    expect(await memState(page)).toMatchObject({ fails: 1, tier: 1, prevBoot: 'first-frame' });
+
+    // 같은 WebView 가 포그라운드 마커(pagehide 없음) 뒤에 다시 떴다 = 크래시/호스트 리로드
+    await gotoBoot(page, { stage: 'boot-start', sess: 'fg' });
+    let s = await memState(page);
+    expect(s).toMatchObject({ fails: 1, tier: 1, prevBoot: 'boot-start' });
+    expect(s.reason).toMatch(/^boot-fail/);
+
+    // 저장 티어 1 + 설명되는 사망 → 2
+    await gotoBoot(page, { stage: 'boot-start', sess: 'fg', tier: 1, tierAgo: 5000 }, true);
+    expect(await memState(page)).toMatchObject({ fails: 1, tier: 2 });
+
+    // 설명 안 되는 사망(+phase=bg)은 저장 티어를 그대로 둔다
+    await gotoBoot(page, { stage: 'boot-start', sess: 'bg', tier: 1, tierAgo: 5000 }, true);
+    s = await memState(page);
+    expect(s).toMatchObject({ fails: 1, tier: 1 });
+  });
+
+  test('부팅 마커: stable 뒤 사망(post.end 비어 있음)은 phase=fg 또는 post.lvl=2 일 때만 lateDeath → 티어 1', async ({ page }) => {
+    await openBoot(page, { memoryTelemetry: true }, { stage: 'stable', lvl: 2, post: { end: '', lvl: 2 } });
+    let s = await memState(page);
+    expect(s).toMatchObject({ fails: 0, tier: 1, lateDeath: true, prevBoot: 'late-death', reason: 'late-death' });
+    expect(s.tierStored.tier).toBe(1);
+
+    // 압력 0 + 근거 없음 = 그냥 닫기
+    await gotoBoot(page, { stage: 'stable', post: { end: '', lvl: 0 } });
+    expect(await memState(page)).toMatchObject({ fails: 0, tier: 0, lateDeath: false, prevBoot: 'stable' });
+
+    // 압력 0 이어도 같은 WebView 가 포그라운드 마커로 다시 떴으면 센다
+    await gotoBoot(page, { stage: 'stable', post: { end: '', lvl: 0 }, sess: 'fg' });
+    expect(await memState(page)).toMatchObject({ tier: 1, lateDeath: true });
+
+    // 종료 신호(bg/exit)가 있으면 critical 이었어도 사망이 아니다
+    await gotoBoot(page, { stage: 'stable', lvl: 2, post: { end: 'bg', lvl: 2 } });
+    expect(await memState(page)).toMatchObject({ tier: 0, lateDeath: false, prevBoot: 'stable' });
+    await gotoBoot(page, { stage: 'stable', lvl: 2, post: { end: 'exit', lvl: 2 }, sess: 'fg' });
+    expect(await memState(page)).toMatchObject({ tier: 0, lateDeath: false });
+
+    // 저장 티어 1 + 늦은 사망 → 2
+    await gotoBoot(page, { stage: 'stable', post: { end: '', lvl: 2 }, tier: 1, tierAgo: 5000 }, true);
+    expect(await memState(page)).toMatchObject({ tier: 2, lateDeath: true });
+  });
+
+  test('부팅 마커: lvl/post 기록 — 압력 단계 상승이 마커 lvl 에 남고, stable 뒤에는 post 로 종료 신호를 받는다', async ({ page }) => {
+    const scale = "(function(){var st=window.setTimeout;window.setTimeout=function(f,d){return st.call(window,f,d===15000?40:d)};})();";
+    await openHarness(page, { memoryTelemetry: true, memHighMB: 64, memCriticalMB: 96 }, { pacing: false, virtualClock: false, preScript: scale });
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('__ait_boot_v1') || 'null'));
+    expect(await stored()).toMatchObject({ lvl: 0, post: null });
+    await page.evaluate(async () => {
+      const mem = new WebAssembly.Memory({ initial: 256, maximum: 4096 }); // 16MB
+      mem.grow(768); // 64MB → high
+      await new Promise((res) => setTimeout(res, 20));
+      // @ts-ignore
+      window.AITMemory.markFirstFrame();
+      // @ts-ignore
+      window.__lateMem = mem;
+    });
+    expect((await stored()).lvl).toBe(1);
+    await expect.poll(async () => (await stored()).stage).toBe('stable');
+    expect(await stored()).toMatchObject({ lvl: 1, end: '', post: { end: '', lvl: 1 } });
+
+    // stable 뒤 critical → post.lvl 도 따라 오른다
+    await page.evaluate(async () => {
+      // @ts-ignore
+      window.__lateMem.grow(512); // 96MB → critical
+      await new Promise((res) => setTimeout(res, 20));
+    });
+    expect(await stored()).toMatchObject({ lvl: 2, post: { end: '', lvl: 2 } });
+
+    // stable 뒤 종료 신호는 부팅 end 가 아니라 post.end 에 쓴다
+    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
+    expect(await stored()).toMatchObject({ stage: 'stable', end: '', post: { end: 'exit', lvl: 2 } });
+    // 같은 값이 다시 와도 그대로(멱등)
+    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
+    expect((await stored()).post.end).toBe('exit');
   });
 
   test('부팅 마커: pagehide(exit)/hidden(bg) 로 끝난 부팅과 10분 지난 사망은 세지 않는다', async ({ page }) => {

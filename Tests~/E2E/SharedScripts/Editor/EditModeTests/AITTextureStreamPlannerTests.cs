@@ -164,15 +164,19 @@ public class AITTextureStreamPlannerTests
     }
 
     [Test]
-    public void ResolveKeepGpuFormat_DefaultOff_EnvOverrides()
+    public void ResolveKeepGpuFormat_DefaultOn_EnvOverrides()
     {
         string prev = Environment.GetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar);
         var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
         try
         {
             Environment.SetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar, null);
-            Assert.IsFalse(AITLargeTextureExternalizer.ResolveKeepGpuFormat(config), "자동은 꺼짐(실기기 검증 전).");
-            Assert.IsFalse(AITLargeTextureExternalizer.ResolveKeepGpuFormat(null));
+            Assert.IsTrue(AITLargeTextureExternalizer.ResolveKeepGpuFormat(config), "자동(-1)은 켬.");
+            Assert.IsTrue(AITLargeTextureExternalizer.ResolveKeepGpuFormat(null), "config 없음 + env 없음도 켬.");
+
+            config.textureStreamKeepGpuFormat = 0;
+            Assert.IsFalse(AITLargeTextureExternalizer.ResolveKeepGpuFormat(config), "설정 0 은 opt-out.");
+            config.textureStreamKeepGpuFormat = -1;
 
             Environment.SetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar, "1");
             Assert.IsTrue(AITLargeTextureExternalizer.ResolveKeepGpuFormat(config));

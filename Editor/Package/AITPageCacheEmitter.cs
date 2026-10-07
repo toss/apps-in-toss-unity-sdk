@@ -258,8 +258,8 @@ namespace AppsInToss.Editor.Package
         /// <summary>
         /// 페이지 캐시 스니펫과 레거시 early-fetch 스니펫이 공유하는 부트 헬퍼(둘 다 ait-mem.js 보다 먼저 실행되므로 인라인으로 들고 간다).
         /// 먼저 실행된 쪽이 window 에 한 번 설치하고 뒤따르는 쪽은 건너뛴다.
-        ///  · window.__aitPeekLowTier(): 0|1|2 — ait-mem.js 의 저사양 tier 규칙(부팅 마커 '__ait_boot_v1' 의 사망 횟수 + 24시간 저장값
-        ///    '__ait_lowmem_v1')과 같은 계산을 localStorage 읽기만으로 한다(부작용 없음). ait-mem.js 가 이미 로드됐으면 그 값을 그대로 쓴다.
+        ///  · window.__aitPeekLowTier(): 0|1|2 — ait-mem.js 의 저사양 tier 규칙(부팅 마커 '__ait_boot_v1' 의 사망 횟수·lvl·post + 24시간 저장값
+        ///    '__ait_lowmem_v1' + sessionStorage '__ait_mem_v1' 의 phase)과 같은 계산을 스토리지 읽기만으로 한다(부작용 없음). ait-mem.js 가 이미 로드됐으면 그 값을 그대로 쓴다.
         ///    규칙을 바꾸면 ait-mem.js 의 bootStageMarker 와 함께 고쳐야 한다(perf-lowmem-tier.test.js 가 둘의 일치를 단언한다).
         ///  · window.__aitAfterFirstFrame(cb, delayMs): 첫 프레임이 지난 시점부터 delayMs 뒤에 cb 를 1회 부른다. 첫 프레임 신호는
         ///    'ait:firstframe' 이벤트(ait-mem.js markFirstFrame) 또는 500ms 폴링(AITMemory.bootStage != boot-start, window.unityInstance 존재)이다.
@@ -287,6 +287,14 @@ namespace AppsInToss.Editor.Package
                         var prev = readLocal('__ait_boot_v1');
                         var fails = 0;
                         var prevDied = false;
+                        var lateDeath = false;
+                        // 같은 WebView 가 포그라운드 종료 신호 없이 다시 떴는지: ait-mem.js bootMarker 가 덮어쓰기 전의 sessionStorage 단계가 'fg' 인가.
+                        var prevSessionFg = false;
+                        try {
+                            var sraw = window.sessionStorage.getItem('__ait_mem_v1');
+                            var sv = sraw ? JSON.parse(sraw) : null;
+                            prevSessionFg = !!(sv && typeof sv === 'object' && sv.phase === 'fg');
+                        } catch (e) { /* sessionStorage 접근 불가 — 포그라운드 근거만 없다 */ }
                         if (prev) {
                             var list = Array.isArray(prev.fails) ? prev.fails : [];
                             for (var i = 0; i < list.length; i++) {
@@ -295,6 +303,7 @@ namespace AppsInToss.Editor.Package
                             }
                             if (prev.stage === 'stable') {
                                 fails = 0;
+                                if (prev.post && typeof prev.post === 'object' && prev.post.end === '' && (prevSessionFg || (Number(prev.post.lvl) | 0) >= 2)) { lateDeath = true; }
                             } else if (prev.end === 'exit' || prev.end === 'bg') {
                                 // 정상 종료/백그라운드: 사망이 아니다.
                             } else if (prev.stage === 'boot-start' || prev.stage === 'first-frame') {
@@ -308,8 +317,10 @@ namespace AppsInToss.Editor.Package
                         if (stored && Number(stored.tier) > 0 && Number(stored.ts) > 0 && now - Number(stored.ts) < TTL_MS && Number(stored.ts) <= now + 60000) {
                             storedTier = Math.min(2, Number(stored.tier) | 0);
                         }
-                        var failTier = fails >= 2 ? 2 : (fails >= 1 ? 1 : 0);
-                        return Math.max(failTier, prevDied ? Math.min(2, storedTier + 1) : storedTier);
+                        var corroborated = prevSessionFg || (prev ? (Number(prev.lvl) | 0) : 0) >= 1 || fails >= 2;
+                        var failTier = fails >= 3 ? 2 : (fails >= 2 ? 1 : 0);
+                        var escalate = (prevDied && corroborated) || lateDeath;
+                        return Math.max(failTier, escalate ? Math.min(2, storedTier + 1) : storedTier);
                     }
                     return function () {
                         try {

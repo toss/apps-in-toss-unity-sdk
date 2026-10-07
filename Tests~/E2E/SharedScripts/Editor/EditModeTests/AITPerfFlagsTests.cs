@@ -164,7 +164,8 @@ public class AITPerfFlagsTests
         Assert.IsTrue(AITPerfFlags.EffectiveGlHook(null));
         Assert.IsFalse(AITPerfFlags.EffectiveGlDropAntialias(null));
         Assert.IsFalse(AITPerfFlags.EffectiveAdaptiveFrameRate(null));
-        Assert.IsFalse(AITPerfFlags.EffectiveReleaseConsumedData(null));
+        Assert.IsTrue(AITPerfFlags.EffectiveReleaseConsumedData(null));
+        Assert.IsFalse(AITPerfFlags.EffectiveReleaseConsumedDataWebKit(null));
         Assert.IsFalse(AITPerfFlags.EffectiveAudioForceCompressed(null));
         Assert.DoesNotThrow(() => AITPerfFlags.ToJson(null, -1, false));
     }

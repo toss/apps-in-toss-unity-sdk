@@ -279,6 +279,54 @@ test.describe('ait-gl.js 합성 페이지', () => {
     }
   });
 
+  test('hidden 중 손실은 DPR tier 를 저장하지 않고, visible 이 되면 reload 한다', async ({ browser }) => {
+    const context = await browser.newContext();
+    try {
+      const { page, nav } = await openSynthetic(context, '?dpr=2');
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      });
+      await loseUnityContext(page);
+      await page.waitForTimeout(800);
+      expect(nav.count).toBe(1);
+      const s = await page.evaluate(() => ({ stored: localStorage.getItem('__ait_gl_tier'), loss: window['__AIT_GL'].lastLoss }));
+      expect(s.stored).toBeNull();
+      expect(s.loss.hidden).toBe(true);
+      expect(s.loss.pressured).toBe(false);
+      expect(s.loss.tier).toBe(0);
+
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await expect.poll(() => nav.count, { timeout: 10000 }).toBe(2);
+      expect(await page.evaluate(() => window['__tierCap'])).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('hidden 이어도 AITMemory 레벨이 ok 가 아니면 DPR tier 를 저장한다', async ({ browser }) => {
+    const context = await browser.newContext();
+    try {
+      const { page, nav } = await openSynthetic(context, '?dpr=2');
+      await page.evaluate(() => {
+        window['AITMemory'] = { getLevel: () => 'high', crashCount: 0, lowMemTier: 0 };
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      });
+      await loseUnityContext(page);
+      await page.waitForTimeout(800);
+      expect(nav.count).toBe(1);
+      const s = await page.evaluate(() => ({ stored: JSON.parse(localStorage.getItem('__ait_gl_tier')), loss: window['__AIT_GL'].lastLoss }));
+      expect(s.stored.cap).toBe(1.5);
+      expect(s.loss.hidden).toBe(true);
+      expect(s.loss.pressured).toBe(true);
+      expect(s.loss.tier).toBe(1.5);
+    } finally {
+      await context.close();
+    }
+  });
+
   test('손실 이력 저장소를 쓸 수 없으면 reload 하지 않고 overlay 를 띄운다', async ({ browser }) => {
     const context = await browser.newContext();
     try {

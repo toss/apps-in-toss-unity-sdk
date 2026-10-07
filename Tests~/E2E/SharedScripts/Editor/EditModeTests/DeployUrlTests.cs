@@ -31,13 +31,13 @@ public class DeployUrlTests
         // 실제 CI 배포 로그에서 관측된 형태: UUID가 박스 폭에서 잘려 다음 줄로 이어짐
         string output =
             "╭──────────────────────────────────────────────────────────────────────────────╮\n" +
-            "│  intoss-private://unity-sdk-sample?_deploymentId=01a01868-f10b-7279-b96f-ab  │\n" +
-            "│  bcd6865b68  │\n" +
+            "│  intoss-private://unity-sdk-sample?_deploymentId=00000000-0000-7000-8000-00  │\n" +
+            "│  0000000002  │\n" +
             "╰──────────────────────────────────────────────────────────────────────────────╯\n";
 
         string url = AITDeployManager.ExtractDeployUrl(output);
         Assert.AreEqual(
-            "intoss-private://unity-sdk-sample?_deploymentId=01a01868-f10b-7279-b96f-abbcd6865b68&host=appsInTossHost",
+            "intoss-private://unity-sdk-sample?_deploymentId=00000000-0000-7000-8000-000000000002&host=appsInTossHost",
             url);
     }
 
@@ -46,12 +46,12 @@ public class DeployUrlTests
     {
         // 최신 ait CLI 출력 형태: CLI가 host 파라미터까지 붙이고 그 부분이 래핑됨
         string output =
-            "│  intoss-private://ait?_deploymentId=01a018fc-a0e5-7558-9a3a-166fcf  │\n" +
-            "│  e4e4e1&host=appsInTossHost  │\n";
+            "│  intoss-private://ait?_deploymentId=00000000-0000-7000-8000-000000  │\n" +
+            "│  000003&host=appsInTossHost  │\n";
 
         string url = AITDeployManager.ExtractDeployUrl(output);
         Assert.AreEqual(
-            "intoss-private://ait?_deploymentId=01a018fc-a0e5-7558-9a3a-166fcfe4e4e1&host=appsInTossHost",
+            "intoss-private://ait?_deploymentId=00000000-0000-7000-8000-000000000003&host=appsInTossHost",
             url);
     }
 
@@ -60,12 +60,12 @@ public class DeployUrlTests
     {
         // URL이 줄 끝까지 닿지 않으면(래핑 아님) 다음 줄의 토큰을 이어붙이면 안 됨
         string output =
-            "│  intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec 완료  │\n" +
+            "│  intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001 완료  │\n" +
             "│  SUCCESS  │\n";
 
         string url = AITDeployManager.ExtractDeployUrl(output);
         Assert.AreEqual(
-            "intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec&host=appsInTossHost",
+            "intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001&host=appsInTossHost",
             url);
     }
 
@@ -76,11 +76,11 @@ public class DeployUrlTests
     [Test]
     public void ExtractDeployUrl_HostAlreadyPresent_DoesNotDuplicate()
     {
-        string output = "intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec&host=appsInTossHost\n";
+        string output = "intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001&host=appsInTossHost\n";
 
         string url = AITDeployManager.ExtractDeployUrl(output);
         Assert.AreEqual(
-            "intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec&host=appsInTossHost",
+            "intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001&host=appsInTossHost",
             url);
     }
 

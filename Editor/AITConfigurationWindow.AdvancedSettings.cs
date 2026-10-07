@@ -182,7 +182,7 @@ namespace AppsInToss.Editor
             config.releaseConsumedData = DrawPerfTriState(
                 config.releaseConsumedData, "소비한 data 버퍼 해제",
                 "한 번 읽고 다시 쓰지 않는 data 구간(global-metadata.dat 등)을 읽은 뒤 해제합니다. " +
-                "Unity 버전별 동작 검증 전이라 자동은 비활성입니다(Chrome 111 / iOS 16.4 이상 전용).",
+                "자동은 Chromium 계열에서만 켜고 iOS/Safari(WebKit)에서는 끕니다. 켬으로 두면 WebKit 에서도 적용합니다(Chrome 111 / iOS 16.4 이상 전용).",
                 AITDefaultSettings.GetDefaultReleaseConsumedData());
 
             config.audioForceCompressedPlayback = DrawPerfTriState(

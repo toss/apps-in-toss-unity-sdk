@@ -57,7 +57,7 @@ namespace AppsInToss.Editor.Package
     ///    본문 전체가 버퍼에 남고, WebKit 의 Cache.put 은 본문을 WebContent 에서 다 모은 뒤 Network 프로세스로 넘기므로
     ///    wasm 컴파일 피크와 겹친다(put 만 미루면 메모리는 그대로라서 clone 자체를 하지 않는다).
     ///  · 첫 프레임 + 10초 뒤 파일 하나씩 fetch(url, { cache: 'only-if-cached', mode: 'same-origin' }) 로 HTTP 캐시에서 다시 읽어
-    ///    put 한다. 미스면 tier 0·화면 보임일 때만 네이티브 네트워크 Response 를 그대로 put 한다(networkPut, net=N 으로 집계).
+    ///    put 한다. 미스면 tier 0·화면 보임일 때만 cache.add 로 네트워크에서 받아 저장한다(networkPut, net=N 으로 집계).
     ///  · WebKit 에서는 wasm 을 put 대상(ALLOW_ABS)에서 뺀다. JSC 에는 V8 같은 code cache 이득이 없고, CDN 이 ETag 와 max-age=0 을
     ///    주므로 재방문은 HTTP 캐시 재검증(304)으로 받는다.
     ///  · Chromium 경로는 그대로다. 단 저메모리 tier(window.AITMemory.lowMemTier &gt;= 1, ait-mem.js 가 부팅 사망 횟수로 정함)에서는
@@ -800,7 +800,7 @@ namespace AppsInToss.Editor.Package
                 return true;
             }
             // only-if-cached 미스(WebKit 은 fetch 응답을 HTTP 캐시에 안 남기는 경우가 있다) 폴백: tier 0 이고 화면이 보일 때만
-            // 네트워크 Response 를 그대로 put 한다(no-cache = 재검증, 304 면 캐시 본문). JS 버퍼링·clone·arrayBuffer·직접 만든 스트림 본문은 쓰지 않는다.
+            // 네트워크에서 다시 받아 저장한다(no-cache = 재검증, 304 면 캐시 본문). JS 버퍼링·clone·arrayBuffer·직접 만든 스트림 본문은 쓰지 않는다.
             // 호출은 drainDeferred 가 파일 하나씩 순차로 하므로 동시에 둘 이상 받지 않는다.
             // fetch 를 Proxy 로 감싸는 페이지 스크립트(vConsole Network 패널 등)가 있으면 응답도 Proxy 라서 WebKit Cache.put 이
             // 'must be an instance of FetchResponse' 로 거부한다. 본문을 읽기 전에 거부되므로 같은 네이티브 body 스트림을 새 Response 로
@@ -819,15 +819,24 @@ namespace AppsInToss.Editor.Package
                 try { visible = document.visibilityState !== 'hidden'; } catch (e) {}
                 if (t > 0 || !visible) { info.miss.push(url); return Promise.resolve(); }
                 try { console.log('[AIT-PageCache] 지연 put: HTTP 캐시 miss → 네트워크로 저장 ' + url.split('/').pop().split('?')[0]); } catch (e) {}
-                return priorFetch(url, { cache: 'no-cache', mode: 'same-origin' }).then(function (r) {
-                    if (!r || !r.ok || r.status !== 200 || r.body === undefined) { info.miss.push(url); return; }
-                    return getCache().then(function (c) { return putResponse(c, url, r); }).then(function () {
-                        info.put.push(url);
-                        info.net.push(url);
-                        window.__aitCacheStats.puts.push(url);
-                        markPopulated(url);
-                    });
-                }, function () { info.miss.push(url); });
+                function stored() {
+                    info.put.push(url);
+                    info.net.push(url);
+                    window.__aitCacheStats.puts.push(url);
+                    markPopulated(url);
+                }
+                return getCache().then(function (c) {
+                    // CacheStorage 면 cache.add 로 받는다: fetch 와 저장을 엔진이 네트워크 프로세스 안에서 끝내 본문이 WebContent 에
+                    // 올라오지 않는다(iOS 시뮬레이터 phys_footprint: fetch→put 은 WebContent +30~120MB, add 는 ~0). 다운로드 횟수는 같다.
+                    // 200 이 아니면 add 가 거부한다(아래 catch → errors). IndexedDB 어댑터(add 없음)는 기존 fetch→put.
+                    if (typeof c.add === 'function' && typeof Request === 'function') {
+                        return c.add(new Request(url, { cache: 'no-cache', mode: 'same-origin' })).then(stored);
+                    }
+                    return priorFetch(url, { cache: 'no-cache', mode: 'same-origin' }).then(function (r) {
+                        if (!r || !r.ok || r.status !== 200 || r.body === undefined) { info.miss.push(url); return; }
+                        return putResponse(c, url, r).then(stored);
+                    }, function () { info.miss.push(url); });
+                });
             }
             function deferredPutOne(url) {
                 var info = window.__aitCacheDeferred;

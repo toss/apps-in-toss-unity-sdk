@@ -74,6 +74,7 @@ public class AITPerfFlagsTests
         Assert.IsTrue(AITPerfFlags.EffectiveMemoryTelemetry(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveExactDataBody(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveReleaseConsumedData(_config), "자동: releaseConsumedData 는 켜짐");
+        Assert.IsFalse(AITPerfFlags.EffectiveReleaseConsumedDataWebKit(_config), "자동: WebKit 전용 엔진에서는 끔");
         Assert.IsFalse(AITPerfFlags.EffectiveAudioForceCompressed(_config), "자동: 강제 압축 재생은 꺼짐");
         Assert.AreEqual(10f, AITPerfFlags.EffectiveAudioForceCompressedMinSeconds(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveLowMemoryTier(_config), "자동: 저사양 티어 판별은 켜짐");
@@ -128,6 +129,7 @@ public class AITPerfFlagsTests
         _config.audioForceCompressedPlayback = 1;
         Assert.IsTrue(AITPerfFlags.EffectiveAdaptiveFrameRate(_config));
         Assert.IsTrue(AITPerfFlags.EffectiveReleaseConsumedData(_config));
+        Assert.IsTrue(AITPerfFlags.EffectiveReleaseConsumedDataWebKit(_config), "강제 켬이면 WebKit 에서도 켠다");
         Assert.IsTrue(AITPerfFlags.EffectiveAudioForceCompressed(_config));
 
         _config.mobileLifecycle = 0;
@@ -188,6 +190,7 @@ public class AITPerfFlagsTests
                      "\"exactDataBody\":true",
                      "\"dataRawSize\":-1",
                      "\"releaseConsumedData\":true",
+                     "\"releaseConsumedDataWebKit\":false",
                      "\"audioForceCompressed\":false",
                      "\"audioForceCompressedMinSeconds\":10",
                      "\"unityweb\":false",
@@ -225,6 +228,7 @@ public class AITPerfFlagsTests
         StringAssert.Contains("\"memoryTelemetry\":false", json);
         StringAssert.Contains("\"exactDataBody\":false", json);
         StringAssert.Contains("\"releaseConsumedData\":false", json);
+        StringAssert.Contains("\"releaseConsumedDataWebKit\":false", json);
         StringAssert.Contains("\"audioForceCompressed\":false", json);
         StringAssert.Contains("\"dataRawSize\":123456789", json);
         StringAssert.Contains("\"unityweb\":true", json);

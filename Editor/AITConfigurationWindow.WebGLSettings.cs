@@ -1390,10 +1390,9 @@ namespace AppsInToss.Editor
             if (config.memoryTelemetry >= 0 && (config.memoryTelemetry == 1) != defaultMemoryTelemetry) count++;
             bool defaultExactDataBody = AITDefaultSettings.GetDefaultExactDataBody();
             if (config.exactDataBody >= 0 && (config.exactDataBody == 1) != defaultExactDataBody) count++;
-            bool defaultReleaseConsumedData = AITDefaultSettings.GetDefaultReleaseConsumedData();
-            if (config.releaseConsumedData >= 0 && (config.releaseConsumedData == 1) != defaultReleaseConsumedData) count++;
-            bool defaultAudioForceCompressed = AITDefaultSettings.GetDefaultAudioForceCompressedPlayback();
-            if (config.audioForceCompressedPlayback >= 0 && (config.audioForceCompressedPlayback == 1) != defaultAudioForceCompressed) count++;
+            // releaseConsumedData(자동 = Chromium 만)와 audioForceCompressedPlayback(자동 = 정확성 패치만)은 자동·0·1 이 모두 다른 동작이라 명시값이면 변경으로 본다.
+            if (config.releaseConsumedData >= 0) count++;
+            if (config.audioForceCompressedPlayback >= 0) count++;
             if (config.lowMemoryTier >= 0 && (config.lowMemoryTier == 1) != AITDefaultSettings.GetDefaultLowMemoryTier()) count++;
             // pageCacheDeferredPut 은 자동(WebKit 만)이 엔진별로 갈리므로 0/1 어느 쪽이든 명시값이면 변경으로 본다.
             if (config.pageCacheDeferredPut >= 0) count++;

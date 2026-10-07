@@ -676,7 +676,8 @@ namespace AppsInToss
         public int frameRateCap = -1;
 
         [Tooltip("적응형 프레임레이트: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
-                 "배터리·발열 압력 신호가 오면 30fps 로 낮춥니다. 오탐 시 30fps 에 갇힐 수 있어 실기기 데이터가 나오기 전까지 자동은 꺼 둡니다.")]
+                 "wasm heap 이 memCriticalMB(기본 384MB)를 넘거나 호스트가 AITPacing.setHint 로 battery/thermal 힌트를 주면 30fps 로 낮추며, 한 번 낮아지면 세션 동안 유지됩니다. " +
+                 "브라우저 자체의 배터리·발열 신호는 없습니다. 오탐 시 30fps 에 갇힐 수 있어 자동은 꺼 둡니다.")]
         public int adaptiveFrameRate = -1;
 
         [Tooltip("모바일 라이프사이클 게이트: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
@@ -694,15 +695,17 @@ namespace AppsInToss
                  "측정에 실패하거나 Decompression Fallback(.unityweb) 이면 아무것도 하지 않습니다.")]
         public int exactDataBody = -1;
 
-        [Tooltip("소비한 data 버퍼 해제: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+        [Tooltip("소비한 data 버퍼 해제: -1 = 자동(Chromium 만 활성), 0 = 비활성, 1 = 활성(WebKit 포함). " +
                  "global-metadata.dat 처럼 한 번 읽고 다시 안 쓰는 data 구간을 읽은 뒤 해제해 정상 상태 메모리를 줄입니다. " +
+                 "자동은 Chromium 계열에서만 켜고 WebKit 전용 엔진(iOS/Safari)에서는 끕니다. 1 이면 WebKit 에서도 강제로 켭니다. " +
                  "Chrome 111 / iOS 16.4 미만이면 아무것도 하지 않습니다.")]
         public int releaseConsumedData = -1;
 
         [Tooltip("긴 오디오 강제 압축 재생(framework 패치): -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
                  "외부화되지 않은 긴 클립(DecompressOnLoad)도 PCM 으로 풀지 않고 압축 상태로 미디어 요소로 재생하도록 framework 를 빌드 후 패치합니다. " +
                  "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 꺼 둡니다. " +
-                 "Unity 가 알 수 없는 형태로 바뀌면 패치를 건너뜁니다. Decompression Fallback(.unityweb) 이면 적용하지 않습니다.")]
+                 "Unity 가 알 수 없는 형태로 바뀌면 패치를 건너뜁니다. Decompression Fallback(.unityweb) 이면 적용하지 않습니다. " +
+                 "0 은 clip.length/AudioSource.time 정확성 패치까지 빼는 stock 대조군입니다.")]
         public int audioForceCompressedPlayback = -1;
 
         [Tooltip("audioForceCompressedPlayback 이 압축 재생으로 강제하는 최소 클립 길이(초). 기본 10. 0 이하이면 10 으로 취급합니다. " +
@@ -710,9 +713,8 @@ namespace AppsInToss
         public float audioForceCompressedMinSeconds = 10f;
 
         [Tooltip("저사양(저메모리) 기기 티어: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
-                 "런타임(ait-mem.js)이 기기 메모리(navigator.deviceMemory)·직전 세션 비정상 종료 이력을 보고 저사양 기기를 판별해 " +
-                 "AITMemory.lowMemTier 를 켜면, 후속 최적화(스트리밍 예산 축소·지연 put 등)가 이 값을 기준으로 동작합니다. " +
-                 "이 플래그는 판별과 진단만 켜며 게임 동작을 직접 바꾸지 않습니다. 0 이면 판별 자체를 끕니다.")]
+                 "직전 부팅 사망 이력으로 저사양 티어(0~2)를 정하고 24시간 유지합니다. " +
+                 "티어 1 이상이면 DPR 상한(1.5/1), 스트리밍 텍스처 축소, data 선요청 보류, 페이지 캐시 저장 생략이 적용됩니다. 0 이면 판별 자체를 끕니다.")]
         public int lowMemoryTier = -1;
 
         [Tooltip("페이지 캐시 put 지연: -1 = 자동(WebKit 계열만 활성), 0 = 비활성, 1 = 활성(모든 엔진). " +
@@ -729,8 +731,9 @@ namespace AppsInToss
                  "gapless 이음새 손실 위험을 줄이는 경로(루프 전용 인코딩)를 씁니다. 루프 이음새 청취 검증 전이라 자동은 꺼 둡니다.")]
         public int audioStreamLoopTranscode = -1;
 
-        [Tooltip("텍스처 스트리밍 GPU 포맷 보존: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
-                 "ASTC 원본 블록을 그대로 스트리밍해 LoadRawTextureData 로 복원하며, 미지원 환경에서는 PNG 폴백을 씁니다. 실기기 검증 전이라 자동은 꺼 둡니다.")]
+        [Tooltip("텍스처 스트리밍 GPU 포맷 보존: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "런타임이 WEBGL_compressed_texture_astc 를 확인하면 ASTC 블록을 그대로 GPU 에 올리고, 미지원이거나 항목별 raw 업로드가 실패하면 " +
+                 "브라우저 디코드 PNG/JPG 사본으로 폴백합니다. iPhone 15 Pro raw-swap draw-check 4/4, ASTC 없는 AVD 는 browser-swap 폴백 4/4 입니다. 0 이면 항상 PNG/JPG 경로만 씁니다.")]
         public int textureStreamKeepGpuFormat = -1;
 
         [Tooltip("폰트 번들 언로드: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
@@ -1294,10 +1297,10 @@ namespace AppsInToss
             return false;
         }
 
-        /// <summary>텍스처 스트리밍 GPU 포맷 보존 자동 실효값: false. 실기기 검증 전까지 opt-in.</summary>
+        /// <summary>텍스처 스트리밍 GPU 포맷 보존 자동 실효값: true. 런타임이 WEBGL_compressed_texture_astc 를 확인해 ASTC 블록을 그대로 올리고, 미지원이거나 항목별 raw 업로드가 실패하면 브라우저 디코드 PNG/JPG 사본으로 폴백한다. iPhone 15 Pro raw-swap draw-check 4/4, ASTC 없는 AVD 는 browser-swap 폴백 4/4.</summary>
         public static bool GetDefaultTextureStreamKeepGpuFormat()
         {
-            return false;
+            return true;
         }
 
         /// <summary>텍스처 스트리밍 브라우저 디코드 자동 실효값: true. 런타임이 WebGL 2 + createImageBitmap 을 확인하고, 아니면 LoadImage 로 폴백한다.</summary>

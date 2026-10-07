@@ -159,7 +159,8 @@ namespace AppsInToss.Editor
 
             config.adaptiveFrameRate = DrawPerfTriState(
                 config.adaptiveFrameRate, "적응형 프레임레이트 (30fps)",
-                "배터리·발열 압력 신호가 오면 30fps 로 낮춥니다. 오탐 시 30fps 에 갇힐 수 있어 실기기 데이터 전까지 자동은 비활성입니다.",
+                "wasm heap 이 memCriticalMB(기본 384MB)를 넘거나 호스트가 AITPacing.setHint 로 battery/thermal 힌트를 주면 30fps 로 낮추며, 한 번 낮아지면 세션 동안 유지됩니다. " +
+                "브라우저 자체의 배터리·발열 신호는 없습니다. 오탐 시 30fps 에 갇힐 수 있어 자동은 비활성입니다.",
                 AITDefaultSettings.GetDefaultAdaptiveFrameRate());
 
             config.mobileLifecycle = DrawPerfTriState(
@@ -183,18 +184,21 @@ namespace AppsInToss.Editor
                 config.releaseConsumedData, "소비한 data 버퍼 해제",
                 "한 번 읽고 다시 쓰지 않는 data 구간(global-metadata.dat 등)을 읽은 뒤 해제합니다. " +
                 "자동은 Chromium 계열에서만 켜고 iOS/Safari(WebKit)에서는 끕니다. 켬으로 두면 WebKit 에서도 적용합니다(Chrome 111 / iOS 16.4 이상 전용).",
-                AITDefaultSettings.GetDefaultReleaseConsumedData());
+                AITDefaultSettings.GetDefaultReleaseConsumedData(), autoText: "Chromium 만 활성", anyExplicitIsModified: true);
 
             config.audioForceCompressedPlayback = DrawPerfTriState(
                 config.audioForceCompressedPlayback, "긴 오디오 강제 압축 재생 (framework 패치)",
                 "외부화되지 않은 긴 클립도 PCM 으로 풀지 않고 압축 상태로 브라우저 미디어 요소로 재생하도록 framework 를 빌드 후 패치합니다. " +
-                "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 비활성입니다.",
-                AITDefaultSettings.GetDefaultAudioForceCompressedPlayback());
+                "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 비활성입니다. " +
+                "0 은 clip.length/AudioSource.time 정확성 패치까지 빼는 stock 대조군입니다.",
+                AITDefaultSettings.GetDefaultAudioForceCompressedPlayback(),
+                autoText: "자동 (정확성 패치만)", offText: "끔 (framework 미패치·stock)", onText: "켬 (정확성 패치 + 긴 클립 강제)",
+                anyExplicitIsModified: true);
 
             config.lowMemoryTier = DrawPerfTriState(
                 config.lowMemoryTier, "저사양 기기 티어 판별",
-                "기기 메모리와 직전 세션 비정상 종료 이력으로 저사양 기기를 판별해 AITMemory.lowMemTier 를 켭니다. " +
-                "판별과 진단만 켜며 게임 동작을 직접 바꾸지 않습니다. 후속 저메모리 최적화가 이 값을 읽습니다.",
+                "직전 부팅 사망 이력으로 저사양 티어(0~2)를 정하고 24시간 유지합니다. " +
+                "티어 1 이상이면 DPR 상한(1.5/1), 스트리밍 텍스처 축소, data 선요청 보류, 페이지 캐시 저장 생략이 적용됩니다.",
                 AITDefaultSettings.GetDefaultLowMemoryTier());
 
             config.pageCacheDeferredPut = DrawPerfTriState(
@@ -209,7 +213,7 @@ namespace AppsInToss.Editor
 
             config.textureStreamKeepGpuFormat = DrawPerfTriState(
                 config.textureStreamKeepGpuFormat, "텍스처 GPU 포맷 보존",
-                "ASTC 원본 블록을 스트리밍해 LoadRawTextureData 로 복원합니다. 미지원 시 PNG 로 폴백합니다. 실기기 검증 전이라 자동은 비활성입니다.",
+                "런타임이 WEBGL_compressed_texture_astc 를 확인하면 ASTC 블록을 그대로 GPU 에 올립니다. 미지원이거나 항목별 raw 업로드가 실패하면 브라우저 디코드 PNG/JPG 사본으로 폴백합니다. 자동은 활성이고 0 이 opt-out 입니다.",
                 AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat());
 
             config.textureStreamBrowserDecode = DrawPerfTriState(

@@ -764,8 +764,9 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// GPU 포맷 보존(원본 ASTC 블록 스트리밍) 사용 여부. 설정 필드(<c>textureStreamKeepGpuFormat</c>, tri-state)가 있으면 그 값,
-        /// 환경 변수 <c>AIT_TEXTURE_STREAM_KEEP_GPU_FORMAT</c>(1/0)가 있으면 그것이 우선한다. 자동(-1)은 꺼짐
-        /// — 실기기 검증 전이다.
+        /// 환경 변수 <c>AIT_TEXTURE_STREAM_KEEP_GPU_FORMAT</c>(1/0)가 있으면 그것이 우선한다. 자동(-1)은 켬
+        /// (<see cref="AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat"/>) — 런타임이 ASTC 확장을 확인해 raw 로 올리고,
+        /// 미지원이거나 항목별 raw 업로드가 실패하면 브라우저 디코드 PNG/JPG 사본으로 폴백한다. 0 이 opt-out 이다.
         /// </summary>
         internal static bool ResolveKeepGpuFormat(AITEditorScriptObject config)
         {
@@ -773,7 +774,7 @@ namespace AppsInToss.Editor
 
             stored = AITTextureStreamPlanner.ParseTriStateEnv(
                 Environment.GetEnvironmentVariable(AITTextureStreamPlanner.KeepGpuFormatEnvVar), stored);
-            return AITTextureStreamPlanner.ResolveTriState(stored, false);
+            return AITTextureStreamPlanner.ResolveTriState(stored, AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat());
         }
 
         /// <summary>

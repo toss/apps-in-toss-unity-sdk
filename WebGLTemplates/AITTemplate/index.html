@@ -771,6 +771,9 @@
             return tierCap > 0 ? Math.min(autoDpr, tierCap) : autoDpr;
         }
 
+        /* AIT-AUTO-DPR:BEGIN */
+        // 마지막 GPU 프로브 소요(ms). iOS 는 프로브를 건너뛰므로 0. 로그 관측용.
+        var aitDprProbeMs = 0;
         function computeAutoDevicePixelRatio() {
             var baseRatio = window.devicePixelRatio || 1;
 
@@ -784,19 +787,28 @@
             var cores = navigator.hardwareConcurrency || 2;
             var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
-            // GPU 정보 확인 (저사양 GPU 감지)
+            // GPU 정보 확인 (저사양 GPU 감지). iOS WebKit 은 렌더러를 'Apple GPU' 로만 돌려줘 결과를 쓰지 않으므로
+            // 일회용 WebGL context 생성(수 ms~수십 ms)을 건너뛴다.
             var isLowEndGPU = false;
-            try {
-                var testCanvas = document.createElement('canvas');
-                var gl = testCanvas.getContext('webgl2') || testCanvas.getContext('webgl');
-                if (gl) {
-                    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (debugInfo) {
-                        var renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                        isLowEndGPU = /Mali-4|Mali-T[0-6]|Adreno [0-4]|PowerVR SGX|Intel HD [0-5]/i.test(renderer);
+            aitDprProbeMs = 0;
+            if (!isIOS) {
+                var probeT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                try {
+                    var testCanvas = document.createElement('canvas');
+                    var gl = testCanvas.getContext('webgl2') || testCanvas.getContext('webgl');
+                    if (gl) {
+                        var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                        if (debugInfo) {
+                            var renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                            // ANGLE 렌더러 문자열은 'Adreno (TM) 640' 형태라 구 정규식 'Adreno [0-4]' 가 매칭되지 않았다.
+                            // 2xx~4xx 세대(구형)만 저사양으로 본다.
+                            isLowEndGPU = /Adreno \(TM\) [2-4]\d\d\b|Adreno [2-4]\d\d\b|Mali-4|Mali-T[0-6]|PowerVR SGX|Intel HD [0-5]/i.test(renderer);
+                        }
                     }
-                }
-            } catch (e) {}
+                } catch (e) {}
+                var probeT1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                aitDprProbeMs = Math.round(probeT1 - probeT0);
+            }
 
             // 저사양 판정: GPU 또는 코어 수 기준
             if (isLowEndGPU || cores <= 2) {
@@ -823,12 +835,14 @@
             // 기타: 안전하게 최대 2로 제한
             return Math.min(baseRatio, 2);
         }
+        /* AIT-AUTO-DPR:END */
 
         // 모바일에서만 devicePixelRatio 조정 적용
         if (isMobile) {
             config.devicePixelRatio = getOptimalDevicePixelRatio();
             console.log('[AIT] 모바일 환경 - devicePixelRatio:', config.devicePixelRatio,
-                        '(설정:', aitDevicePixelRatioSetting === -1 ? 'auto' : aitDevicePixelRatioSetting, ')');
+                        '(설정:', aitDevicePixelRatioSetting === -1 ? 'auto' : aitDevicePixelRatioSetting, ')',
+                        'probeMs=' + aitDprProbeMs);
         } else {
             console.log('[AIT] 데스크톱 환경 - devicePixelRatio: 기본값 사용');
         }
@@ -1204,12 +1218,34 @@
                 // 다운로드 단계(progress < 0.9)에서 60초간 진행이 전혀 없으면 동일 예산으로 재시도.
                 // (진행 이벤트는 청크 단위로 오므로 느린 네트워크에서도 오탐하지 않고,
                 //  WASM 컴파일 등 진행 이벤트가 뜸한 후반부(>= 0.9)는 감시에서 제외)
+                // 백그라운드(hidden)·타이머 정지 구간은 "무진행"으로 세지 않는다. iOS 는 백그라운드에서 네트워크·타이머를 멈추므로
+                // 복귀 직후 60초가 지난 것으로 오판해 캐시 우회 reload 와 재시도 예산을 낭비하던 문제를 막는다.
+                /* AIT-STALL-WATCHDOG:BEGIN */
+                function aitStallShouldReload(s, now, hidden) {
+                    var n = { lastProgress: s.lastProgress, lastProgressTs: s.lastProgressTs, lastTick: s.lastTick };
+                    if (hidden) {
+                        // 백그라운드: 기준 시각을 계속 현재로 당겨 복귀 시점부터 60초를 새로 센다.
+                        n.lastProgressTs = now;
+                        n.lastTick = now;
+                        return { reload: false, s: n };
+                    }
+                    // 10초 간격 타이머가 20초 넘게 벌어졌으면 타이머가 정지됐던 것(iOS 백그라운드·Android freeze)이다.
+                    if (now - n.lastTick > 20000) n.lastProgressTs = now;
+                    n.lastTick = now;
+                    return { reload: n.lastProgress < 0.9 && now - n.lastProgressTs > 60000, s: n };
+                }
+                /* AIT-STALL-WATCHDOG:END */
                 var _aitLastProgress = 0;
                 var _aitLastProgressTs = Date.now();
+                var _aitLastTick = Date.now();
                 var _aitStallTimer = setInterval(function() {
                     if (window.unityInstance) { clearInterval(_aitStallTimer); return; }
-                    if (_aitLastProgress >= 0.9) return;
-                    if (Date.now() - _aitLastProgressTs > 60000) {
+                    var stall = aitStallShouldReload(
+                        { lastProgress: _aitLastProgress, lastProgressTs: _aitLastProgressTs, lastTick: _aitLastTick },
+                        Date.now(), document.hidden || document.visibilityState === 'hidden');
+                    _aitLastProgressTs = stall.s.lastProgressTs;
+                    _aitLastTick = stall.s.lastTick;
+                    if (stall.reload) {
                         clearInterval(_aitStallTimer);
                         try {
                             var retryKey = '__ait_reload_count__';
@@ -1226,6 +1262,13 @@
                         } catch (e) {}
                     }
                 }, 10000);
+                // 포그라운드 복귀 시점에 무진행 기준을 리셋한다(복귀 직후 이미 밀린 시간으로 오판하지 않도록).
+                var _aitResetStallClock = function() { _aitLastProgressTs = Date.now(); _aitLastTick = Date.now(); };
+                document.addEventListener('visibilitychange', function() {
+                    if (!document.hidden && document.visibilityState !== 'hidden') _aitResetStallClock();
+                });
+                window.addEventListener('pageshow', _aitResetStallClock);
+                document.addEventListener('resume', _aitResetStallClock);
 
                 createUnityInstance(canvas, config, (progress) => {
                     if (progress > _aitLastProgress) {

@@ -96,11 +96,12 @@ async function startServer() {
 // ============================================================================
 
 /**
- * 모든 페이지 스크립트보다 먼저: Response.clone / Cache.put 호출 기록, localStorage 시드.
- * @param {{ seed?: Record<string, string> }} opt
+ * 모든 페이지 스크립트보다 먼저: Response.clone / Cache.put 호출 기록, localStorage 시드(seed), sessionStorage 시드(session).
+ * @param {{ seed?: Record<string, string>, session?: Record<string, string> }} opt
  */
 function initScript(opt) {
   const seed = opt.seed || {};
+  const session = opt.session || {};
   return `(() => {
     window.__spy = { clones: 0, puts: [] };
     try {
@@ -119,6 +120,10 @@ function initScript(opt) {
     try {
       const seed = ${JSON.stringify(seed)};
       for (const k of Object.keys(seed)) { if (localStorage.getItem(k) === null) localStorage.setItem(k, seed[k]); }
+    } catch (e) {}
+    try {
+      const session = ${JSON.stringify(session)};
+      for (const k of Object.keys(session)) { if (sessionStorage.getItem(k) === null) sessionStorage.setItem(k, session[k]); }
     } catch (e) {}
   })();`;
 }
@@ -207,7 +212,7 @@ for (const engine of ENGINES) {
       server.state.noStore = false;
     });
 
-    /** @param {{ seed?: Record<string, string> }} [opt] */
+    /** @param {{ seed?: Record<string, string>, session?: Record<string, string> }} [opt] */
     async function newPage(opt = {}) {
       // Playwright 의 WebKit 은 비영속(incognito) 컨텍스트에서 HTTP 캐시가 아예 꺼져 있어(force-cache 도 서버로 간다) only-if-cached 가 항상 실패한다.
       // 실제 Safari/WKWebView 처럼 디스크 캐시가 있는 영속 컨텍스트를 테스트마다 새 임시 디렉터리로 띄운다.
@@ -448,18 +453,31 @@ for (const engine of ENGINES) {
       const now = NOW();
       const MIN = 60000;
       const H = 3600000;
-      /** @type {{ name: string, seed: Record<string, string>, perf?: object, expected: number }[]} */
+      const memFg = { __ait_mem_v1: JSON.stringify({ phase: 'fg', crashes: 0, bgKills: 0 }) };
+      /** @type {{ name: string, seed: Record<string, string>, session?: Record<string, string>, perf?: object, expected: number }[]} */
       const list = [
         { name: '마커 없음', seed: {}, expected: 0 },
-        { name: '직전 부팅 사망(boot-start)', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, expected: 1 },
-        { name: '직전 사망 + 최근 실패 1회', seed: { __ait_boot_v1: JSON.stringify({ stage: 'first-frame', t: now - 2000, fails: [now - MIN] }) }, expected: 2 },
+        { name: '직전 부팅 사망(boot-start) 1회는 설명 근거가 없어 올리지 않는다', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, expected: 0 },
+        { name: '직전 사망 + 최근 실패 1회(10분 내 2회) → 1', seed: { __ait_boot_v1: JSON.stringify({ stage: 'first-frame', t: now - 2000, fails: [now - MIN] }) }, expected: 1 },
+        { name: '직전 사망 + 최근 실패 2회(10분 내 3회) → 2', seed: { __ait_boot_v1: JSON.stringify({ stage: 'first-frame', t: now - 2000, fails: [now - MIN, now - 2 * MIN] }) }, expected: 2 },
+        { name: '직전 사망 + prev.lvl=1 → 1', seed: { __ait_boot_v1: JSON.stringify({ stage: 'first-frame', t: now - 2000, lvl: 1 }) }, expected: 1 },
+        { name: '직전 사망 + sessionStorage phase=fg → 1', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, session: memFg, expected: 1 },
+        { name: 'sessionStorage phase=fg 만 있고 부팅 마커가 없으면 0', seed: {}, session: memFg, expected: 0 },
+        { name: '직전 사망 + phase=fg + 저장 tier 1 → 2', seed: { ...tierSeedAt(1, now - 1000), __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, session: memFg, expected: 2 },
+        { name: '직전 사망 + phase=bg 는 근거가 아니다 → 0', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, session: { __ait_mem_v1: JSON.stringify({ phase: 'bg' }) }, expected: 0 },
+        { name: 'stable + post.end 비어 있음 + post.lvl=2 → 늦은 사망 → 1', seed: { __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, lvl: 2, post: { end: '', t: now - 3000, lvl: 2 } }) }, expected: 1 },
+        { name: 'stable + post.end 비어 있음 + post.lvl=0 → 0', seed: { __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, lvl: 0, post: { end: '', t: now - 3000, lvl: 0 } }) }, expected: 0 },
+        { name: 'stable + post.end 비어 있음 + post.lvl=0 + phase=fg → 1', seed: { __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, post: { end: '', t: now - 3000, lvl: 0 } }) }, session: memFg, expected: 1 },
+        { name: 'stable + post.end=bg + post.lvl=2 → 0', seed: { __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, lvl: 2, post: { end: 'bg', t: now - 3000, lvl: 2 } }) }, expected: 0 },
+        { name: 'stable + post.end=exit + phase=fg → 0', seed: { __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, post: { end: 'exit', t: now - 3000, lvl: 2 } }) }, session: memFg, expected: 0 },
+        { name: 'stable + 늦은 사망 + 저장 tier 2 → 2 유지', seed: { ...tierSeedAt(2, now - 1000), __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, post: { end: '', t: now - 3000, lvl: 2 } }) }, expected: 2 },
         { name: '직전 stable 이면 실패 기록 무시', seed: { __ait_boot_v1: JSON.stringify({ stage: 'stable', t: now - 2000, fails: [now - 1000] }) }, expected: 0 },
         { name: '저장 tier 2(24시간 이내)', seed: tierSeedAt(2, now - 1000), expected: 2 },
         { name: '저장 tier 1 이 24시간 지남', seed: tierSeedAt(1, now - 25 * H), expected: 0 },
-        { name: '사망 + 저장 tier 1 → 2', seed: { ...tierSeedAt(1, now - 1000), __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, expected: 2 },
+        { name: '사망(설명 안 됨) + 저장 tier 1 → 1 유지', seed: { ...tierSeedAt(1, now - 1000), __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, expected: 1 },
         { name: '정상 종료(end=exit)는 사망이 아님', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', end: 'exit', t: now - 2000 }) }, expected: 0 },
         { name: '10분 창 밖 실패 2회', seed: { __ait_boot_v1: JSON.stringify({ fails: [now - 11 * MIN, now - 12 * MIN] }) }, expected: 0 },
-        { name: 'lowMemoryTier=false 면 항상 0', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000 }) }, perf: { lowMemoryTier: false }, expected: 0 },
+        { name: 'lowMemoryTier=false 면 항상 0', seed: { __ait_boot_v1: JSON.stringify({ stage: 'boot-start', t: now - 2000, lvl: 2 }) }, session: memFg, perf: { lowMemoryTier: false }, expected: 0 },
       ];
       return list;
     })();
@@ -476,7 +494,7 @@ for (const engine of ENGINES) {
             'window.__post = window.AITMemory && window.AITMemory.lowMemTier;',
           ],
         });
-        const { context, page } = await newPage({ seed: c.seed });
+        const { context, page } = await newPage({ seed: c.seed, session: c.session });
         try {
           await page.goto(url);
           const r = await page.evaluate(() => ({ pre: window['__pre'], post: window['__post'], after: window['__aitPeekLowTier']() }));

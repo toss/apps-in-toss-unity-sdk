@@ -9,6 +9,15 @@
  *    Unity 는 AudioContext 가 suspended 가 되면 자기 채널을 스스로 pause 했다가 running 이 되면 offset 을 보정해 재개한다
  *    (framework 의 onstatechange). 그래서 이 레이어는 context 상태만 바꾸고 Unity 오디오 상태는 건드리지 않는다.
  *    SendMessage/jslib 이벤트 핸들러는 메인 루프와 무관하게 실행되므로 AITVisibilityHelper(visibilitychange → C#)는 그대로 동작한다.
+ *    오디오 복구/진단(visible 상태에서만, 같은 mobileLifecycle 게이트를 따른다):
+ *      - AudioContext 에 statechange 리스너를 달아 audioLog(최근 60건 링 버퍼)에 남긴다. navigator.audioSession 이 있으면 그 statechange 도 남긴다.
+ *      - iOS 가 context 를 'interrupted'(통화·Siri·백그라운드 경합)로 옮기면 1초 간격 최대 10회 resume() 을 재시도하고,
+ *        첫 터치/클릭(capture, passive 1회)과 visible 복귀(onShow)에서도 interrupted 인 context 를 resume 한다.
+ *        Unity 의 자체 resume interval 은 state != 'suspended' 이면 멈추므로 interrupted 는 여기서만 복구된다.
+ *        우리가 suspend 하지 않은 plain 'suspended' context 는 게임/Unity 소유라 건드리지 않는다.
+ *      - 미디어 stall watchdog: 재생 가능 상태(!paused, readyState>=3, playbackRate>0)인데 currentTime 이 2초(1초 틱 2회) 동안 안 움직이면
+ *        audioStalls 를 올리고 audioLog 에 남긴 뒤 seek(currentTime=currentTime)로 깨운다. 4초째에도 멈춰 있으면 원본 pause→play 로 한 번 더 시도한다.
+ *        60초 안에 3회까지만 개입한다. 래퍼를 거치지 않으므로 heldByUs 에는 영향이 없다.
  *
  * 2) 프레임 governor (frameRateCap, adaptiveFrameRate)
  *    rAF 간격 중앙값으로 주사율을 재서 100Hz 이상(= 상한 fps 의 1.6배 이상)이면 preMainLoop 에서 프레임을 건너뛰어 상한 fps 로 맞춘다.
@@ -29,7 +38,9 @@
  *        thermal: 'serious' | 'critical' 또는 { state: ... }
  *      getState(): 진단용 스냅샷(주사율, 적용된 상한, 프레임/건너뜀 카운트, hidden 횟수 …).
  *      setLifecycleEnabled(bool): 런타임 탈출구. false 면 게이트를 풀고 멈춰 둔 오디오/미디어를 재개한다.
- *  - URL 탈출구: ?aitpacing=off → 이 레이어 전체 비활성, ?aitlifecycle=0 → 게이트만 비활성, ?aitcap=0 → 프레임 상한만 비활성.
+ *      getState().audioLog: 오디오 진단 링 버퍼 복사본({ev:'ctx'|'session'|'stall', t, vis, ...}), getState().audioStalls: 감지한 stall 횟수.
+ *  - URL 탈출구: ?aitpacing=off → 이 레이어 전체 비활성, ?aitlifecycle=0 → 게이트만 비활성, ?aitcap=0 → 프레임 상한만 비활성,
+ *    ?aitaudiowd=0 → 미디어 stall watchdog 만 비활성.
  *  - window.AITMemory / window.__AIT_GL 은 존재 여부를 먼저 확인한다(스크립트 로드 순서·부재에 의존하지 않는다).
  *
  * ⚠️ Unity 로더보다 먼저 로드되어야 한다 — index.html 의 body 초입(ait-playerprefs.js 다음)에서 로드된다.
@@ -43,12 +54,14 @@
     var lifecycleOn = flags.mobileLifecycle !== false;
     var capFps = typeof flags.frameRateCap === 'number' && flags.frameRateCap >= 0 ? flags.frameRateCap : 60;
     var adaptiveOn = flags.adaptiveFrameRate === true;
+    var audioWdOn = true;
 
     try {
         var qs = new URLSearchParams(window.location.search);
         if (qs.get('aitpacing') === 'off') { lifecycleOn = false; capFps = 0; adaptiveOn = false; }
         if (qs.get('aitlifecycle') === '0') lifecycleOn = false;
         if (qs.get('aitcap') === '0') capFps = 0;
+        if (qs.get('aitaudiowd') === '0') audioWdOn = false;
     } catch (e) { /* URLSearchParams 미지원 — 플래그 값만 쓴다 */ }
 
     var ADAPTIVE_FPS = 30;
@@ -94,11 +107,117 @@
     var contexts = [];
     var suspendedByUs = [];
 
+    // 오디오 진단 링 버퍼(최근 AUDIO_LOG_MAX 건). getState().audioLog 로 복사본을 노출한다.
+    var AUDIO_LOG_MAX = 60;
+    var audioLog = [];
+    var audioStalls = 0;
+
+    function alog(o) {
+        try {
+            o.t = Math.round(performance.now());
+            o.vis = document.visibilityState;
+            audioLog.push(o);
+            if (audioLog.length > AUDIO_LOG_MAX) audioLog.shift();
+        } catch (e) { /* 진단 기록 실패 무시 */ }
+    }
+
+    function isVisible() {
+        try { return document.visibilityState === 'visible'; } catch (e) { return false; }
+    }
+
+    // iOS 가 context 를 'interrupted' 로 옮기면 Unity 의 resume interval(state == 'suspended' 일 때만 동작)이 멈춘다.
+    // 그래서 여기서 직접 재시도한다. 우리가 suspend 한 것이 아닌 plain 'suspended' 는 건드리지 않는다.
+    var RESUME_RETRY_MS = 1000;
+    var RESUME_RETRY_MAX = 10;
+    var ctxRetries = [];      // {ctx, timer, n}
+    var tapInstalled = false;
+    var TAP_EVENTS = ['touchend', 'pointerup', 'click'];
+
+    function stopRetry(ctx) {
+        for (var i = ctxRetries.length - 1; i >= 0; i--) {
+            if (ctxRetries[i].ctx === ctx) {
+                try { clearInterval(ctxRetries[i].timer); } catch (e) { /* 무시 */ }
+                ctxRetries.splice(i, 1);
+            }
+        }
+    }
+
+    function startRetry(ctx) {
+        if (typeof setInterval !== 'function') return;
+        for (var i = 0; i < ctxRetries.length; i++) if (ctxRetries[i].ctx === ctx) return;
+        var rec = { ctx: ctx, timer: 0, n: 0 };
+        rec.timer = setInterval(function () {
+            try {
+                if (ctx.state !== 'interrupted' || applied) { stopRetry(ctx); return; }
+                swallow(ctx.resume());
+                rec.n++;
+                if (rec.n >= RESUME_RETRY_MAX) stopRetry(ctx);
+            } catch (e) { stopRetry(ctx); }
+        }, RESUME_RETRY_MS);
+        ctxRetries.push(rec);
+    }
+
+    function resumeInterrupted(skip) {
+        var n = 0;
+        for (var i = 0; i < contexts.length; i++) {
+            try {
+                if (skip && skip.indexOf(contexts[i]) >= 0) continue;
+                if (contexts[i].state === 'interrupted') { swallow(contexts[i].resume()); n++; }
+            } catch (e) { /* 개별 context 실패는 무시 */ }
+        }
+        return n;
+    }
+
+    // 사용자 제스처가 있어야 resume 이 허용되는 환경 대비: 첫 터치/클릭에서 한 번 시도하고 스스로 걷는다.
+    function installInterruptedTap() {
+        if (tapInstalled) return;
+        try {
+            tapInstalled = true;
+            var handler = function () {
+                for (var i = 0; i < TAP_EVENTS.length; i++) {
+                    try { window.removeEventListener(TAP_EVENTS[i], handler, true); } catch (e) { /* 무시 */ }
+                }
+                tapInstalled = false;
+                resumeInterrupted();
+            };
+            for (var i = 0; i < TAP_EVENTS.length; i++) window.addEventListener(TAP_EVENTS[i], handler, { capture: true, passive: true });
+        } catch (e) { tapInstalled = false; }
+    }
+
+    function onCtxState(ctx) {
+        try {
+            if (ctx.state === 'interrupted') {
+                if (!gateEnabled() || applied || !isVisible()) return; // hidden 이면 onShow 가 처리한다
+                installInterruptedTap();
+                startRetry(ctx);
+            } else {
+                stopRetry(ctx);
+            }
+        } catch (e) { /* 무시 */ }
+    }
+
     function trackContext(ctx) {
         try {
-            if (ctx && contexts.indexOf(ctx) < 0) contexts.push(ctx);
+            if (ctx && contexts.indexOf(ctx) < 0) {
+                contexts.push(ctx);
+                try {
+                    ctx.addEventListener('statechange', function () {
+                        alog({ ev: 'ctx', state: ctx.state });
+                        onCtxState(ctx);
+                    });
+                } catch (e) { /* 리스너 등록 실패 — 진단/복구만 생략 */ }
+            }
         } catch (e) { /* 무시 */ }
         return ctx;
+    }
+
+    function installAudioSessionListener() {
+        try {
+            var as = navigator.audioSession;
+            if (as && typeof as.addEventListener === 'function') {
+                as.addEventListener('statechange', function () { alog({ ev: 'session', state: as.state }); });
+            }
+        } catch (e) { /* audioSession 미지원 */ }
     }
 
     function wrapAudioContextCtor(name) {
@@ -258,6 +377,71 @@
         return n;
     }
 
+    // ------------------------------------------------------------------ 미디어 stall watchdog
+    var WD_TICK_MS = 1000;
+    var WD_SEEK_AT = 2;          // 정지 틱 수가 이 값이면 stall 로 기록하고 seek 로 깨운다
+    var WD_REPLAY_AT = 4;        // 그래도 멈춰 있으면 원본 pause→play
+    var WD_NUDGE_MAX = 3;        // WD_NUDGE_WINDOW_MS 안에 요소당 이 횟수까지만 개입
+    var WD_NUDGE_WINDOW_MS = 60000;
+    var wdState = typeof WeakMap === 'function' ? new WeakMap() : null;
+    var wdWarned = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    function wdNudgesLeft(s) {
+        var now = Date.now();
+        var recent = [];
+        for (var i = 0; i < s.nudges.length; i++) if (now - s.nudges[i] < WD_NUDGE_WINDOW_MS) recent.push(s.nudges[i]);
+        s.nudges = recent;
+        return recent.length < WD_NUDGE_MAX;
+    }
+
+    function wdCheck(el) {
+        var s = wdState.get(el);
+        if (!s) { s = { lastT: NaN, frozen: 0, nudges: [] }; wdState.set(el, s); }
+        var eligible = !el.paused && !el.ended && !el.seeking && el.readyState >= 3 && el.playbackRate > 0;
+        var ct = el.currentTime;
+        if (eligible && ct === s.lastT) s.frozen++;
+        else s.frozen = 0;
+        s.lastT = ct;
+        if (s.frozen === WD_SEEK_AT) {
+            audioStalls++;
+            alog({
+                ev: 'stall', ct: ct, rs: el.readyState, ns: el.networkState, err: el.error && el.error.code,
+                ctx: contexts.map(function (c) { return c.state; }).join(',')
+            });
+            if (!wdWarned || !wdWarned.has(el)) {
+                if (wdWarned) wdWarned.add(el);
+                try { console.warn('[AIT-Audio] stall ct=' + ct + ' readyState=' + el.readyState + ' networkState=' + el.networkState); } catch (e) { /* 무시 */ }
+            }
+            if (wdNudgesLeft(s)) {
+                s.nudges.push(Date.now());
+                try { el.currentTime = el.currentTime; } catch (e) { /* seek 거부 무시 */ }
+            }
+        } else if (s.frozen === WD_REPLAY_AT) {
+            if (typeof origPause === 'function' && typeof origPlay === 'function' && wdNudgesLeft(s)) {
+                s.nudges.push(Date.now());
+                // 래퍼를 거치지 않는다(heldByUs 와 playing 추적에 영향을 주지 않는다).
+                origPause.call(el);
+                swallow(origPlay.call(el));
+            }
+        }
+    }
+
+    function wdTick() {
+        try {
+            if (!wdState) return;
+            if (!gateEnabled() || applied || !isVisible()) { wdState = new WeakMap(); return; } // 복귀 직후 오탐 방지
+            var list = playing.slice();
+            for (var i = 0; i < list.length; i++) {
+                try { wdCheck(list[i]); } catch (e) { /* 개별 요소 실패 무시 */ }
+            }
+        } catch (e) { /* watchdog 실패는 무시 */ }
+    }
+
+    function startMediaWatchdog() {
+        if (!audioWdOn || typeof setInterval !== 'function' || !mediaProto || typeof origPlay !== 'function') return;
+        setInterval(wdTick, WD_TICK_MS);
+    }
+
     // ------------------------------------------------------------------ hidden / visible 전이
     function onHide(source) {
         if (applied) return;
@@ -276,9 +460,12 @@
         st.hidden = false;
         st.lastHiddenMs = hiddenAt ? Date.now() - hiddenAt : 0;
         capCounter = 0; // 숨어 있던 사이의 시간 때문에 상한 계산이 틀어지지 않게
+        var ours = suspendedByUs.slice();
         var a = resumeAudioContexts();
+        var ia = resumeInterrupted(ours); // hidden 사이에 iOS 가 interrupted 로 옮긴 context
         var m = resumeMedia();
-        log('visible(' + source + '): ' + st.lastHiddenMs + 'ms 뒤 재개, AudioContext ' + a + '개 resume, 미디어 ' + m + '개 play');
+        log('visible(' + source + '): ' + st.lastHiddenMs + 'ms 뒤 재개, AudioContext ' + a + '개 resume' +
+            (ia ? '(+interrupted ' + ia + '개)' : '') + ', 미디어 ' + m + '개 play');
     }
 
     function sync(source) {
@@ -431,6 +618,8 @@
         installAudioContextWrapper();
         installMediaWrappers();
         installLifecycleListeners();
+        installAudioSessionListener();
+        startMediaWatchdog();
     }
 
     var configured = false;
@@ -488,7 +677,9 @@
                 suspendedContexts: suspendedByUs.length,
                 trackedMedia: playing.length,
                 heldMedia: heldByUs.length,
-                hints: hints
+                hints: hints,
+                audioLog: audioLog.slice(),
+                audioStalls: audioStalls
             };
         }
     };

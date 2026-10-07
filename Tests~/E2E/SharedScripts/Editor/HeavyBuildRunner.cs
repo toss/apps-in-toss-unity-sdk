@@ -437,7 +437,7 @@ public class HeavyBuildRunner
         const int sampleRate = 44100;
         const int channels = 2;
         int frames = sampleRate * seconds;
-        // 16-bit PCM WAV. sine 스윕 + 약한 노이즈 → .data 내 비중 확보(L8 외부화 대상).
+        // 16-bit PCM WAV. 절차 생성 BGM(화음 진행 + 베이스 + 아르페지오 + 하이햇) → .data 내 비중 확보(L8 외부화 대상).
         byte[] wav = BuildWav(frames, channels, sampleRate, index);
 
         string assetPath = $"{HeavyRoot}/Audio/heavy_audio_{index:D2}.wav";
@@ -860,18 +860,76 @@ public class HeavyBuildRunner
             w.Write(new char[] { 'd', 'a', 't', 'a' });
             w.Write(dataBytes);
 
+            // 듣기 괜찮은 결정론적 BGM: 96BPM 4/4, 4마디 화음 진행 반복(60초 = 96박 = 24마디라 루프가 마디 경계에서 맞는다).
+            // seed 마다 조(5도씩)와 진행 순서를 바꾼다. 하이햇 노이즈가 PCM 의 gzip 압축률을 원래 픽스처처럼 낮게 유지한다.
             uint state = 0xC2B2AE35u ^ (uint)(seed * 0x9E3779B1u + 1u);
-            double phase = 0.0;
-            double freq = 220.0 + seed * 55.0;
-            double phaseInc = 2.0 * System.Math.PI * freq / sampleRate;
+            const double bpm = 96.0;
+            double beatLen = 60.0 / bpm;
+            double barLen = beatLen * 4.0;
+            double eighthLen = beatLen / 2.0;
+            int key = (seed * 7) % 12;
+            // 근음(MIDI)과 3음 간격: I–V–vi–IV / vi–IV–I–V
+            int[][] progs =
+            {
+                new[] { 48, 43, 45, 41 },
+                new[] { 45, 41, 48, 43 },
+            };
+            int[][] thirds =
+            {
+                new[] { 4, 4, 3, 4 },
+                new[] { 3, 4, 4, 4 },
+            };
+            int[] roots = progs[seed % 2];
+            int[] third = thirds[seed % 2];
+            int[] arpPattern = { 0, 1, 2, 3, 2, 1, 0, 2 };
+            double twoPi = 2.0 * System.Math.PI;
+
             for (int f = 0; f < frames; f++)
             {
+                double t = (double)f / sampleRate;
+                int bar = (int)(t / barLen);
+                int ci = bar % 4;
+                int root = roots[ci] + key;
+                int[] chord = { 0, third[ci], 7, 12 };
+
+                double barAge = t - bar * barLen;
+                double beatAge = t - System.Math.Floor(t / beatLen) * beatLen;
+                int eighth = (int)(t / eighthLen);
+                double eighthAge = t - eighth * eighthLen;
+
+                // 패드: 3화음, 마디 단위로 부드럽게 들어오고 나간다.
+                double padEnv = System.Math.Min(1.0, barAge / 0.25) * System.Math.Min(1.0, (barLen - barAge) / 0.08);
+                double pad = 0.0;
+                for (int k = 0; k < 3; k++) pad += System.Math.Sin(twoPi * MidiToHz(root + 12 + chord[k]) * t);
+                pad *= 0.065 * padEnv;
+
+                // 베이스: 박마다 근음, 짧은 어택과 감쇠.
+                double bassEnv = System.Math.Min(1.0, beatAge / 0.004) * System.Math.Exp(-beatAge * 3.0)
+                                 * System.Math.Min(1.0, (beatLen - beatAge) / 0.01);
+                double bf = MidiToHz(root - 12);
+                double bass = (System.Math.Sin(twoPi * bf * t) + 0.35 * System.Math.Sin(twoPi * 2.0 * bf * t)) * 0.22 * bassEnv;
+
+                // 아르페지오 리드: 8분음표 플럭(배음 2개).
+                int note = root + 24 + chord[arpPattern[eighth % arpPattern.Length]];
+                double af = MidiToHz(note);
+                double arpEnv = System.Math.Min(1.0, eighthAge / 0.003) * System.Math.Exp(-eighthAge * 7.0)
+                                * System.Math.Min(1.0, (eighthLen - eighthAge) / 0.006);
+                double arp = (System.Math.Sin(twoPi * af * t) + 0.3 * System.Math.Sin(twoPi * 2.0 * af * t)
+                              + 0.1 * System.Math.Sin(twoPi * 3.0 * af * t)) * 0.16 * arpEnv;
+
+                // 하이햇: 엇박 8분음표에 짧은 노이즈.
                 state = NextLcg(state);
-                double noise = (((state >> 12) & 0xFFFF) / 65535.0 - 0.5) * 0.2;
-                double s = System.Math.Sin(phase) * 0.6 + noise;
-                phase += phaseInc;
-                short sample = (short)Mathf.Clamp((float)(s * short.MaxValue), short.MinValue, short.MaxValue);
-                for (int c = 0; c < channels; c++) w.Write(sample);
+                double noise = ((state >> 12) & 0xFFFF) / 65535.0 - 0.5;
+                double hat = (eighth % 2 == 1) ? noise * 0.09 * System.Math.Exp(-eighthAge * 70.0) : 0.0;
+
+                double center = pad + bass;
+                double left = center + arp * 1.15 + hat * 0.8;
+                double right = center + arp * 0.85 + hat * 1.2;
+                for (int c = 0; c < channels; c++)
+                {
+                    double v = channels == 1 ? (left + right) * 0.5 : (c == 0 ? left : right);
+                    w.Write((short)Mathf.Clamp((float)(v * 1.4 * short.MaxValue), short.MinValue, short.MaxValue));
+                }
             }
             w.Flush();
             return ms.ToArray();
@@ -879,6 +937,8 @@ public class HeavyBuildRunner
     }
 
     // ---- 유틸 ----
+    private static double MidiToHz(int midi) => 440.0 * System.Math.Pow(2.0, (midi - 69) / 12.0);
+
     private static uint NextLcg(uint state)
     {
         // numerical recipes LCG — 결정론적, 시드 의존.

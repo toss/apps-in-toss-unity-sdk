@@ -16,14 +16,21 @@
  *      이전 세션(들)이 '포그라운드에서' 정상 종료 신호 없이 끝난 연속 횟수. 0 이상의 정수. ait-gl.js 의 tierCap() 이
  *      2 이상이면 DPR 상한을 낮추는 근거로 읽는다. memoryTelemetry 가 꺼져 있으면 항상 0.
  *      백그라운드(hidden)에서 죽은 세션은 crashCount 에 넣지 않고 bgKillCount 로 따로 센다(OS 가 숨은 탭을 정리한 것일 수 있다).
- *      한 세션이 STABLE_MS(60초) 넘게 살아 있으면 저장된 연속 횟수는 0 으로 되돌린다(그 세션의 crashCount 값은 부팅 때 값 그대로).
+ *      pagehide(정상 종료)가 오면 저장된 연속 횟수를 0 으로 되돌린다(그 세션의 crashCount 값은 부팅 때 값 그대로). 세션이 얼마나 오래 살았는지는 보지 않으므로
+ *      포그라운드 사망은 시점과 상관없이 쌓인다(사용자가 로딩 중 닫아 pagehide 없이 끝난 경우도 같다 — 정상 종료 신호가 한 번이라도 오면 0 으로 돌아간다).
  *  - window.AITMemory.bootFailCount: number
  *      "부팅 중 사망" 횟수. localStorage '__ait_boot_v1' 마커(stage: boot-start → first-frame → stable)가 first-frame 뒤 15초(stable, __AIT_PERF.bootStableMs 로 변경)에
  *      닿기 전에 pagehide/hidden 신호 없이 끝난 부팅의 최근 10분(BOOT_FAIL_WINDOW_MS) 이내 개수. sessionStorage crashCount 와 별개로 센다
  *      (앱이 통째로 죽으면 sessionStorage 가 같이 사라지는 WebView 가 있다). stable 에 닿으면 기록을 비운다.
  *      pagehide(exit)·hidden(bg) 로 끝난 부팅은 사망으로 세지 않는다. localStorage 를 못 쓰면 항상 0.
+ *      마커에는 이번 부팅이 도달한 최고 메모리 압력 단계 lvl(0|1|2)이 같이 남고, stable 이후에는 post { end, t, lvl } 로 stable 뒤 종료 신호를 따로 기록한다.
+ *  - window.AITMemory.lateDeath: boolean
+ *      이전 부팅이 stable 에 닿은 뒤 정상 종료 신호(post.end) 없이 끝났고, 그게 "설명되는" 사망(같은 WebView 가 포그라운드 상태로 다시 뜸 = prevSession 'foreground',
+ *      또는 그 부팅의 압력 단계가 critical)일 때 true. 그냥 Toss 닫기로 pagehide 가 안 온 경우를 걸러내려는 조건이다.
  *  - window.AITMemory.lowMemTier: 0 | 1 | 2
- *      저사양 티어. 0 = 정상. bootFailCount 와 24시간 만료 저장값('__ait_lowmem_v1')에서 정한다(부팅 사망 1회 → 1, 같은 티어로 또 죽으면 2).
+ *      저사양 티어. 0 = 정상. bootFailCount 와 24시간 만료 저장값('__ait_lowmem_v1')에서 정한다. 설명되지 않는 부팅 사망 1회는 티어를 올리지 않고(사용자가 로딩 중
+ *      닫은 것일 수 있다 — WKWebView 는 닫을 때 pagehide 를 안 쏘는 경우가 많다) bootFailCount 만 센다. 사망이 설명되면(같은 WebView 가 포그라운드로 재시작,
+ *      직전 부팅이 'high' 이상 압력에 도달, 또는 10분 안에 2회 이상) 저장 티어에서 한 단계 올린다. 사망 2회 → 1, 3회 → 2. 늦은 사망(lateDeath)도 한 단계 올린다.
  *      __AIT_PERF.lowMemoryTier=false 이거나 memoryTelemetry=false 면 항상 0. 이 파일은 판별·노출만 하고 정책(DPR 상한, put 생략,
  *      스트리밍 동시성 등)은 읽는 쪽이 정한다: JS 는 window.AITMemory.lowMemTier, C# 은 AITMemoryBridge.LowMemTier(jslib __AITMemoryBridge_GetLowMemTier).
  *      값은 부팅 때 한 번 정해지고 세션 중 바뀌지 않는다.
@@ -53,7 +60,6 @@
     var enabled = flags.memoryTelemetry !== false;
 
     var STORAGE_KEY = '__ait_mem_v1';
-    var STABLE_MS = 60000;      // sessionStorage crashCount 리셋용(기존 값 유지)
     var BOOT_STABLE_MS = (Number(flags.bootStableMs) > 0 ? Number(flags.bootStableMs) : 15000);
     var MAX_EVENTS = 128;
     var BRIDGE_GROW_MIN_INTERVAL_MS = 1000;
@@ -69,7 +75,8 @@
         bootFailCount: 0,
         lowMemTier: 0,
         lowMemReason: '',
-        prevBoot: 'none',    // 'none' | 'stable' | 'exit' | 'bg' | 'boot-start' | 'first-frame'(뒤 둘은 사망)
+        lateDeath: false,
+        prevBoot: 'none',    // 'none' | 'stable' | 'exit' | 'bg' | 'late-death' | 'boot-start' | 'first-frame'(뒤 둘은 사망)
         bootStage: 'boot-start', // 'boot-start' | 'first-frame' | 'stable'
         firstFrameMs: -1,
         thresholds: { highBytes: HIGH_BYTES, criticalBytes: CRITICAL_BYTES },
@@ -121,7 +128,8 @@
     var TIER_TTL_MS = 24 * 60 * 60 * 1000;
     var MAX_FAIL_RECORDS = 8;
     var lowMemEnabled = flags.lowMemoryTier !== false;
-    var bootState = { stage: 'boot-start', end: '', t: 0, ff: 0, fails: [] };
+    // lvl: 이번 부팅이 도달한 최고 압력 단계(0 ok | 1 high | 2 critical). post: stable 뒤 종료 신호({ end, t, lvl }) — stable 에 닿기 전엔 null.
+    var bootState = { stage: 'boot-start', end: '', t: 0, ff: 0, lvl: 0, post: null, fails: [] };
 
     function readLocal(key) {
         try {
@@ -140,6 +148,9 @@
         var prev = readLocal(BOOT_KEY);
         var fails = [];
         var prevDied = false;
+        var lateDeath = false;
+        // 같은 WebView 가 포그라운드 종료 신호(pagehide 없음) 뒤에 다시 떴다 = 크래시 또는 호스트 리로드. 위쪽 sessionStorage bootMarker 가 정한다.
+        var prevSessionFg = (mem.prevSession === 'foreground');
         if (prev) {
             if (Array.isArray(prev.fails)) {
                 for (var i = 0; i < prev.fails.length; i++) {
@@ -150,6 +161,12 @@
             if (prev.stage === 'stable') {
                 fails = [];
                 mem.prevBoot = 'stable';
+                // stable 뒤 사망: post.end 가 비어 있다(pagehide/hidden 신호 없음). 설명되는 경우(같은 WebView 가 포그라운드로 재시작했거나 그 부팅이 critical 압력)만 센다.
+                if (prev.post && typeof prev.post === 'object' && prev.post.end === '' && (prevSessionFg || (Number(prev.post.lvl) | 0) >= 2)) {
+                    lateDeath = true;
+                    mem.prevBoot = 'late-death';
+                    mem.lateDeath = true;
+                }
             } else if (prev.end === 'exit') {
                 mem.prevBoot = 'exit';
             } else if (prev.end === 'bg') {
@@ -177,11 +194,14 @@
                 storedTier = Math.min(2, Number(stored.tier) | 0);
                 storedTs = Number(stored.ts);
             }
-            var failTier = fails.length >= 2 ? 2 : (fails.length >= 1 ? 1 : 0);
-            var tier = Math.max(failTier, prevDied ? Math.min(2, storedTier + 1) : storedTier);
+            // 설명되지 않는 사망 1회는 올리지 않는다(로딩 중 닫기도 pagehide 없이 끝난다). 포그라운드 재시작·직전 부팅 압력 high 이상·10분 내 2회가 설명 근거다.
+            var corroborated = prevSessionFg || (Number(prev && prev.lvl) | 0) >= 1 || fails.length >= 2;
+            var failTier = fails.length >= 3 ? 2 : (fails.length >= 2 ? 1 : 0);
+            var escalate = (prevDied && corroborated) || lateDeath;
+            var tier = Math.max(failTier, escalate ? Math.min(2, storedTier + 1) : storedTier);
             if (tier > 0) {
                 mem.lowMemTier = tier;
-                mem.lowMemReason = prevDied ? ('boot-fail x' + fails.length) : 'stored';
+                mem.lowMemReason = lateDeath ? 'late-death' : (prevDied ? ('boot-fail x' + fails.length) : 'stored');
                 // 같은 티어면 만료 기준 시각을 유지한다(24시간 뒤 자연 해제). 올라갔을 때만 새로 찍는다.
                 if (tier !== storedTier || !storedTs) writeLocal(TIER_KEY, { tier: tier, ts: now });
             }
@@ -195,9 +215,17 @@
         writeBoot();
     })();
 
-    // 부팅 단계 전이. 이미 stable 이면 pagehide/hidden 으로 end 를 바꾸지 않는다(정상 세션).
+    // 부팅 단계 전이. 이미 stable 이면 부팅 end 는 건드리지 않고 post 에만 기록한다(정상 세션이므로 부팅 사망으로 안 센다. 다음 부팅이 post.end 가 비었는지만 본다).
     function setBootEnd(end) {
-        if (bootState.stage === 'stable' || bootState.end === end) return;
+        if (bootState.stage === 'stable') {
+            if (bootState.post && bootState.post.end !== end) {
+                bootState.post.end = end;
+                bootState.post.t = Date.now();
+                writeBoot();
+            }
+            return;
+        }
+        if (bootState.end === end) return;
         bootState.end = end;
         writeBoot();
     }
@@ -212,7 +240,7 @@
         try {
             console.log('[AIT-Memory] first-frame t=' + mem.firstFrameMs + 'ms bootFailCount=' + mem.bootFailCount +
                 ' lowMemTier=' + mem.lowMemTier + (mem.lowMemReason ? '(' + mem.lowMemReason + ')' : '') +
-                ' prevBoot=' + mem.prevBoot);
+                ' lateDeath=' + mem.lateDeath + ' prevBoot=' + mem.prevBoot);
         } catch (e) { /* 로그 실패 무시 */ }
         try { window.dispatchEvent(new Event('ait:firstframe')); } catch (e) { /* 리스너 예외/미지원 무시 */ }
         try {
@@ -223,6 +251,7 @@
                 mem.bootStage = 'stable';
                 bootState.end = '';
                 bootState.fails = [];
+                bootState.post = { end: '', t: Date.now(), lvl: bootState.lvl };
                 mem.stableReached = true;
                 writeBoot();
             }, BOOT_STABLE_MS);
@@ -245,16 +274,14 @@
     }
     try {
         document.addEventListener('visibilitychange', function () { setPhase(isHidden() ? 'bg' : 'fg'); });
-        window.addEventListener('pagehide', function () { setPhase('exit'); exited = true; });
+        window.addEventListener('pagehide', function () {
+            // 정상 종료 신호 → 연속 크래시 횟수를 비운다. 이 신호 없이 포그라운드에서 끝난 세션은 시점과 상관없이 다음 부팅에서 crashes 로 쌓인다.
+            if (sessionState.crashes !== 0) sessionState.crashes = 0;
+            setPhase('exit');
+            exited = true;
+        });
         // bfcache 복원: pagehide 로 'exit' 가 찍힌 뒤 같은 문서가 되살아난 것이므로 다시 살아 있음으로 되돌린다.
         window.addEventListener('pageshow', function () { exited = false; setPhase(isHidden() ? 'bg' : 'fg'); });
-        setTimeout(function () {
-            // 이 세션은 STABLE_MS 넘게 살아 있었다 → 다음 부팅의 연속 크래시 횟수는 0 부터 센다.
-            if (sessionState.crashes !== 0) {
-                sessionState.crashes = 0;
-                writeState();
-            }
-        }, STABLE_MS);
     } catch (e) { /* 리스너 등록 실패는 무시 */ }
 
     // ---------------------------------------------------------------- grow 기록
@@ -278,6 +305,15 @@
         return 'ok';
     }
     function levelRank(l) { return l === 'critical' ? 2 : (l === 'high' ? 1 : 0); }
+    // 이번 부팅이 도달한 최고 압력 단계를 부팅 마커에 남긴다(다음 부팅이 사망의 "설명 근거"로 읽는다).
+    function noteBootLevel() {
+        var r = levelRank(level);
+        if (r > bootState.lvl) {
+            bootState.lvl = r;
+            if (bootState.post) bootState.post.lvl = bootState.lvl;
+            writeBoot();
+        }
+    }
 
     function round2(v) { return Math.round(v * 100) / 100; }
 
@@ -311,11 +347,12 @@
         if (ok) {
             var newLevel = levelFor(currentBytes, false);
             // 압력 단계는 한 번 올라가면 내려가지 않는다(wasm heap 은 줄지 않는다).
-            if (levelRank(newLevel) > levelRank(level)) { level = newLevel; type = 'pressure'; }
+            if (levelRank(newLevel) > levelRank(level)) { level = newLevel; type = 'pressure'; noteBootLevel(); }
         } else if (levelRank(level) < 1) {
             // Emscripten 은 grow 실패 시 더 작은 크기로 재시도하므로 실패 한 번이 곧 OOM 은 아니다. 'high' 로만 올린다.
             level = 'high';
             type = 'pressure';
+            noteBootLevel();
         }
         pendingTypes[type] = true;
         scheduleFlush();
@@ -340,7 +377,8 @@
             crashCount: mem.crashCount,
             bgKillCount: mem.bgKillCount,
             bootFailCount: mem.bootFailCount,
-            lowMemTier: mem.lowMemTier
+            lowMemTier: mem.lowMemTier,
+            lateDeath: mem.lateDeath
         };
     }
 

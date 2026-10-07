@@ -93,7 +93,7 @@ namespace AppsInToss.Editor.Package
 
         internal static bool EffectiveReleaseConsumedData(AITEditorScriptObject c)
         {
-            return c != null && Resolve(c.releaseConsumedData, AITDefaultSettings.GetDefaultReleaseConsumedData());
+            return c == null || Resolve(c.releaseConsumedData, AITDefaultSettings.GetDefaultReleaseConsumedData());
         }
 
         // 자동(-1)은 WebKit 전용 엔진에서 끈다(실기기 iOS 에서 켠 빌드만 오디오 재생 시간이 멈춘 사례, 정상 상태 이득은 노이즈 수준).

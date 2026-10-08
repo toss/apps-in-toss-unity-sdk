@@ -508,6 +508,35 @@ for (const engine of ENGINES) {
     }
 
     // ------------------------------------------------------------------
+    for (const hidden of [true, false]) {
+      test(`stable 타이머: 페이지가 ${hidden ? '숨김' : '표시'} 상태면 post.end 를 '${hidden ? 'bg' : ''}' 로 기록`, async () => {
+        const token = newToken();
+        const url = registerPage(server, token, {
+          perf: { bootStableMs: 50 },
+          head: [readRuntimeScript('ait-mem.js')],
+        });
+        const { context, page } = await newPage();
+        if (hidden) {
+          // Android WebView 는 숨겨져도 타이머가 돈다. stable 시점에 숨김이었던 세션을 흉내 낸다.
+          await context.addInitScript(`(() => {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+            Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+          })();`);
+        }
+        try {
+          await page.goto(url);
+          await page.evaluate(() => window['AITMemory'].markFirstFrame());
+          await page.waitForTimeout(150);
+          const boot = await page.evaluate(() => JSON.parse(localStorage.getItem('__ait_boot_v1') || 'null'));
+          expect(boot && boot.stage).toBe('stable');
+          expect(boot.post.end).toBe(hidden ? 'bg' : '');
+        } finally {
+          await context.close();
+        }
+      });
+    }
+
+    // ------------------------------------------------------------------
     test('modern early-fetch: tier 0 은 data 를 선시작하고 tier>=1 은 data 선시작을 생략(wasm 은 그대로)', async () => {
       for (const tier of [0, 1]) {
         server.hits.length = 0;

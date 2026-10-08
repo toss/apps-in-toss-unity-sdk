@@ -99,6 +99,38 @@ test.describe('다운로드 정체 워치독', () => {
     const s = { lastProgress: 0.3, lastProgressTs: 1, lastTick: 2 };
     stall(s, 100000, true);
     expect(s).toEqual({ lastProgress: 0.3, lastProgressTs: 1, lastTick: 2 });
+    stall(s, 100000, false, true);
+    expect(s).toEqual({ lastProgress: 0.3, lastProgressTs: 1, lastTick: 2 });
+  });
+
+  test('data 보류(held) 구간은 무진행으로 세지 않고 기준을 당긴다', () => {
+    const now = 1_000_000;
+    const s = { lastProgress: 0.3, lastProgressTs: now - 120000, lastTick: now - 10000 };
+    const held = stall(s, now, false, true);
+    expect(held.reload).toBe(false);
+    expect(held.s.lastProgressTs).toBe(now);
+    expect(held.s.lastTick).toBe(now);
+    // 대조군: held 가 아니면 같은 상태에서 reload 한다
+    expect(stall(s, now, false, false).reload).toBe(true);
+    expect(stall(s, now, false).reload).toBe(true);
+  });
+
+  test('hidden 4번째 인자 생략(undefined)도 기존대로 동작한다', () => {
+    const t0 = 1_000_000;
+    const r = stall({ lastProgress: 0.3, lastProgressTs: t0, lastTick: t0 }, t0 + 10000, true, undefined);
+    expect(r.reload).toBe(false);
+    expect(r.s.lastProgressTs).toBe(t0 + 10000);
+  });
+
+  test('정체 워치독 재시도 소진 시 오류 화면을 띄우고, reload 전에 _aitLoadAborted 를 세운다', () => {
+    const b = INDEX_HTML.indexOf('/* AIT-STALL-WATCHDOG:END */');
+    const region = INDEX_HTML.slice(b, b + 4000);
+    expect(region).toContain("source: 'stall-watchdog'");
+    const abortIdx = region.indexOf('window._aitLoadAborted = true;');
+    const reloadIdx = region.indexOf('location.reload();');
+    expect(abortIdx).toBeGreaterThan(-1);
+    expect(reloadIdx).toBeGreaterThan(abortIdx);
+    expect(region).toContain('showLoadError(');
   });
 });
 

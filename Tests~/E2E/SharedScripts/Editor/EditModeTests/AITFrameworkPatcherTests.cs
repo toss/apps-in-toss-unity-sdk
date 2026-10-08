@@ -698,11 +698,12 @@ public class AITFrameworkPatcherTests
         + "if (stackTraceReferenceMatch) Module.stackTraceRegExp = " + StackRhs + ";\n";
 
     // 바깥 framework 함수 모양: jsStackTrace 호출 횟수를 세는 spy 를 둔다.
-    private static string StackFramework(string head)
+    private static string StackFramework(string head, string afterHead = "")
     {
         return "function unityFramework(Module){var spyCalls=0;"
             + "function jsStackTrace(){spyCalls++;return \"Error\\n    at jsStackTrace (http://h/x.framework.js:10:5)\\n    at f (http://h/x.framework.js:20:3)\"}"
             + head
+            + afterHead
             + "return {calls:function(){return spyCalls}}}";
     }
 
@@ -989,8 +990,8 @@ public class AITFrameworkPatcherTests
             // 2) setter: 접근 전에 대입하면 spy 는 끝까지 0회이고 대입값이 그대로 돌아온다.
             + "var M2={};var fw2=unityFramework(M2);M2.stackTraceRegExp=/zz/;\n"
             + "out.push(M2.stackTraceRegExp.source);out.push(fw2.calls());\n"
-            // 3) 열거 가능하고 재정의 가능(stock 의 일반 프로퍼티와 가장 가까운 모양).
-            + "var d=Object.getOwnPropertyDescriptor(M1,'stackTraceRegExp');out.push(d.enumerable&&d.configurable);\n"
+            // 3) 열거 불가(moduleOverrides 복사가 getter 를 읽지 않게)이고 재정의 가능(setter 로 대입한 값 유지).
+            + "var d=Object.getOwnPropertyDescriptor(M1,'stackTraceRegExp');out.push(!d.enumerable&&d.configurable);\n"
             + "console.log(out.join('|'));\n";
 
         string stdout = RunNodeScript(node, harness);
@@ -1010,6 +1011,50 @@ public class AITFrameworkPatcherTests
         string stdout = RunNodeScript(node, r.Source + "\nvar M={};unityFramework(M);console.log(String(M.stackTraceRegExp)+'|'+String(M.stackTraceRegExp));\n");
 
         Assert.AreEqual("undefined|undefined", stdout.Trim());
+    }
+
+    // Emscripten 이 패치 문장 몇 KB 뒤에서 하는 moduleOverrides 복사(2021.3 for-in, 6000.x Object.assign). 열거 가능하면 getter 가 부팅 중에 돈다.
+    private const string ModuleOverridesAssign =
+        "var moduleOverrides=Object.assign({},Module);Object.assign(Module,moduleOverrides);";
+
+    private const string ModuleOverridesForIn =
+        "var moduleOverrides={};var key;for(key in Module){if(Module.hasOwnProperty(key)){moduleOverrides[key]=Module[key]}}"
+        + "for(key in moduleOverrides){if(moduleOverrides.hasOwnProperty(key)){Module[key]=moduleOverrides[key]}}";
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void StackLazy_PatchedSnippet_SurvivesModuleOverridesCopy(bool useAssign)
+    {
+        RequireNode(out string node);
+        var r = AITFrameworkPatcher.PatchText(
+            StackFramework(StackHeadCompact, useAssign ? ModuleOverridesAssign : ModuleOverridesForIn),
+            false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+        Assert.AreEqual(1, r.Applied.Count, string.Join("|", r.Skipped));
+
+        string harness = r.Source + "\n"
+            + "var out=[];var M={};var fw=unityFramework(M);out.push(fw.calls());\n"
+            + "var re=M.stackTraceRegExp;out.push(fw.calls());out.push(re instanceof RegExp);\n"
+            + "console.log(out.join('|'));\n";
+
+        Assert.AreEqual("0|1|true", RunNodeScript(node, harness).Trim());
+    }
+
+    [Test]
+    public void StackLazy_PatchedSnippet_RetriesAfterFailedCompute()
+    {
+        RequireNode(out string node);
+        // jsStackTrace 가 첫 호출에서만 던지면 첫 접근은 undefined, 두 번째 접근은 RegExp 를 돌려준다(실패가 영구히 굳지 않는다).
+        string src = "function unityFramework(Module){var n=0;"
+            + "function jsStackTrace(){if(n++===0)throw new Error('boom');return \"Error\\n    at jsStackTrace (http://h/x.framework.js:10:5)\\n    at f (http://h/x.framework.js:20:3)\"}"
+            + StackHeadCompact + "}";
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+        Assert.AreEqual(1, r.Applied.Count, string.Join("|", r.Skipped));
+
+        string stdout = RunNodeScript(node, r.Source
+            + "\nvar M={};unityFramework(M);var a=M.stackTraceRegExp;var b=M.stackTraceRegExp;var c=M.stackTraceRegExp;"
+            + "console.log(String(a)+'|'+(b instanceof RegExp)+'|'+(c===b));\n");
+
+        Assert.AreEqual("undefined|true|true", stdout.Trim());
     }
 
     private string RunNodeScript(string node, string script)

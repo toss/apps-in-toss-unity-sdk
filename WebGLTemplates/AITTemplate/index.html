@@ -1414,11 +1414,13 @@
                 //  WASM 컴파일 등 진행 이벤트가 뜸한 후반부(>= 0.9)는 감시에서 제외)
                 // 백그라운드(hidden)·타이머 정지 구간은 "무진행"으로 세지 않는다. iOS 는 백그라운드에서 네트워크·타이머를 멈추므로
                 // 복귀 직후 60초가 지난 것으로 오판해 캐시 우회 reload 와 재시도 예산을 낭비하던 문제를 막는다.
+                // 저메모리 tier>=1 의 data 보류(ait-databuf, 최대 DEFER_MAX_MS 60초)도 무진행으로 세지 않는다.
+                // 6000.x 로더는 dataUrl 에 대해서만 진행을 보고하므로 보류 구간에는 로더 진행이 없어 정체로 오판되기 때문이다(held).
                 /* AIT-STALL-WATCHDOG:BEGIN */
-                function aitStallShouldReload(s, now, hidden) {
+                function aitStallShouldReload(s, now, hidden, held) {
                     var n = { lastProgress: s.lastProgress, lastProgressTs: s.lastProgressTs, lastTick: s.lastTick };
-                    if (hidden) {
-                        // 백그라운드: 기준 시각을 계속 현재로 당겨 복귀 시점부터 60초를 새로 센다.
+                    if (hidden || held) {
+                        // 백그라운드·data 보류: 기준 시각을 계속 현재로 당겨 복귀/해제 시점부터 60초를 새로 센다.
                         n.lastProgressTs = now;
                         n.lastTick = now;
                         return { reload: false, s: n };
@@ -1436,7 +1438,8 @@
                     if (window.unityInstance || window._aitLoadAborted) { clearInterval(_aitStallTimer); return; }
                     var stall = aitStallShouldReload(
                         { lastProgress: _aitLastProgress, lastProgressTs: _aitLastProgressTs, lastTick: _aitLastTick },
-                        Date.now(), document.hidden || document.visibilityState === 'hidden');
+                        Date.now(), document.hidden || document.visibilityState === 'hidden',
+                        (function(){try{var d=window.__AIT_DATABUF;var st=d&&d.getState&&d.getState();return !!(st&&st.deferred>0&&!st.compiled);}catch(e){return false;}})());
                     _aitLastProgressTs = stall.s.lastProgressTs;
                     _aitLastTick = stall.s.lastTick;
                     if (stall.reload) {
@@ -1451,7 +1454,22 @@
                                 try { sessionStorage.setItem('__ait_skip_data_cache__', '1'); } catch (e) {}
                                 console.error('[AIT] 다운로드 정체 감지 (progress=' + _aitLastProgress
                                     + ', 60s 무진행), 자동 재시도 (' + (retries + 1) + '/' + maxRetries + ')');
+                                window._aitLoadAborted = true;
                                 location.reload();
+                            } else {
+                                // 재시도 예산을 다 썼으면 무한 스피너 대신 오류 화면을 띄운다(download-watchdog 와 동일).
+                                sessionStorage.removeItem(retryKey);
+                                window._aitLoadAborted = true;
+                                showLoadError(
+                                    '게임 로드 실패',
+                                    '다운로드가 60초 넘게 진행되지 않았습니다',
+                                    [
+                                        '네트워크 연결 상태를 확인해 주세요.',
+                                        '잠시 후 다시 시도해 주세요.',
+                                        '문제가 계속되면 앱을 재시작해 주세요.'
+                                    ],
+                                    { error: 'download stall', retryCount: retries, source: 'stall-watchdog' }
+                                );
                             }
                         } catch (e) {}
                     }

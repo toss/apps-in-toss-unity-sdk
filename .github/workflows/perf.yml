@@ -90,7 +90,9 @@ on:
         default: false
 
 concurrency:
-  group: perf-${{ github.event.pull_request.number || github.ref }}
+  # schedule·dispatch 는 main push 의 baseline run(save-baseline)을 취소하지 않도록 PR/push 와 그룹을 분리한다.
+  # push 끼리는 같은 ref 그룹이라 기존대로 서로 대체하고, PR 동작은 그대로다.
+  group: perf-${{ github.event.pull_request.number || (github.event_name == 'schedule' && 'weekly') || (github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id)) || github.ref }}
   cancel-in-progress: true
 
 permissions:

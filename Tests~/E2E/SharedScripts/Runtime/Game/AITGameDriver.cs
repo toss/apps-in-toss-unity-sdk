@@ -10,7 +10,7 @@ using UnityEngine.Scripting;
 
 /// <summary>
 /// game posture 픽스처의 영속 오브젝트("AITGameDriver"). 오디오·점수 저장·체크섬·상태 보고·JS 명령(SendMessage)을 맡는다.
-/// 첫 AITGameScene 이 Awake 에서 만든다(자동 실행 훅 없음 — 다른 E2E 프로젝트에서는 아무 일도 하지 않는다).
+/// 첫 AITGameScene 이 Awake 에서 만든다(AITGameScene 의 씬 로드 훅은 루트 "AITGameScene" 이 있는 픽스처 씬에서만 동작한다).
 /// </summary>
 [Preserve]
 public class AITGameDriver : MonoBehaviour

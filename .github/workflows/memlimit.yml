@@ -140,9 +140,18 @@ jobs:
             fi
           fi
           if [ -z "$RUN_ID" ]; then
+            # heavy 가 아닌 posture(game 등)로 dispatch 한 perf run 도 성공으로 끝나지만 heavy 아티팩트가
+            # 없다. 최근 성공 run 중 첫 버전의 heavy 아티팩트를 실제로 가진 run 을 고른다.
+            NEED_ARTIFACT="ait-build-heavy-macos-${VERSIONS%%,*}"
             latest() { # $1 = 브랜치(빈 값이면 전체)
-              gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/perf.yml/runs" \
-                -f status=success -f per_page=1 ${1:+-f branch="$1"} --jq '.workflow_runs[0].id // empty'
+              local ids id hit
+              ids=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/perf.yml/runs" \
+                -f status=success -f per_page=20 ${1:+-f branch="$1"} --jq '.workflow_runs[].id') || return 0
+              for id in $ids; do
+                hit=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/artifacts?per_page=100" \
+                  --jq "[.artifacts[]|select(.name==\"${NEED_ARTIFACT}\" and .expired==false)]|length") || continue
+                if [ "$hit" != "0" ]; then echo "$id"; return 0; fi
+              done
             }
             if [ "$EVENT_NAME" = "pull_request" ]; then
               # PR head 브랜치의 최근 성공 run → 없으면 아무 브랜치의 최근 성공 run

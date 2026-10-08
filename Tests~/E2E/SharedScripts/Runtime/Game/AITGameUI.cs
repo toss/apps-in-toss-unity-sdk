@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
-/// <summary>game posture 픽스처용 uGUI/카메라/쿼드 생성 헬퍼(전부 런타임 코드 생성 — 씬에는 AITGameScene 하나만 직렬화된다).</summary>
+/// <summary>game posture 픽스처용 uGUI/카메라/쿼드 생성 헬퍼(전부 런타임 코드 생성 — 씬에는 AITGameScene 루트와 참조용 내장 컴포넌트만 직렬화된다).</summary>
 public static class AITGameUI
 {
     public static float Safe(float v)

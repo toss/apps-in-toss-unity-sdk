@@ -101,19 +101,20 @@ public static class GameFixtureBuilder
         string[] paths = { TitleScenePath, PlayScenePath, ResultScenePath };
         for (int i = 0; i < 3; i++)
         {
+            // 사용자 스크립트(AITGameScene)는 씬에 직렬화하지 않는다. Unity 6 배치모드에서 같은 세션에 AddComponent 로
+            // 붙인 스크립트는 콜드 컴파일 빌드에서 필드 없이 구워져 WebGL 플레이어가 씬을 "corrupted" 로 거부한다.
+            // 참조는 엔진 내장 컴포넌트(AudioSource·MeshRenderer)에 담고, AITGameScene 이 씬 로드 때 붙어 자식에서 읽는다.
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            var go = new GameObject("AITGameScene");
-            var gs = go.AddComponent<AITGameScene>();
-            gs.mode = modes[i];
-            gs.bgm = bgm;
-            gs.sfxHit = hit;
-            gs.sfxBreak = brk;
-            gs.sfxClick = click;
-            gs.font = font;
-            gs.matBackground = matBg;
-            gs.matPaddle = matPaddle;
-            gs.matBall = matBall;
-            gs.matBricks = matBricks;
+            var go = new GameObject(AITGameScene.RootName);
+            new GameObject(AITGameScene.ModePrefix + modes[i]).transform.SetParent(go.transform, false);
+            AddClipRef(go, "bgm", bgm);
+            AddClipRef(go, "sfxHit", hit);
+            AddClipRef(go, "sfxBreak", brk);
+            AddClipRef(go, "sfxClick", click);
+            AddMaterialRef(go, "matBackground", matBg);
+            AddMaterialRef(go, "matPaddle", matPaddle);
+            AddMaterialRef(go, "matBall", matBall);
+            AddMaterialRef(go, "matBricks", matBricks);
             if (!EditorSceneManager.SaveScene(scene, paths[i]))
                 throw new Exception("[game] 씬 저장 실패: " + paths[i]);
         }
@@ -129,6 +130,24 @@ public static class GameFixtureBuilder
     }
 
     // ---- 에셋 헬퍼 ----
+
+    private static void AddClipRef(GameObject parent, string name, AudioClip clip)
+    {
+        var child = new GameObject(name);
+        child.transform.SetParent(parent.transform, false);
+        var src = child.AddComponent<AudioSource>();
+        src.playOnAwake = false;
+        src.clip = clip;
+    }
+
+    private static void AddMaterialRef(GameObject parent, string name, params Material[] mats)
+    {
+        var child = new GameObject(name);
+        child.transform.SetParent(parent.transform, false);
+        var mr = child.AddComponent<MeshRenderer>();
+        mr.enabled = false;
+        mr.sharedMaterials = mats;
+    }
 
     private static T LoadAsset<T>(string path) where T : UnityEngine.Object
     {

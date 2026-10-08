@@ -194,6 +194,16 @@ const INIT_SCRIPT = `
     });
   } catch (e) {}
   window.addEventListener('webglcontextlost', function () { window.__ctxLost++; }, true);
+  // Unity 6 WebGL 은 stream 클립을 media element 로 재생하고 그때 AudioSource.time 이 0 에 머문다.
+  // 실제 재생 진행은 재생 중인 긴 media element 의 currentTime 으로도 본다.
+  window.__aitMedia = [];
+  try {
+    var _play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      try { if (window.__aitMedia.indexOf(this) < 0) window.__aitMedia.push(this); } catch (e) {}
+      return _play.apply(this, arguments);
+    };
+  } catch (e) {}
   var _g;
   Object.defineProperty(window, '__AIT_GAME', {
     configurable: true,
@@ -204,6 +214,12 @@ const INIT_SCRIPT = `
 `;
 
 const getState = (page) => page.evaluate(() => window['__AIT_GAME'] || null).catch(() => null);
+
+// 재생 중인 30초 이상 media element(=BGM)의 currentTime. 없으면 null.
+const getMediaBgmTime = (page) => page.evaluate(() => {
+  const els = (window['__aitMedia'] || []).filter((m) => !m.paused && m.duration >= 30);
+  return els.length ? els[0].currentTime : null;
+}).catch(() => null);
 
 async function sendCmd(page, obj) {
   await page.evaluate((j) => { window['unityInstance'].SendMessage('AITGameDriver', 'Command', j); }, JSON.stringify(obj));
@@ -376,6 +392,8 @@ async function runScenario(label, projectPath, port) {
 
     const play = { maxScore: 0, maxBricks: 0, maxSfx: 0, maxCombo: 0, bgmAccum: 0, firstFrame: -1, lastFrame: 0, firstT: 0, lastT: 0 };
     let prevBgm = null;
+    let prevMedia = null;
+    let mediaAccum = 0;
     let bgmLen = 64;
     let touchTaps = 0;
     let touchPointerOk = null;
@@ -402,6 +420,13 @@ async function runScenario(label, projectPath, port) {
           if (d > 0 && d < 5) play.bgmAccum += d;
         }
         prevBgm = g.audio.bgmTime;
+        const mt = await getMediaBgmTime(page);
+        if (mt !== null && prevMedia !== null) {
+          let d = mt - prevMedia;
+          if (d < -1) d += bgmLen;
+          if (d > 0 && d < 5) mediaAccum += d;
+        }
+        prevMedia = mt;
         // 터치 탭 2회(라운드 중간): hasTouch 일 때만. 탭 직후 Unity 가 본 포인터 위치를 기록한다(정보용).
         if (touchTaps < 2 && g.timeLeft > 0 && g.timeLeft < ROUND_SECONDS * (touchTaps === 0 ? 0.7 : 0.45)) {
           try {
@@ -436,7 +461,10 @@ async function runScenario(label, projectPath, port) {
     check(res, '파괴한 벽돌 > 0', play.maxBricks > 0, play.maxBricks);
     check(res, 'SFX 호출 > 1 (클릭 외 벽돌/패들)', play.maxSfx > 1, play.maxSfx);
     check(res, 'BGM 재생 중', !!(lastSeenPlay && lastSeenPlay.audio.bgmPlaying), lastSeenPlay && lastSeenPlay.audio.bgmPlaying);
-    check(res, 'BGM 시간 5초 이상 진행', play.bgmAccum >= 5, `advanced=${play.bgmAccum.toFixed(1)}s`);
+    play.bgmMediaAccum = mediaAccum;
+    const bgmAdvanced = Math.max(play.bgmAccum, mediaAccum);
+    check(res, 'BGM 시간 5초 이상 진행', bgmAdvanced >= 5,
+      `advanced=${bgmAdvanced.toFixed(1)}s (AudioSource.time ${play.bgmAccum.toFixed(1)}s, media ${mediaAccum.toFixed(1)}s)`);
     check(res, 'AudioContext running', ctxStates.some((st) => st === 'running'), JSON.stringify(ctxStates));
     check(res, '프레임 정체 2초 미만', stall.maxGap < 2000, `maxGap=${stall.maxGap}ms fps=${m.fps}`);
     check(res, 'webglcontextlost 없음', ctxLost === 0, ctxLost);
@@ -548,13 +576,15 @@ async function backgroundCycle(context, page) {
   }
   // 게임이 계속 도는지
   const g1 = await getState(page);
+  const m1 = await getMediaBgmTime(page);
   await sleep(2500);
   const g2 = await getState(page);
+  const m2 = await getMediaBgmTime(page);
   if (g1 && g2) {
     out.frameDelta = g2.frame - g1.frame;
     out.framesAdvanced = out.frameDelta > 10;
     out.bgmPlaying = g2.audio.bgmPlaying;
-    out.bgmAdvanced = g2.audio.bgmTime !== g1.audio.bgmTime;
+    out.bgmAdvanced = g2.audio.bgmTime !== g1.audio.bgmTime || (m1 !== null && m2 !== null && m2 !== m1);
   }
   return out;
 }

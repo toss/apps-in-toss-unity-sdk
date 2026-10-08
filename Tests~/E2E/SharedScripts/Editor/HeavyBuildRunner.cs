@@ -106,6 +106,38 @@ public class HeavyBuildRunner
         // game 생성물(Assets/GameGen, StreamingAssets/ait-game)은 Resources 를 끼고 있어 남아 있으면 다른 posture 의 .data 에 실린다.
         // game posture 가 아니면 항상 먼저 지운다(game 은 아래에서 Generate 가 다시 만든다).
         if (posture != "game") GameFixtureBuilder.Cleanup();
+        if (posture != "mobilegame") MobileGameBuilder.Cleanup();
+
+        // perf mobilegame posture: 세로 화면 탭 점프 러너(스프라이트·uGUI·BGM/효과음·PlayerPrefs, 엔진 물리 없음)를 절차 생성해 빌드한다.
+        // 하이퍼캐주얼 미니게임 형태의 실제 앱으로 로드·프레임·메모리를 재고 mobile-game.test.js 로 플레이 기능을 검증한다.
+        // 생성기와 런타임이 SDK 설정 필드를 쓰지 않아 다른 SDK 버전(예: main) 위에서도 같은 게임을 빌드해 pair 로 비교할 수 있다.
+        if (posture == "mobilegame")
+        {
+            AssetDatabase.DeleteAsset(HeavyRoot);
+            AssetDatabase.DeleteAsset(HeavyGenRoot);
+            AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
+            // 헤비 픽스처의 콜라이더를 지키는 link.xml 이 남으면 쓰지 않는 PhysX 가 실린다.
+            AssetDatabase.DeleteAsset("Assets/link.xml");
+            System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
+            string[] runScenes;
+            try
+            {
+                runScenes = MobileGameBuilder.Generate();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("========================================");
+                Debug.LogError($"Mobile game fixture generation FAILED: {ex}");
+                Debug.LogError("========================================");
+                EditorApplication.Exit(1);
+                return;
+            }
+            System.Environment.SetEnvironmentVariable(MobileGameBuilder.ScenesEnvVar, string.Join(";", runScenes));
+            Debug.Log($"[heavy] mobilegame posture: {runScenes[0]} 로 빌드");
+            if (!ApplyPerfVariants()) return;
+            E2EBuildRunner.BuildWithSDK(minimal: true);
+            return;
+        }
 
         // perf game posture: 실제 게임형 픽스처(브레이크아웃: 3D 물리·uGUI·BGM/SFX·Resources/StreamingAssets 로드·PlayerPrefs·씬 3개)를
         // 절차 생성해 빌드한다. SDK 의 자동 ON 최적화가 실제 게임 기능을 깨지 않는지 Playwright 플레이 테스트(game-play.test.js)로 확인하는 용도다.

@@ -65,6 +65,8 @@ Assets/HeavyGen.meta
 # game posture 픽스처: 빌드 시 GameFixtureBuilder가 생성하는 게임형 콘텐츠(텍스처/오디오/머티리얼/씬). StreamingAssets/ait-game 은 아래 StreamingAssets 규칙이 덮는다.
 Assets/GameGen/
 Assets/GameGen.meta
+Assets/RunGen/
+Assets/RunGen.meta
 
 # Deploy probe 픽스처: 빌드 시 DeployProbeBuildRunner가 생성하는 배포 검증용 콘텐츠
 # (SharedScripts 공용 스크립트라 Heavy 프로젝트에서 실행해도 생성될 수 있음 — 명시 필요).

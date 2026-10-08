@@ -47,7 +47,7 @@ on:
         type: string
         default: '1'
       posture:
-        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성, fullmesh=full+meshCompression — Mesh 레버 A/B용, speed=코드 크기 레버를 실행 속도 쪽으로 뒤집은 A/B용, minimal=콘텐츠·픽스처·Sentry 없는 빈 씬 + SDK 로 로드 하한 측정. 어느 posture 든 -explicit 을 붙이면 WebGL 예외 처리를 ExplicitlyThrownExceptionsOnly, -nostack 을 붙이면 FullWithoutStacktrace 로 빌드)'
+        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성, fullmesh=full+meshCompression — Mesh 레버 A/B용, speed=코드 크기 레버를 실행 속도 쪽으로 뒤집은 A/B용, minimal=콘텐츠·픽스처·Sentry 없는 빈 씬 + SDK 로 로드 하한 측정, game=실제 게임형 픽스처(브레이크아웃: 3D 물리·uGUI·오디오·Resources/StreamingAssets·PlayerPrefs)를 빌드하고 TTFF 뒤에 Playwright 플레이 기능 테스트(game-play.test.js)를 실행 — pair_run_id 와 함께 쓰면 최적화 ON/OFF 결정론 체크섬이 같은지도 검증. 어느 posture 든 -explicit 을 붙이면 WebGL 예외 처리를 ExplicitlyThrownExceptionsOnly, -nostack 을 붙이면 FullWithoutStacktrace 로 빌드)'
         type: string
         default: 'default'
       net_profile:
@@ -162,7 +162,7 @@ jobs:
             POSTURE=minimal
           fi
           case "$POSTURE" in
-            ''|default|full|fullmesh|speed|minimal|*-explicit|*-nostack) ;;
+            ''|default|full|fullmesh|speed|minimal|game|*-explicit|*-nostack) ;;
             *) echo "::error::허용되지 않는 posture: '$POSTURE'"; exit 1;;
           esac
 
@@ -364,6 +364,29 @@ jobs:
           PERF_LABEL_A: ${{ needs.setup.outputs.base_run_id != '' && format('base#{0}', needs.setup.outputs.base_run_id) || format('run#{0}', github.run_id) }}
           PERF_LABEL_B: ${{ needs.setup.outputs.pair_run_id != '' && format('pair#{0}', needs.setup.outputs.pair_run_id) || '' }}
         run: pnpm run test:perf
+
+      - name: Run Game Play Test (game posture)
+        # game posture(game, game-explicit, game-nostack)에서만. TTFF 단계가 실패해도 기능 검증은 돌린다(!cancelled()).
+        # 페어 모드(PERF_PAIR_PROJECT_PATH)면 A/B 둘 다 플레이하고 결정론 체크섬이 같은지 단언한다.
+        # 실패하면 이 스텝(=잡)이 실패한다. game 빌드가 아니면(보고 없음) GAME_REQUIRE=1 이라 skip 대신 실패한다.
+        if: ${{ !cancelled() && startsWith(needs.setup.outputs.posture, 'game') }}
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ env.HEAVY_PROJECT }}
+          PERF_UNITY_VERSION: ${{ matrix.unity-version }}
+          PERF_PAIR_PROJECT_PATH: ${{ needs.setup.outputs.pair_mode == 'true' && env.HEAVY_PROJECT_PAIR || '' }}
+          PERF_LABEL_A: ${{ needs.setup.outputs.base_run_id != '' && format('base#{0}', needs.setup.outputs.base_run_id) || format('run#{0}', github.run_id) }}
+          PERF_LABEL_B: ${{ needs.setup.outputs.pair_run_id != '' && format('pair#{0}', needs.setup.outputs.pair_run_id) || '' }}
+          GAME_REQUIRE: "1"
+        run: pnpm run test:game
+
+      - name: Upload Game Play Result
+        if: ${{ always() && startsWith(needs.setup.outputs.posture, 'game') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: game-results-${{ matrix.unity-version }}
+          path: Tests~/E2E/tests/game-results-${{ matrix.unity-version }}.json
+          if-no-files-found: warn
 
       - name: Upload Perf Result
         if: always()

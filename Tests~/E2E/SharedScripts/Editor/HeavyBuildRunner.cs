@@ -103,6 +103,39 @@ public class HeavyBuildRunner
             break;
         }
 
+        // game 생성물(Assets/GameGen, StreamingAssets/ait-game)은 Resources 를 끼고 있어 남아 있으면 다른 posture 의 .data 에 실린다.
+        // game posture 가 아니면 항상 먼저 지운다(game 은 아래에서 Generate 가 다시 만든다).
+        if (posture != "game") GameFixtureBuilder.Cleanup();
+
+        // perf game posture: 실제 게임형 픽스처(브레이크아웃: 3D 물리·uGUI·BGM/SFX·Resources/StreamingAssets 로드·PlayerPrefs·씬 3개)를
+        // 절차 생성해 빌드한다. SDK 의 자동 ON 최적화가 실제 게임 기능을 깨지 않는지 Playwright 플레이 테스트(game-play.test.js)로 확인하는 용도다.
+        // minimal 과 같이 헤비 콘텐츠·E2E 픽스처·Sentry 를 빼되(AIT_PERF_MINIMAL 로 E2EBootstrapper 자동 부팅 차단) 물리는 남긴다.
+        if (posture == "game")
+        {
+            AssetDatabase.DeleteAsset(HeavyRoot);
+            AssetDatabase.DeleteAsset(HeavyGenRoot);
+            AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
+            System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
+            string[] gameScenes;
+            try
+            {
+                gameScenes = GameFixtureBuilder.Generate();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("========================================");
+                Debug.LogError($"Game fixture generation FAILED: {ex}");
+                Debug.LogError("========================================");
+                EditorApplication.Exit(1);
+                return;
+            }
+            System.Environment.SetEnvironmentVariable(GameFixtureBuilder.ScenesEnvVar, string.Join(";", gameScenes));
+            Debug.Log($"[heavy] game posture: 씬 {gameScenes.Length}개 ({gameScenes[0]} 이 부트 씬)로 빌드");
+            if (!ApplyPerfVariants()) return;
+            E2EBuildRunner.BuildWithSDK(minimal: true);
+            return;
+        }
+
         // perf minimal posture: 무거운 콘텐츠도 E2E 픽스처도 없이 SDK 만 얹은 빈 씬을 빌드한다.
         // "거의 빈 프로젝트"의 로드 하한과 그중 SDK 몫을 재는 용도다. 지난 빌드가 남긴 생성 콘텐츠가
         // Resources 에 있으면 .data 에 실리므로 먼저 지운다. Sentry 는 사용자가 따로 설치·설정하는 패키지라

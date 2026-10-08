@@ -8,6 +8,7 @@
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
     "test:perf": "playwright test --config playwright.perf.config.ts",
+    "test:game": "playwright test --config playwright.game.config.ts",
     "report": "playwright show-report"
   },
   "keywords": [

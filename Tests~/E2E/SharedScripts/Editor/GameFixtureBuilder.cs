@@ -74,6 +74,12 @@ public static class GameFixtureBuilder
         File.WriteAllText(StreamingDir + "/level.json",
             "{\"levelName\":\"alpha-grid\",\"brickRows\":5,\"brickCols\":8,\"ballSpeed\":7.5,\"secret\":\"streaming-ok-7391\"}");
 
+        // ---- link.xml ----
+        // 씬이 사용자 스크립트를 참조하지 않으므로(AITGameScene 은 런타임 부착) High 스트리핑이 테스트 어셈블리를 통째로 지운다.
+        // RuntimeInitializeOnLoadMethod 만으로는 어셈블리가 남지 않아 게임 클래스를 명시적으로 보존한다.
+        File.WriteAllText(Root + "/link.xml",
+            "<linker>\n  <assembly fullname=\"AppsInTossTestScripts\">\n    <type fullname=\"AITGame*\" preserve=\"all\" />\n  </assembly>\n</linker>\n");
+
         AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
         // ---- 머티리얼(셰이더가 빌드에 포함되도록 에셋으로 저장) ----

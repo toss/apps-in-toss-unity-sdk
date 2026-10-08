@@ -76,15 +76,10 @@ jobs:
           timeout 600 pnpm exec playwright install --with-deps webkit \
             || { echo "::warning::playwright install 실패 — 1회 재시도"; timeout 600 pnpm exec playwright install --with-deps webkit; }
 
-      # ubuntu-24.04 의 AppArmor 가 비특권 user namespace 를 막아 WebKit 의 bubblewrap 샌드박스가 뜨자마자 죽는다.
-      - name: Allow Unprivileged User Namespaces
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-
       - name: Run WebKit Cases
         working-directory: Tests~/E2E/tests
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: webkit.json
-          DEBUG: pw:browser
         run: pnpm exec playwright test perf-lowmem-tier.test.js --grep '\[webkit\]' --reporter=list,json
 
       - name: Assert No Skipped Cases

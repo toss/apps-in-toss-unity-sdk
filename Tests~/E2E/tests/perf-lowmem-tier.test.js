@@ -190,7 +190,7 @@ for (const engine of ENGINES) {
       try {
         if (engine === 'webkit') {
           // 가용성 확인만 한다(실제 페이지는 newPage 가 영속 컨텍스트로 띄운다 — 아래 설명).
-          const probe = await webkit.launch({ channel: undefined });
+          const probe = await webkit.launch({ channel: undefined, args: [] });
           await probe.close();
           webkitReady = true;
         } else {
@@ -216,9 +216,10 @@ for (const engine of ENGINES) {
     async function newPage(opt = {}) {
       // Playwright 의 WebKit 은 비영속(incognito) 컨텍스트에서 HTTP 캐시가 아예 꺼져 있어(force-cache 도 서버로 간다) only-if-cached 가 항상 실패한다.
       // 실제 Safari/WKWebView 처럼 디스크 캐시가 있는 영속 컨텍스트를 테스트마다 새 임시 디렉터리로 띄운다.
+      // args: [] 는 playwright.config 의 Chromium 전용 launch 플래그(--enable-webgl 등)를 비운다 — WebKit 은 모르는 옵션이면 뜨자마자 종료한다.
       // userAgent: undefined 는 playwright.config 의 Desktop Chrome UA 기본값을 덮어 엔진 고유 UA 를 쓰게 한다(UA 로 엔진을 판정하는 코드 검증용).
       const context = engine === 'webkit'
-        ? await webkit.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'ait-wk-')), { channel: undefined, userAgent: undefined })
+        ? await webkit.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'ait-wk-')), { channel: undefined, args: [], userAgent: undefined })
         : await /** @type {import('@playwright/test').Browser} */ (browser).newContext({ userAgent: undefined });
       await context.addInitScript(initScript(opt));
       const page = await context.newPage();

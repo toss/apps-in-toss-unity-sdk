@@ -207,6 +207,7 @@ jobs:
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
       compression-format: ${{ inputs.compression_format || '1' }} # fast-build 가 표현 못 하는 유일 노브: gzip/brotli 로 현실적 on-wire 측정 (dispatch 로 브로틀리 등 선택 가능)
       perf-posture: ${{ (needs.setup.outputs.posture != '' && needs.setup.outputs.posture != 'default') && needs.setup.outputs.posture || '' }} # setup 게이트가 허용 목록을 검증한 값(스케줄은 minimal). dispatch 에서 posture=full/fullmesh 면 opt-in 레버(HeavyBuildRunner) 활성 — fullmesh 는 full+meshCompression
+      concurrency-key: ${{ github.run_id }} # 같은 SHA 를 빌드하는 PR run·dispatch 들이 unity-build 잡 락에서 대기 중 서로를 취소하지 않게 run 마다 분리
       perf-variant: ${{ inputs.variant || '' }} # dispatch 의 variant 입력 → AIT_PERF_VARIANT (HeavyBuildRunner 변형 레지스트리). 빈 값이면 변형 없음
       # net_profile(measure-ttff 스로틀 축)은 의도적으로 여기서 참조하지 않는다 — 네트워크/CPU
       # 스로틀은 브라우저 측 CDP 에뮬레이션(Emulation.setCPUThrottlingRate / Network.emulateNetworkConditions)

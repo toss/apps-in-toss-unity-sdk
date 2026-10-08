@@ -825,7 +825,7 @@ public class AITFrameworkPatcherTests
         bool ok = AITFrameworkPatcher.TryPatchStackTraceLazy(StackFramework(head), out string patched, out string reason);
 
         Assert.IsTrue(ok, reason);
-        StringAssert.Contains("c=" + rhs + "}catch(e){}", patched);
+        StringAssert.Contains("c=" + rhs + "}catch(e){d=false}", patched);
         StringAssert.Contains(AITFrameworkPatcher.StackLazyMarker + "var after=1;", patched, "';' 는 소비되고 뒤 문장은 보존된다");
         Assert.AreEqual(1, Count(patched, AITFrameworkPatcher.StackLazyMarker));
     }

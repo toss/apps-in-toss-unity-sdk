@@ -9,6 +9,8 @@
 //   · literal 굽기(force/minSec), '$' 안전, payload 정리
 //   · 파일 파이프라인(Apply): .unityweb/이미 패치된 이름/설정 0 은 건드리지 않고,
 //     Node 가 있으면 실제 .br/.gz/무압축 합성 framework 를 풀어 패치→검증→재압축→.aitpN rename 까지 확인
+//   · stacktrace-lazy: Error.js 머리말 모양의 합성 텍스트로 적용·멱등·건너뛰기·오디오 독립·괄호 스캔·tri-state·
+//     (Node 가 있으면) 패치 결과를 실제로 실행해 지연 계산과 setter 확인
 // -----------------------------------------------------------------------
 
 using System;
@@ -30,10 +32,14 @@ public class AITFrameworkPatcherTests
     private const string FakePayload = "function aitAudioProbe(u){return null}\nWEBAudio.aitDecide=function(){return null};\nWEBAudio.aitLog=function(){};\n";
 
     private string _tempDir;
+    private string _savedLazyEnv;
 
     [SetUp]
     public void SetUp()
     {
+        // 환경 변수 오버라이드가 tri-state 기대값을 흔들지 않게 비워 두고 TearDown 에서 되돌린다.
+        _savedLazyEnv = Environment.GetEnvironmentVariable(AITFrameworkPatcher.LazyStackTraceEnvVar);
+        Environment.SetEnvironmentVariable(AITFrameworkPatcher.LazyStackTraceEnvVar, null);
         _tempDir = Path.Combine(Path.GetTempPath(), "ait-fwpatcher-" + Guid.NewGuid().ToString("N").Substring(0, 8));
         Directory.CreateDirectory(_tempDir);
     }
@@ -41,6 +47,7 @@ public class AITFrameworkPatcherTests
     [TearDown]
     public void TearDown()
     {
+        Environment.SetEnvironmentVariable(AITFrameworkPatcher.LazyStackTraceEnvVar, _savedLazyEnv);
         try
         {
             if (_tempDir != null && Directory.Exists(_tempDir))
@@ -413,7 +420,8 @@ public class AITFrameworkPatcherTests
         File.WriteAllText(js, "var a=1;");
         var renames = new Dictionary<string, string>();
 
-        int n = AITFrameworkPatcher.Apply(_tempDir, NewConfig(0), renames);
+        // 오디오 0 + stacktrace-lazy 0: 둘 다 꺼야 framework 를 아예 건드리지 않는다(stock 대조군).
+        int n = AITFrameworkPatcher.Apply(_tempDir, NewConfig(0, 0), renames);
 
         Assert.AreEqual(0, n);
         Assert.IsEmpty(renames);
@@ -563,10 +571,11 @@ public class AITFrameworkPatcherTests
 
     // ─────────────────────────── 헬퍼 ───────────────────────────
 
-    private static AITEditorScriptObject NewConfig(int audioForce)
+    private static AITEditorScriptObject NewConfig(int audioForce, int lazyStack = -1)
     {
         var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
         config.audioForceCompressedPlayback = audioForce;
+        config.frameworkLazyStackTraceMode = lazyStack;
         return config;
     }
 
@@ -669,5 +678,361 @@ public class AITFrameworkPatcherTests
         // 압축 클립 객체가 원본 바이트를 붙들지 않는다: audioData 인자는 Blob 생성에만 쓰이고 soundClip 필드로 저장되지 않는다.
         StringAssert.DoesNotContain("soundClip.audioData", r.Source);
         StringAssert.DoesNotContain("audioData:", r.Source);
+    }
+
+    // ─────────────────────────── stacktrace-lazy ───────────────────────────
+
+    // Error.js 머리말 모양의 합성 텍스트(Unity 소스를 복사하지 않고 구조만 흉내 낸다). 공백이 있는 형태와 없는 형태.
+    private const string StackRef =
+        @"var stackTraceReference=""(^|\\n)(\\s+at\\s+|)jsStackTrace(\\s+\\(|@)([^\\n]+):\\d+:\\d+(\\)|)(\\n|$)"";";
+
+    private const string StackRhs =
+        @"new RegExp(stackTraceReference.replace(""([^\\n]+)"",stackTraceReferenceMatch[4].replace(/[\\^${}[\]().*+?|]/g,""\\$&"")).replace(""jsStackTrace"",""[^\\n]+""))";
+
+    private static readonly string StackHeadCompact = StackRef
+        + "var stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));"
+        + "if(stackTraceReferenceMatch)Module.stackTraceRegExp=" + StackRhs + ";";
+
+    private static readonly string StackHeadSpaced = StackRef + "\n"
+        + "var stackTraceReferenceMatch = jsStackTrace().match(new RegExp(stackTraceReference));\n"
+        + "if (stackTraceReferenceMatch) Module.stackTraceRegExp = " + StackRhs + ";\n";
+
+    // 바깥 framework 함수 모양: jsStackTrace 호출 횟수를 세는 spy 를 둔다.
+    private static string StackFramework(string head)
+    {
+        return "function unityFramework(Module){var spyCalls=0;"
+            + "function jsStackTrace(){spyCalls++;return \"Error\\n    at jsStackTrace (http://h/x.framework.js:10:5)\\n    at f (http://h/x.framework.js:20:3)\"}"
+            + head
+            + "return {calls:function(){return spyCalls}}}";
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StackLazy_AppliesExactlyOnce_BothSpacingVariants(bool spaced)
+    {
+        string src = StackFramework(spaced ? StackHeadSpaced : StackHeadCompact);
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+
+        CollectionAssert.AreEqual(new[] { AITFrameworkPatcher.GroupStackTraceLazy }, r.Applied);
+        Assert.IsEmpty(r.Skipped);
+        Assert.AreEqual(1, Count(r.Source, AITFrameworkPatcher.StackLazyMarker));
+        StringAssert.Contains("Object.defineProperty(Module,\"stackTraceRegExp\"", r.Source);
+        StringAssert.Contains("var stackTraceReferenceMatch;(function(){", r.Source);
+        // 우변은 정확히 한 번, getter 안에만 남는다. 최상위의 jsStackTrace().match 대입은 사라진다.
+        Assert.AreEqual(1, Count(r.Source, "stackTraceReferenceMatch[4]"));
+        Assert.AreEqual(1, Count(r.Source, "jsStackTrace().match("), "최상위 호출은 getter 안으로 옮겨졌어야 한다");
+        Assert.AreEqual(0, Count(r.Source, "Module.stackTraceRegExp="));
+        StringAssert.EndsWith("return {calls:function(){return spyCalls}}}", r.Source, "뒤따르는 코드는 그대로여야 한다");
+    }
+
+    [Test]
+    public void StackLazy_IsIdempotent_AndMarkerIsIndependentOfAudioMarker()
+    {
+        string src = StackFramework(StackHeadCompact);
+        var first = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+
+        var second = AITFrameworkPatcher.PatchText(first.Source, false, 10f, FakePayload, patchAudio: true, lazyStackTrace: true);
+
+        Assert.IsTrue(second.AlreadyPatched);
+        Assert.IsEmpty(second.Applied);
+        Assert.AreEqual(first.Source, second.Source);
+        Assert.IsFalse(AITFrameworkPatcher.HasAudioMarker(first.Source), "stacktrace-lazy 만 적용한 텍스트에 오디오 마커가 있으면 안 된다");
+    }
+
+    [Test]
+    public void StackLazy_Disabled_LeavesTextUnchanged_AndDoesNotEvaluateGroup()
+    {
+        string src = StackFramework(StackHeadCompact);
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: false);
+
+        Assert.IsEmpty(r.Applied);
+        Assert.IsEmpty(r.Skipped, "끈 그룹은 건너뜀 사유도 남기지 않는다");
+        Assert.AreSame(src, r.Source);
+
+        // 기존 4인자 호출은 오디오만 평가한다(기본 stacktrace-lazy 꺼짐).
+        var legacy = AITFrameworkPatcher.PatchText(SyntheticFramework() + StackHeadCompact, false, 10f, FakePayload);
+        CollectionAssert.DoesNotContain(legacy.Applied, AITFrameworkPatcher.GroupStackTraceLazy);
+        StringAssert.DoesNotContain(AITFrameworkPatcher.StackLazyMarker, legacy.Source);
+    }
+
+    [Test]
+    public void StackLazy_AnchorMissing_SkipsOnlyThisGroup_AudioStillApplies()
+    {
+        string src = SyntheticFramework() + StackFramework("var unrelated=1;");
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: true, lazyStackTrace: true);
+
+        CollectionAssert.DoesNotContain(r.Applied, AITFrameworkPatcher.GroupStackTraceLazy);
+        Assert.IsTrue(r.Skipped.Any(x => x.StartsWith(AITFrameworkPatcher.GroupStackTraceLazy + ":") && x.Contains("0회")), string.Join("|", r.Skipped));
+        CollectionAssert.Contains(r.Applied, AITFrameworkPatcher.GroupClipMeta);
+        CollectionAssert.Contains(r.Applied, AITFrameworkPatcher.GroupPrologue);
+        StringAssert.DoesNotContain(AITFrameworkPatcher.StackLazyMarker, r.Source);
+    }
+
+    [Test]
+    public void StackLazy_AnchorTwice_SkipsOnlyThisGroup_AudioStillApplies()
+    {
+        string src = SyntheticFramework() + StackFramework(StackHeadCompact) + StackFramework(StackHeadSpaced);
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: true, lazyStackTrace: true);
+
+        CollectionAssert.DoesNotContain(r.Applied, AITFrameworkPatcher.GroupStackTraceLazy);
+        Assert.IsTrue(r.Skipped.Any(x => x.StartsWith(AITFrameworkPatcher.GroupStackTraceLazy + ":") && x.Contains("2회")), string.Join("|", r.Skipped));
+        CollectionAssert.Contains(r.Applied, AITFrameworkPatcher.GroupClipMeta);
+        Assert.AreEqual(2, Count(r.Source, "jsStackTrace().match("), "건너뛴 그룹은 어떤 편집도 남기지 않는다");
+        StringAssert.DoesNotContain(AITFrameworkPatcher.StackLazyMarker, r.Source);
+    }
+
+    [Test]
+    public void StackLazy_AppliesWhenAudioPatchDisabled_AndAudioGroupsAreNotEvaluated()
+    {
+        // 오디오 앵커가 모두 있어도 patchAudio=false 면 오디오 그룹은 건드리지 않는다.
+        string src = SyntheticFramework() + StackFramework(StackHeadCompact);
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+
+        CollectionAssert.AreEqual(new[] { AITFrameworkPatcher.GroupStackTraceLazy }, r.Applied);
+        Assert.IsEmpty(r.Skipped);
+        StringAssert.DoesNotContain("aitCfg", r.Source);
+        StringAssert.DoesNotContain("aitInfo", r.Source);
+        Assert.AreEqual(1, Count(r.Source, Anchor(AITFrameworkPatcher.GroupClipMeta, 0)), "오디오 앵커는 원문 그대로여야 한다");
+    }
+
+    [Test]
+    public void StackLazy_AppliesAfterAudioGroups_InOrder()
+    {
+        string src = SyntheticFramework() + StackFramework(StackHeadSpaced);
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: true, lazyStackTrace: true);
+
+        Assert.AreEqual(AITFrameworkPatcher.GroupStackTraceLazy, r.Applied.Last());
+        CollectionAssert.Contains(r.Applied, AITFrameworkPatcher.GroupPrologue);
+        Assert.AreEqual(1, Count(r.Source, AITFrameworkPatcher.MarkerPrefix));
+        Assert.AreEqual(1, Count(r.Source, AITFrameworkPatcher.StackLazyMarker));
+    }
+
+    [Test]
+    public void StackLazy_Scanner_IgnoresParensInsideStringAndRegexLiterals()
+    {
+        // 우변 안에 문자열 ")" 와 정규식 리터럴 클래스 [)(] 가 있어도 닫는 괄호를 정확히 찾는다.
+        const string rhs = @"new RegExp(""a)""+stackTraceReferenceMatch[4].replace(/[)(]/g,"""")+'(' /* ) */)";
+        string head = StackRef + "var stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));"
+            + "if(stackTraceReferenceMatch)Module.stackTraceRegExp=" + rhs + ";var after=1;";
+
+        bool ok = AITFrameworkPatcher.TryPatchStackTraceLazy(StackFramework(head), out string patched, out string reason);
+
+        Assert.IsTrue(ok, reason);
+        StringAssert.Contains("c=" + rhs + "}catch(e){}", patched);
+        StringAssert.Contains(AITFrameworkPatcher.StackLazyMarker + "var after=1;", patched, "';' 는 소비되고 뒤 문장은 보존된다");
+        Assert.AreEqual(1, Count(patched, AITFrameworkPatcher.StackLazyMarker));
+    }
+
+    [Test]
+    public void StackLazy_RhsWithoutSemicolon_EndsAtBraceOrNewline()
+    {
+        string noSemi = StackRef + "var stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));"
+            + "if(stackTraceReferenceMatch)Module.stackTraceRegExp=" + StackRhs;
+        string src = "function w(Module){" + noSemi + "}";
+
+        Assert.IsTrue(AITFrameworkPatcher.TryPatchStackTraceLazy(src, out string patched, out string reason), reason);
+        StringAssert.EndsWith(AITFrameworkPatcher.StackLazyMarker + "}", patched);
+
+        string withNewline = "function w(Module){" + noSemi + "\nvar z=2}";
+        Assert.IsTrue(AITFrameworkPatcher.TryPatchStackTraceLazy(withNewline, out patched, out reason), reason);
+        StringAssert.Contains(AITFrameworkPatcher.StackLazyMarker + "\nvar z=2}", patched);
+    }
+
+    [Test]
+    public void StackLazy_RhsContinuesPastCall_IsSkippedUntouched()
+    {
+        // new RegExp(...) 뒤에 식이 더 이어지면 우변 끝을 확신할 수 없으므로 건너뛴다.
+        string head = StackRef + "var stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));"
+            + "if(stackTraceReferenceMatch)Module.stackTraceRegExp=" + StackRhs + ".valueOf();";
+        string src = StackFramework(head);
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+
+        Assert.IsEmpty(r.Applied);
+        Assert.IsTrue(r.Skipped.Any(x => x.StartsWith(AITFrameworkPatcher.GroupStackTraceLazy + ":")), string.Join("|", r.Skipped));
+        Assert.AreSame(src, r.Source);
+
+        // 닫히지 않는 괄호도 같다.
+        string unclosed = StackRef + "var stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));"
+            + "if(stackTraceReferenceMatch)Module.stackTraceRegExp=new RegExp(\"a\"";
+        Assert.IsFalse(AITFrameworkPatcher.TryPatchStackTraceLazy(unclosed, out string p2, out _));
+        Assert.AreSame(unclosed, p2);
+    }
+
+    [Test]
+    public void StackLazy_TriState_AndEnvOverride()
+    {
+        var config = ScriptableObject.CreateInstance<AITEditorScriptObject>();
+        try
+        {
+            Assert.AreEqual(-1, config.frameworkLazyStackTraceMode, "기본값은 자동(-1)이다");
+            Assert.IsTrue(AITFrameworkPatcher.EffectiveLazyStackTrace(config), "자동 = ON");
+            Assert.IsTrue(AITFrameworkPatcher.EffectiveLazyStackTrace(null), "config 가 없어도 자동과 같다");
+
+            config.frameworkLazyStackTraceMode = 0;
+            Assert.IsFalse(AITFrameworkPatcher.EffectiveLazyStackTrace(config));
+            config.frameworkLazyStackTraceMode = 1;
+            Assert.IsTrue(AITFrameworkPatcher.EffectiveLazyStackTrace(config));
+
+            // 환경 변수가 설정보다 우선한다. 이상한 값은 설정값으로 폴백(경고만).
+            foreach (var (env, setting, expected) in new[]
+            {
+                ("1", 0, true), ("true", 0, true), ("TRUE", 0, true),
+                ("0", 1, false), ("false", 1, false), (" False ", -1, false),
+            })
+            {
+                Environment.SetEnvironmentVariable(AITFrameworkPatcher.LazyStackTraceEnvVar, env);
+                config.frameworkLazyStackTraceMode = setting;
+                Assert.AreEqual(expected, AITFrameworkPatcher.EffectiveLazyStackTrace(config), "env='" + env + "' setting=" + setting);
+            }
+
+            Environment.SetEnvironmentVariable(AITFrameworkPatcher.LazyStackTraceEnvVar, "maybe");
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(AITFrameworkPatcher.LazyStackTraceEnvVar));
+            config.frameworkLazyStackTraceMode = 0;
+            Assert.IsFalse(AITFrameworkPatcher.EffectiveLazyStackTrace(config), "잘못된 env 는 무시하고 설정값(0)");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(config);
+        }
+    }
+
+    // ─────────────────────────── stacktrace-lazy: 파일 파이프라인(내장 Node 필요) ───────────────────────────
+
+    [Test]
+    public void StackLazy_Apply_AudioOff_StillPatches_AndRenames()
+    {
+        RequireNode(out string node);
+        string name = WriteFramework(node, "z.framework.js", "br", StackFramework(StackHeadCompact));
+        var renames = new Dictionary<string, string>();
+
+        // audioForceCompressedPlayback=0 이어도 stacktrace-lazy 가 켜져 있으면 ApplyCore 는 계속한다.
+        int n = AITFrameworkPatcher.Apply(_tempDir, NewConfig(0, -1), renames);
+
+        Assert.AreEqual(1, n);
+        string patchedName = renames[name];
+        StringAssert.IsMatch(@"^z\.aitp1-[0-9a-f]{8}\.framework\.js\.br$", patchedName);
+        string patched = ReadFramework(node, Path.Combine(_tempDir, patchedName), "br");
+        StringAssert.Contains(AITFrameworkPatcher.StackLazyMarker, patched);
+        StringAssert.DoesNotContain(AITFrameworkPatcher.MarkerPrefix, patched, "오디오 마커는 없어야 한다");
+        Assert.IsFalse(AITFrameworkPatcher.LastApplyClipMetaApplied, "오디오 패치가 없으니 clip-meta 적용 기록은 false");
+    }
+
+    [Test]
+    public void StackLazy_Apply_ModeZero_AudioOff_TouchesNothing()
+    {
+        RequireNode(out string node);
+        string name = WriteFramework(node, "o.framework.js", "none", StackFramework(StackHeadCompact));
+        string before = File.ReadAllText(Path.Combine(_tempDir, name));
+        var renames = new Dictionary<string, string>();
+
+        Assert.AreEqual(0, AITFrameworkPatcher.Apply(_tempDir, NewConfig(0, 0), renames));
+
+        Assert.IsEmpty(renames);
+        Assert.AreEqual(before, File.ReadAllText(Path.Combine(_tempDir, name)));
+    }
+
+    [Test]
+    public void StackLazy_Apply_ModeZero_AudioOn_DoesNotAddStackPatch()
+    {
+        RequireNode(out string node);
+        string name = WriteFramework(node, "m.framework.js", "none", SyntheticFramework() + StackFramework(StackHeadCompact));
+        var renames = new Dictionary<string, string>();
+
+        Assert.AreEqual(1, AITFrameworkPatcher.Apply(_tempDir, NewConfig(-1, 0), renames));
+
+        string patched = File.ReadAllText(Path.Combine(_tempDir, renames[name]));
+        StringAssert.Contains(AITFrameworkPatcher.MarkerPrefix, patched);
+        StringAssert.DoesNotContain(AITFrameworkPatcher.StackLazyMarker, patched);
+    }
+
+    [Test]
+    public void StackLazy_Apply_ChangesPatchedName_ComparedToAudioOnly()
+    {
+        RequireNode(out string node);
+        string source = SyntheticFramework() + StackFramework(StackHeadCompact);
+        string name = WriteFramework(node, "h.framework.js", "none", source);
+        var withLazy = new Dictionary<string, string>();
+        Assert.AreEqual(1, AITFrameworkPatcher.Apply(_tempDir, NewConfig(-1, 1), withLazy));
+
+        File.Delete(Path.Combine(_tempDir, withLazy[name]));
+        WriteFramework(node, "h.framework.js", "none", source);
+        var withoutLazy = new Dictionary<string, string>();
+        Assert.AreEqual(1, AITFrameworkPatcher.Apply(_tempDir, NewConfig(-1, 0), withoutLazy));
+
+        Assert.AreNotEqual(withLazy[name], withoutLazy[name], "적용 그룹이 다르면 패치 바이트도 다르므로 파일명이 달라야 캐시가 섞이지 않는다");
+    }
+
+    [Test]
+    public void StackLazy_PatchedSnippet_ComputesRegExpOnFirstAccessOnly_AndSetterWorks()
+    {
+        RequireNode(out string node);
+        var r = AITFrameworkPatcher.PatchText(
+            StackFramework(StackHeadSpaced), false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+        Assert.AreEqual(1, r.Applied.Count, string.Join("|", r.Skipped));
+
+        string harness = r.Source + "\n"
+            + "var out=[];\n"
+            // 1) eval 직후 spy 0회, 첫 접근 뒤 1회, 두 번째 접근은 캐시(여전히 1회), RegExp 이고 같은 스크립트 URL 의 줄만 매치.
+            + "var M1={};var fw1=unityFramework(M1);out.push(fw1.calls());\n"
+            + "var re=M1.stackTraceRegExp;out.push(fw1.calls());\n"
+            + "out.push(re instanceof RegExp);\n"
+            + "out.push(re.test('\\n    at f (http://h/x.framework.js:20:3)'));\n"
+            + "out.push(re.test('\\n    at g (http://h/other.js:20:3)'));\n"
+            + "var re2=M1.stackTraceRegExp;out.push(re2===re);out.push(fw1.calls());\n"
+            // 2) setter: 접근 전에 대입하면 spy 는 끝까지 0회이고 대입값이 그대로 돌아온다.
+            + "var M2={};var fw2=unityFramework(M2);M2.stackTraceRegExp=/zz/;\n"
+            + "out.push(M2.stackTraceRegExp.source);out.push(fw2.calls());\n"
+            // 3) 열거 가능하고 재정의 가능(stock 의 일반 프로퍼티와 가장 가까운 모양).
+            + "var d=Object.getOwnPropertyDescriptor(M1,'stackTraceRegExp');out.push(d.enumerable&&d.configurable);\n"
+            + "console.log(out.join('|'));\n";
+
+        string stdout = RunNodeScript(node, harness);
+
+        Assert.AreEqual("0|1|true|true|false|true|1|zz|0|true", stdout.Trim());
+    }
+
+    [Test]
+    public void StackLazy_PatchedSnippet_SwallowsErrorsInsideGetter()
+    {
+        RequireNode(out string node);
+        // jsStackTrace 가 던져도 최상위(stock)에서는 부팅이 죽지만, 지연 getter 는 오류 처리 경로를 깨지 않도록 undefined 를 돌려준다.
+        string src = "function unityFramework(Module){function jsStackTrace(){throw new Error('boom')}" + StackHeadCompact + "}";
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload, patchAudio: false, lazyStackTrace: true);
+        Assert.AreEqual(1, r.Applied.Count, string.Join("|", r.Skipped));
+
+        string stdout = RunNodeScript(node, r.Source + "\nvar M={};unityFramework(M);console.log(String(M.stackTraceRegExp)+'|'+String(M.stackTraceRegExp));\n");
+
+        Assert.AreEqual("undefined|undefined", stdout.Trim());
+    }
+
+    private string RunNodeScript(string node, string script)
+    {
+        string path = Path.Combine(_tempDir, "run-" + Guid.NewGuid().ToString("N").Substring(0, 6) + ".js");
+        File.WriteAllText(path, script, new UTF8Encoding(false));
+        var psi = new ProcessStartInfo
+        {
+            FileName = node,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = _tempDir,
+        };
+        psi.ArgumentList.Add(path);
+        using (var p = Process.Start(psi))
+        {
+            string err = p.StandardError.ReadToEnd();
+            string output = p.StandardOutput.ReadToEnd();
+            Assert.IsTrue(p.WaitForExit(60000), "node 실행 시간 초과");
+            Assert.AreEqual(0, p.ExitCode, "node 실행 실패: " + err);
+            return output;
+        }
     }
 }

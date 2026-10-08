@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// AITFrameworkPatcher.cs - 빌드 후 Unity framework(*.framework.js[.br|.gz]) 텍스트 패치 (오디오)
+// AITFrameworkPatcher.cs - 빌드 후 Unity framework(*.framework.js[.br|.gz]) 텍스트 패치 (오디오 + 스택 트레이스 지연)
 //
 // 호출 지점: WebGLBuildCopier.ApplyBuildPatches — Unity 산출물이 buildSrc 에 놓인 직후,
 //           brotli 재압축·페이지 캐시·warm manifest 산출보다 앞.
@@ -14,6 +14,12 @@
 //  sound-load-prologue         _JS_Sound_Load 앞단: HEAPU8 를 복사하지 않고(subarray) 압축 클립을 만든다.
 //                              audioForceCompressedPlayback 이 켜져 있으면 Unity 가 DecompressOnLoad(PCM 상주)로 둔 긴 클립도
 //                              압축 상태 media element 로 돌린다. 강제 여부·최소 길이는 패치 시점에 literal 로 박는다.
+//
+// === 오디오와 독립인 그룹 ===
+//  stacktrace-lazy             Unity prejs/Error.js 가 framework 함수 최상위에서 jsStackTrace() 를 불러 Module.stackTraceRegExp 를
+//                              만드는 문장을, 첫 접근 때 계산하는 getter 로 바꾼다. 스택을 문자열로 만들 때 V8 이 바깥 framework
+//                              함수 전체를 다시 파싱(소스 위치 수집)하는 비용이 부팅에서 빠진다. 소비자는 로더 errorHandler 뿐이다.
+//                              마커 /*ait-stacklazy1*/ . 오디오 패치가 꺼져 있어도 단독으로 적용된다(frameworkLazyStackTraceMode).
 //
 // === 안전 계약 ===
 //  - 그룹 단위로 원자적이다. 그룹의 모든 앵커가 현재 텍스트에서 정확히 1회 일치할 때만 적용하고,
@@ -55,6 +61,13 @@ namespace AppsInToss.Editor
         internal const string GroupPitchPosition = "media-source-pitch-position";
         internal const string GroupSourceRelease = "media-source-release";
         internal const string GroupPrologue = "sound-load-prologue";
+        internal const string GroupStackTraceLazy = "stacktrace-lazy";
+
+        /// <summary>stacktrace-lazy 그룹의 패치 마커. 오디오 마커와 별개라 한쪽만 적용된 파일도 멱등이다.</summary>
+        internal const string StackLazyMarker = "/*ait-stacklazy1*/";
+
+        /// <summary>stacktrace-lazy 환경 변수 오버라이드(1/true = 강제 켬, 0/false = 끔).</summary>
+        internal const string LazyStackTraceEnvVar = "AIT_FW_LAZY_STACKTRACE";
 
         private const int NodeTimeoutMs = 120000;
 
@@ -103,6 +116,196 @@ namespace AppsInToss.Editor
         // helper(payload + cfg) 뒤에 이어 붙는 본문. 131072 바이트 미만은 stock 이 항상 decompress=1 로 돌리는 영역이라 건드리지 않는다.
         private const string PrologueBody =
             @"function _JS_Sound_Load(ptr,length,decompress,fmodSoundType){if(WEBAudio.audioWebEnabled!=0&&length>=131072){var aitD=WEBAudio.aitDecide(ptr,length,decompress);if(aitD&&aitD.compressed){var aitS=jsAudioCreateCompressedSoundClip(HEAPU8.subarray(ptr,ptr+length),fmodSoundType,aitD.info);WEBAudio.aitLog(aitD,length,decompress);WEBAudio.audioInstances[++WEBAudio.audioInstanceIdCounter]=aitS;return WEBAudio.audioInstanceIdCounter}}";
+
+        // ─────────────────────────── stacktrace-lazy (정규식 앵커 + 괄호 균형 스캔) ───────────────────────────
+
+        // 앵커는 `var stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));if(stackTraceReferenceMatch)
+        // Module.stackTraceRegExp=` 까지이고, 대입 우변(`new RegExp(...)`)은 정규식이 아니라 괄호 균형 스캔으로 잘라낸다.
+        private static readonly Regex StackLazyAnchor = new Regex(
+            @"var stackTraceReferenceMatch\s*=\s*jsStackTrace\(\)\.match\(new RegExp\(stackTraceReference\)\);?\s*"
+            + @"if\s*\(stackTraceReferenceMatch\)\s*Module\.stackTraceRegExp\s*=\s*(?=new RegExp\()",
+            RegexOptions.CultureInvariant);
+
+        private const string StackLazyHead =
+            "var stackTraceReferenceMatch;(function(){var c,d=false;Object.defineProperty(Module,\"stackTraceRegExp\","
+            + "{configurable:true,enumerable:true,get:function(){if(!d){d=true;try{"
+            + "stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));if(stackTraceReferenceMatch)c=";
+
+        private const string StackLazyTail =
+            "}catch(e){}}return c},set:function(v){d=true;c=v}})})();" + StackLazyMarker;
+
+        /// <summary>
+        /// stacktrace-lazy 적용. 앵커가 정확히 1회가 아니거나 우변 끝을 확신할 수 없으면 입력을 그대로 두고 false 와 사유를 돌려준다.
+        /// </summary>
+        internal static bool TryPatchStackTraceLazy(string text, out string patched, out string skipReason)
+        {
+            patched = text;
+            skipReason = null;
+            MatchCollection matches = string.IsNullOrEmpty(text) ? null : StackLazyAnchor.Matches(text);
+            int n = matches == null ? 0 : matches.Count;
+            if (n != 1)
+            {
+                skipReason = "앵커 1/1 일치 " + n + "회(기대 1회)";
+                return false;
+            }
+
+            Match m = matches[0];
+            int rhsStart = m.Index + m.Length;
+            if (!TryScanRegExpCall(text, rhsStart, out int callEnd))
+            {
+                skipReason = "우변 new RegExp(...) 의 괄호 균형을 찾지 못함";
+                return false;
+            }
+
+            // 문장 끝: 공백/탭 뒤에 ';'(함께 소비), '}'·개행·파일 끝(소비하지 않음)만 허용한다. 그 밖이면 우변이 더 이어지는 식이다.
+            int j = callEnd;
+            while (j < text.Length && (text[j] == ' ' || text[j] == '\t'))
+            {
+                j++;
+            }
+
+            int stmtEnd;
+            if (j >= text.Length || text[j] == '}' || text[j] == '\n' || text[j] == '\r')
+            {
+                stmtEnd = callEnd;
+            }
+            else if (text[j] == ';')
+            {
+                stmtEnd = j + 1;
+            }
+            else
+            {
+                skipReason = "우변 뒤에 예상 밖 토큰 '" + text[j] + "'";
+                return false;
+            }
+
+            string rhs = text.Substring(rhsStart, callEnd - rhsStart);
+            patched = text.Substring(0, m.Index) + StackLazyHead + rhs + StackLazyTail + text.Substring(stmtEnd);
+            return true;
+        }
+
+        // start 에서 `new RegExp(` 로 시작하는 호출의 닫는 괄호 다음 위치를 찾는다. 문자열·정규식 리터럴·주석 안의 괄호는 세지 않는다.
+        // 템플릿 리터럴(`)은 안쪽 ${} 를 해석하지 않으므로 만나면 실패로 본다(건너뛰기).
+        private static bool TryScanRegExpCall(string t, int start, out int callEnd)
+        {
+            callEnd = -1;
+            const string head = "new RegExp(";
+            if (start < 0 || start + head.Length > t.Length || string.CompareOrdinal(t, start, head, 0, head.Length) != 0)
+            {
+                return false;
+            }
+
+            int depth = 1;
+            int i = start + head.Length;
+            char prev = '(';
+            while (i < t.Length)
+            {
+                char c = t[i];
+                if (c == '"' || c == '\'')
+                {
+                    i = SkipStringLiteral(t, i);
+                    if (i < 0) return false;
+                    prev = 'a';
+                    continue;
+                }
+
+                if (c == '`')
+                {
+                    return false;
+                }
+
+                if (c == '/')
+                {
+                    char next = i + 1 < t.Length ? t[i + 1] : '\0';
+                    if (next == '/')
+                    {
+                        int nl = t.IndexOf('\n', i);
+                        if (nl < 0) return false;
+                        i = nl + 1;
+                        continue;
+                    }
+
+                    if (next == '*')
+                    {
+                        int close = t.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                        if (close < 0) return false;
+                        i = close + 2;
+                        continue;
+                    }
+
+                    if ("(,=:[!&|?{};+-*%<>~^".IndexOf(prev) >= 0)
+                    {
+                        i = SkipRegexLiteral(t, i);
+                        if (i < 0) return false;
+                        prev = 'a';
+                        continue;
+                    }
+
+                    prev = c;
+                    i++;
+                    continue;
+                }
+
+                if (c == '(')
+                {
+                    depth++;
+                }
+                else if (c == ')')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        callEnd = i + 1;
+                        return true;
+                    }
+                }
+
+                if (!char.IsWhiteSpace(c))
+                {
+                    prev = c;
+                }
+
+                i++;
+            }
+
+            return false;
+        }
+
+        // t[i] 가 여는 따옴표. 닫는 따옴표 다음 위치를 돌려준다(개행이 먼저 나오거나 닫히지 않으면 -1).
+        private static int SkipStringLiteral(string t, int i)
+        {
+            char quote = t[i];
+            i++;
+            while (i < t.Length)
+            {
+                char c = t[i];
+                if (c == '\\') { i += 2; continue; }
+                if (c == '\n' || c == '\r') return -1;
+                if (c == quote) return i + 1;
+                i++;
+            }
+
+            return -1;
+        }
+
+        // t[i] 가 정규식 리터럴의 여는 '/'. 닫는 '/' 다음 위치(플래그 앞)를 돌려준다. [...] 클래스 안의 '/' 는 닫는 것이 아니다.
+        private static int SkipRegexLiteral(string t, int i)
+        {
+            i++;
+            bool inClass = false;
+            while (i < t.Length)
+            {
+                char c = t[i];
+                if (c == '\\') { i += 2; continue; }
+                if (c == '\n' || c == '\r') return -1;
+                if (c == '[') inClass = true;
+                else if (c == ']') inClass = false;
+                else if (c == '/' && !inClass) return i + 1;
+                i++;
+            }
+
+            return -1;
+        }
 
         // ─────────────────────────── 패치 엔진(순수 로직, Node 불필요) ───────────────────────────
 
@@ -235,9 +438,13 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// framework 텍스트에 그룹을 적용한다. 앵커가 정확히 1회가 아닌 그룹은 건너뛰고 이유를 Skipped 에 남긴다.
-        /// 이미 마커가 있으면 아무것도 하지 않는다(멱등).
+        /// 이미 마커(오디오 또는 stacktrace-lazy)가 있으면 아무것도 하지 않는다(멱등).
+        /// <paramref name="patchAudio"/> 가 false 면 오디오 그룹을 평가하지 않는다(stacktrace-lazy 와 독립).
+        /// <paramref name="lazyStackTrace"/> 가 true 일 때만 stacktrace-lazy 를 평가한다(기본 false — 호출부가 정한다).
         /// </summary>
-        internal static PatchOutcome PatchText(string source, bool forceCompressed, float minSeconds, string runtimePayload)
+        internal static PatchOutcome PatchText(
+            string source, bool forceCompressed, float minSeconds, string runtimePayload,
+            bool patchAudio = true, bool lazyStackTrace = false)
         {
             var outcome = new PatchOutcome { Source = source };
             if (string.IsNullOrEmpty(source))
@@ -245,58 +452,80 @@ namespace AppsInToss.Editor
                 return outcome;
             }
 
-            if (source.IndexOf(MarkerPrefix, StringComparison.Ordinal) >= 0)
+            if (HasAudioMarker(source) || source.IndexOf(StackLazyMarker, StringComparison.Ordinal) >= 0)
             {
                 outcome.AlreadyPatched = true;
                 return outcome;
             }
 
             string text = source;
-            foreach (PatchGroup group in BuildGroups(forceCompressed, minSeconds, runtimePayload))
+            if (patchAudio)
             {
-                string missingDependency = null;
-                foreach (string required in group.Requires)
+                foreach (PatchGroup group in BuildGroups(forceCompressed, minSeconds, runtimePayload))
                 {
-                    if (!outcome.Applied.Contains(required))
+                    string missingDependency = null;
+                    foreach (string required in group.Requires)
                     {
-                        missingDependency = required;
-                        break;
+                        if (!outcome.Applied.Contains(required))
+                        {
+                            missingDependency = required;
+                            break;
+                        }
                     }
-                }
 
-                if (missingDependency != null)
-                {
-                    outcome.Skipped.Add(group.Name + ": 선행 그룹 '" + missingDependency + "' 미적용");
-                    continue;
-                }
-
-                string mismatch = null;
-                for (int i = 0; i < group.Edits.Length; i++)
-                {
-                    int n = CountOccurrences(text, group.Edits[i].Anchor);
-                    if (n != 1)
+                    if (missingDependency != null)
                     {
-                        mismatch = "앵커 " + (i + 1) + "/" + group.Edits.Length + " 일치 " + n + "회(기대 1회)";
-                        break;
+                        outcome.Skipped.Add(group.Name + ": 선행 그룹 '" + missingDependency + "' 미적용");
+                        continue;
                     }
-                }
 
-                if (mismatch != null)
+                    string mismatch = null;
+                    for (int i = 0; i < group.Edits.Length; i++)
+                    {
+                        int n = CountOccurrences(text, group.Edits[i].Anchor);
+                        if (n != 1)
+                        {
+                            mismatch = "앵커 " + (i + 1) + "/" + group.Edits.Length + " 일치 " + n + "회(기대 1회)";
+                            break;
+                        }
+                    }
+
+                    if (mismatch != null)
+                    {
+                        outcome.Skipped.Add(group.Name + ": " + mismatch);
+                        continue;
+                    }
+
+                    foreach (PatchEdit edit in group.Edits)
+                    {
+                        text = ReplaceOnce(text, edit.Anchor, edit.Replacement);
+                    }
+
+                    outcome.Applied.Add(group.Name);
+                }
+            }
+
+            if (lazyStackTrace)
+            {
+                if (TryPatchStackTraceLazy(text, out string lazyPatched, out string lazyReason))
                 {
-                    outcome.Skipped.Add(group.Name + ": " + mismatch);
-                    continue;
+                    text = lazyPatched;
+                    outcome.Applied.Add(GroupStackTraceLazy);
                 }
-
-                foreach (PatchEdit edit in group.Edits)
+                else
                 {
-                    text = ReplaceOnce(text, edit.Anchor, edit.Replacement);
+                    outcome.Skipped.Add(GroupStackTraceLazy + ": " + lazyReason);
                 }
-
-                outcome.Applied.Add(group.Name);
             }
 
             outcome.Source = outcome.Applied.Count > 0 ? text : source;
             return outcome;
+        }
+
+        /// <summary>오디오 패치 마커(/*ait-audio-patch v1*/ 형태)가 있는지.</summary>
+        internal static bool HasAudioMarker(string source)
+        {
+            return !string.IsNullOrEmpty(source) && source.IndexOf(MarkerPrefix, StringComparison.Ordinal) >= 0;
         }
 
         // 일치가 정확히 1회임을 확인한 뒤에만 부른다. '$' 패턴 해석이 없도록 문자열 이어붙이기로 치환한다.
@@ -317,6 +546,27 @@ namespace AppsInToss.Editor
             enabled = config == null || config.audioForceCompressedPlayback != 0;
             force = AITPerfFlags.EffectiveAudioForceCompressed(config);
             minSeconds = AITPerfFlags.EffectiveAudioForceCompressedMinSeconds(config);
+        }
+
+        /// <summary>
+        /// stacktrace-lazy 실효 활성 여부. 우선순위: AIT_FW_LAZY_STACKTRACE 환경 변수(1/true, 0/false) &gt;
+        /// config.frameworkLazyStackTraceMode(0 끔 / 1 강제 켬) &gt; 자동(-1 → ON). 환경 변수 값이 이상하면 경고 후 설정값 사용.
+        /// config==null 이면 자동과 같이 ON(패치는 앵커가 정확히 1회 맞을 때만 적용되므로 fail-open).
+        /// </summary>
+        internal static bool EffectiveLazyStackTrace(AITEditorScriptObject config)
+        {
+            string env = System.Environment.GetEnvironmentVariable(LazyStackTraceEnvVar);
+            if (!string.IsNullOrEmpty(env))
+            {
+                string v = env.Trim().ToLowerInvariant();
+                if (v == "1" || v == "true") return true;
+                if (v == "0" || v == "false") return false;
+                Debug.LogWarning($"[AIT] {LazyStackTraceEnvVar} 환경 변수 값이 올바르지 않습니다: '{env}' (1/0/true/false 필요) — 설정값 사용");
+            }
+
+            if (config == null) return true;
+            if (config.frameworkLazyStackTraceMode >= 0) return config.frameworkLazyStackTraceMode == 1;
+            return true;
         }
 
         // ─────────────────────────── 파일 처리 ───────────────────────────
@@ -356,10 +606,12 @@ namespace AppsInToss.Editor
                 return 0;
             }
 
-            ResolveSettings(config, out bool enabled, out bool force, out float minSeconds);
-            if (!enabled)
+            ResolveSettings(config, out bool audioEnabled, out bool force, out float minSeconds);
+            bool lazyStack = EffectiveLazyStackTrace(config);
+            Debug.Log($"[AIT-Audio] framework 패치 설정: 오디오={(audioEnabled ? "ON" : "OFF")}, stacktrace-lazy={(lazyStack ? "ON" : "OFF")}");
+            if (!audioEnabled && !lazyStack)
             {
-                Debug.Log("[AIT-Audio] audioForceCompressedPlayback=0 — framework 오디오 패치를 건너뜁니다(stock).");
+                Debug.Log("[AIT-Audio] audioForceCompressedPlayback=0, stacktrace-lazy 끔 — framework 패치를 건너뜁니다(stock).");
                 return 0;
             }
 
@@ -385,17 +637,30 @@ namespace AppsInToss.Editor
                 return 0;
             }
 
-            string payloadPath = ResolveRuntimePayloadPath();
-            if (string.IsNullOrEmpty(payloadPath) || !File.Exists(payloadPath))
+            // 오디오 전용 선행 조건(payload). 어긋나면 오디오 그룹만 끄고 stacktrace-lazy 는 계속한다.
+            string payload = string.Empty;
+            if (audioEnabled)
             {
-                Debug.LogWarning($"[AIT-Audio] 런타임 payload 를 찾지 못해 framework 패치를 건너뜁니다: '{payloadPath}'");
-                return 0;
+                string payloadPath = ResolveRuntimePayloadPath();
+                if (string.IsNullOrEmpty(payloadPath) || !File.Exists(payloadPath))
+                {
+                    Debug.LogWarning($"[AIT-Audio] 런타임 payload 를 찾지 못해 오디오 패치를 건너뜁니다: '{payloadPath}'");
+                    audioEnabled = false;
+                }
+                else
+                {
+                    payload = PreparePayload(File.ReadAllText(payloadPath));
+                    if (payload.IndexOf("function aitAudioProbe", StringComparison.Ordinal) < 0)
+                    {
+                        Debug.LogWarning("[AIT-Audio] 런타임 payload 형식이 예상과 달라 오디오 패치를 건너뜁니다.");
+                        audioEnabled = false;
+                        payload = string.Empty;
+                    }
+                }
             }
 
-            string payload = PreparePayload(File.ReadAllText(payloadPath));
-            if (payload.IndexOf("function aitAudioProbe", StringComparison.Ordinal) < 0)
+            if (!audioEnabled && !lazyStack)
             {
-                Debug.LogWarning("[AIT-Audio] 런타임 payload 형식이 예상과 달라 framework 패치를 건너뜁니다.");
                 return 0;
             }
 
@@ -417,7 +682,7 @@ namespace AppsInToss.Editor
                 {
                     try
                     {
-                        if (PatchFile(buildDir, path, node, runner, work, payload, force, minSeconds, renames))
+                        if (PatchFile(buildDir, path, node, runner, work, payload, force, minSeconds, audioEnabled, lazyStack, renames))
                         {
                             patched++;
                         }
@@ -438,7 +703,7 @@ namespace AppsInToss.Editor
 
         private static bool PatchFile(
             string buildDir, string path, string node, string runner, string work,
-            string payload, bool force, float minSeconds, IDictionary<string, string> renames)
+            string payload, bool force, float minSeconds, bool patchAudio, bool lazyStack, IDictionary<string, string> renames)
         {
             string name = Path.GetFileName(path);
             string kind = GetFrameworkKind(name);
@@ -451,11 +716,15 @@ namespace AppsInToss.Editor
             }
 
             string source = File.ReadAllText(decoded, new UTF8Encoding(false));
-            PatchOutcome outcome = PatchText(source, force, minSeconds, payload);
+            PatchOutcome outcome = PatchText(source, force, minSeconds, payload, patchAudio, lazyStack);
 
             if (outcome.AlreadyPatched)
             {
-                LastApplyClipMetaApplied = true; // 이전 패치 마커가 이미 있다.
+                if (HasAudioMarker(source))
+                {
+                    LastApplyClipMetaApplied = true; // 이전 오디오 패치 마커가 이미 있다.
+                }
+
                 Debug.Log($"[AIT-Audio] {name}: 이미 패치됨 — 건너뜁니다.");
                 return false;
             }
@@ -516,7 +785,8 @@ namespace AppsInToss.Editor
             long delta = outcome.Source.Length - source.Length;
             Debug.Log($"[AIT-Audio] framework 패치: {name} → {newName} (적용 {string.Join(",", outcome.Applied)}"
                 + $"{(outcome.Skipped.Count > 0 ? ", 건너뜀 " + outcome.Skipped.Count + "개" : string.Empty)}"
-                + $", +{delta}B, 강제 압축 재생={(force ? "ON" : "OFF")}, 최소 {FormatSeconds(minSeconds)}s)");
+                + $", +{delta}B, 오디오={(patchAudio ? "ON" : "OFF")}, 강제 압축 재생={(force ? "ON" : "OFF")}, 최소 {FormatSeconds(minSeconds)}s"
+                + $", stacktrace-lazy={(lazyStack ? "ON" : "OFF")})");
             return true;
         }
 

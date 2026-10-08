@@ -206,6 +206,11 @@ namespace AppsInToss.Editor
                 "early-fetch 캐시 put 을 첫 프레임 이후로 미룹니다. 자동은 WebKit(iOS) 계열에서만 켭니다.",
                 AITDefaultSettings.GetDefaultPageCacheDeferredPut(), autoText: "WebKit 만 활성", anyExplicitIsModified: true);
 
+            config.idbPrewarm = DrawPerfTriState(
+                config.idbPrewarm, "IDBFS 프리워밍",
+                "콜드 첫 실행에서 부팅 중에 만들어지는 Unity 저장소 IndexedDB(/idbfs) 생성을 index.html head 에서 미리 해 둡니다. 이미 있거나 버전이 달라도 조용히 무시합니다. 자동은 활성입니다.",
+                AITDefaultSettings.GetDefaultIdbPrewarm());
+
             config.audioStreamLoopTranscode = DrawPerfTriState(
                 config.audioStreamLoopTranscode, "루프 오디오 재인코딩",
                 "audioStreamTranscode 가 건너뛰던 루프 클립도 재인코딩합니다. 루프 이음새 청취 검증 전이라 자동은 비활성입니다.",

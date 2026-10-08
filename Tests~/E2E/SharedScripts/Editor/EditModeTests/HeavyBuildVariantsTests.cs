@@ -76,6 +76,7 @@ public class HeavyBuildVariantsTests
         Assert.AreEqual(0, _config.audioForceCompressedPlayback);
         Assert.AreEqual(0, _config.lowMemoryTier);
         Assert.AreEqual(0, _config.pageCacheDeferredPut);
+        Assert.AreEqual(0, _config.idbPrewarm);
         Assert.AreEqual(0, _config.audioStreamingCompressedPlayback);
     }
 

@@ -85,7 +85,7 @@ public class AITResetWebGLSettingsTests
         "mobileLifecycle", "memoryTelemetry", "exactDataBody", "releaseConsumedData",
         "audioForceCompressedPlayback", "audioForceCompressedMinSeconds",
         // 저메모리 기기 대응
-        "lowMemoryTier", "pageCacheDeferredPut", "textureStreamingMemoryBudgetMB", "audioStreamLoopTranscode",
+        "lowMemoryTier", "pageCacheDeferredPut", "idbPrewarm", "textureStreamingMemoryBudgetMB", "audioStreamLoopTranscode",
         "textureStreamKeepGpuFormat", "fontStreamingUnloadBundle", "textureStreamBrowserDecode", "textureStreamLowTierDownscale",
     };
 

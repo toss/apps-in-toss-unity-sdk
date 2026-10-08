@@ -58,6 +58,7 @@ public class AITPerfFlagsTests
         Assert.AreEqual(10f, _config.audioForceCompressedMinSeconds);
         Assert.AreEqual(-1, _config.lowMemoryTier);
         Assert.AreEqual(-1, _config.pageCacheDeferredPut);
+        Assert.AreEqual(-1, _config.idbPrewarm);
         Assert.AreEqual(16, _config.textureStreamingMemoryBudgetMB);
         Assert.AreEqual(-1, _config.audioStreamLoopTranscode);
     }
@@ -106,6 +107,24 @@ public class AITPerfFlagsTests
         StringAssert.Contains("\"pageCacheDeferredPut\":0", json);
         StringAssert.Contains("\"textureStreamingMemoryBudgetMB\":0", json);
         StringAssert.Contains("\"audioStreamLoopTranscode\":true", json);
+    }
+
+    [Test]
+    public void IdbPrewarm_TriStateResolvesAndSerializes()
+    {
+        Assert.IsTrue(AITPerfFlags.EffectiveIdbPrewarm(_config), "자동(-1): 켜짐");
+        StringAssert.Contains("\"idbPrewarm\":true", AITPerfFlags.ToJson(_config, -1, false));
+        StringAssert.Contains("\"idbPrewarm\":-1", AITPerfFlags.ToJson(_config, -1, false), "raw 에는 원본 tri-state");
+
+        _config.idbPrewarm = 0;
+        Assert.IsFalse(AITPerfFlags.EffectiveIdbPrewarm(_config), "0: 꺼짐");
+        StringAssert.Contains("\"idbPrewarm\":false", AITPerfFlags.ToJson(_config, -1, false));
+        StringAssert.Contains("\"idbPrewarm\":0", AITPerfFlags.ToJson(_config, -1, false), "raw 에는 원본 tri-state");
+
+        _config.idbPrewarm = 1;
+        Assert.IsTrue(AITPerfFlags.EffectiveIdbPrewarm(_config), "1: 켜짐");
+        StringAssert.Contains("\"idbPrewarm\":true", AITPerfFlags.ToJson(_config, -1, false));
+        StringAssert.Contains("\"idbPrewarm\":1", AITPerfFlags.ToJson(_config, -1, false));
     }
 
     [Test]
@@ -198,6 +217,7 @@ public class AITPerfFlagsTests
                      "\"audioPatched\":false",
                      "\"lowMemoryTier\":true",
                      "\"pageCacheDeferredPut\":-1",
+                     "\"idbPrewarm\":true",
                      "\"textureStreamingMemoryBudgetMB\":16",
                      "\"audioStreamLoopTranscode\":false",
                      "\"raw\":{",

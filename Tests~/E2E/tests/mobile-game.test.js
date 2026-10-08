@@ -288,7 +288,8 @@ async function runSession(label, projectPath, port, round, full) {
     }
     await sleep(600);
     s = await getState(page);
-    check(res, '탭으로 점프', s.jumps >= 2 && s.taps >= 4, `taps=${s.taps} jumps=${s.jumps} state=${s.state}`);
+    // 장애물에 부딪혀 게임오버가 되면 그 뒤 탭은 세지 않는다(플레이 중 탭만 센다). 그 경우 받은 탭 수 요건은 면제한다.
+    check(res, '탭으로 점프', s.jumps >= 2 && (s.taps >= 4 || s.state === 'over'), `taps=${s.taps} jumps=${s.jumps} state=${s.state}`);
     check(res, '효과음 재생', s.sfxCount >= 3, `sfxCount=${s.sfxCount}`);
     if (s.state === 'playing') await sendCmd(page, 'over');
     s = await waitForRun(page, '(s) => s.state === "over"', 10000, '게임오버');

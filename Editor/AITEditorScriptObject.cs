@@ -708,6 +708,17 @@ namespace AppsInToss
                  "0 은 clip.length/AudioSource.time 정확성 패치까지 빼는 stock 대조군입니다.")]
         public int audioForceCompressedPlayback = -1;
 
+        /// <summary>
+        /// (숨김) framework 스택 트레이스 정규식 지연 계산 패치(stacktrace-lazy). Unity 의 prejs/Error.js 는 framework 함수 최상위에서
+        /// jsStackTrace() 를 불러 Module.stackTraceRegExp 를 만드는데, 이때 V8 이 바깥 framework 함수 전체를 다시 파싱해(소스 위치 수집)
+        /// 부팅 CPU 를 쓴다. 이 패치는 정규식을 첫 접근(오류 처리) 때 계산하게 바꾼다. 소비자는 로더 errorHandler 뿐이라 동작은 같다.
+        /// -1 = 자동 (켜짐), 0 = 끔(stock), 1 = 켬(자동과 같으나 명시). 오디오 패치(audioForceCompressedPlayback)와 독립이다.
+        /// AIT_FW_LAZY_STACKTRACE 환경 변수(1/true, 0/false)가 최우선. 앵커가 정확히 1회 맞지 않으면 건너뛰어 stock 그대로 동작한다.
+        /// UI 에는 노출하지 않는 숨김 설정이며 기존 에셋에는 필드가 없어 -1 로 역직렬화된다.
+        /// </summary>
+        [Tooltip("-1 = 자동 (켜짐), 0 = 끔, 1 = 켬. framework 의 스택 트레이스 정규식을 오류가 날 때까지 계산하지 않습니다.")]
+        public int frameworkLazyStackTraceMode = -1;
+
         [Tooltip("audioForceCompressedPlayback 이 압축 재생으로 강제하는 최소 클립 길이(초). 기본 10. 0 이하이면 10 으로 취급합니다. " +
                  "이보다 짧은 클립은 기존대로 PCM 으로 풀립니다(짧은 효과음 지연 방지).")]
         public float audioForceCompressedMinSeconds = 10f;

@@ -208,7 +208,6 @@ async function canvasBox(page) {
   return box;
 }
 
-/** 게임이 보고한 버튼 사각형(화면 픽셀, 좌상단 원점)의 중심을 실제 터치로 탭한다. */
 // 실제 손가락처럼 누른 채로 잠깐 머문 뒤 뗀다. page.touchscreen.tap 은 touchstart/touchend 를 연달아 보내
 // 프레임이 느린 빌드(~6fps)에서는 둘이 한 Unity 프레임에 들어가 uGUI 클릭이 사라진다.
 const touchCdp = new WeakMap();
@@ -221,6 +220,7 @@ async function touchTap(page, x, y, holdMs = 120) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+/** 게임이 보고한 버튼 사각형(화면 픽셀, 좌상단 원점)의 중심을 실제 터치로 탭한다. */
 async function tapButton(page, s, name) {
   const b = s[name];
   if (!b || !b.visible) throw new Error(`버튼 '${name}' 이 보이지 않는다: ${JSON.stringify(b)}`);
@@ -233,11 +233,21 @@ async function tapButton(page, s, name) {
   return { x: Math.round(x), y: Math.round(y) };
 }
 
-async function waitOverlayGone(page) {
-  await page.waitForFunction(() => {
-    const e = document.querySelector('#ait-loading-wrapper');
-    return !e || getComputedStyle(e).display === 'none' || getComputedStyle(e).visibility === 'hidden';
-  }, undefined, { timeout: 20000 }).catch(() => {});
+/**
+ * 캔버스가 화면 중앙의 최상단 요소가 될 때까지(로딩 오버레이가 입력을 가로채지 않을 때까지) 기다리고,
+ * 그 시각(performance.now, ms)을 돌려준다. 오버레이의 id·class 는 SDK 버전마다 달라서 elementFromPoint 로 판정한다.
+ */
+async function waitInteractive(page, timeoutMs = 30000) {
+  const h = await page.waitForFunction(() => {
+    const cv = document.querySelector('#unity-canvas') || document.querySelector('canvas');
+    if (!cv) return false;
+    const r = cv.getBoundingClientRect();
+    for (const fy of [0.5, 0.75]) {
+      if (document.elementFromPoint(r.left + r.width / 2, r.top + r.height * fy) !== cv) return false;
+    }
+    return performance.now();
+  }, undefined, { timeout: timeoutMs, polling: 50 }).catch(() => null);
+  return h ? await h.jsonValue() : null;
 }
 
 function check(res, name, ok, detail) {
@@ -287,14 +297,22 @@ async function runSession(label, projectPath, port, round, full) {
     m.titleMs = await page.evaluate(() => window['__AIT_RUN_FIRST_TITLE_MS'] ?? null);
     check(res, '타이틀 화면', s.state === 'title' && s.startButton && s.startButton.visible, `titleMs=${m.titleMs && m.titleMs.toFixed(0)} unity=${s.unity}`);
     const bootBest = s.bootBest;
-    await waitOverlayGone(page);
+    m.interactiveMs = await waitInteractive(page);
+    check(res, '입력 가능(오버레이 해제)', m.interactiveMs != null, `interactiveMs=${m.interactiveMs && m.interactiveMs.toFixed(0)}`);
     await sleep(500);
 
     // ---- 2. 실제 탭으로 시작 → 탭 점프 ----
     s = await getState(page);
-    await tapButton(page, s, 'startButton');
+    // 사용자는 반응이 없으면 다시 누른다. 최대 3번까지 탭하고, 시작에 필요했던 탭 수(startTaps)를 지표로 남긴다
+    // (로딩 직후 첫 탭이 먹히지 않는 빌드는 2 이상이 된다).
+    m.startTaps = null;
+    for (let i = 1; i <= 3 && m.startTaps == null; i++) {
+      await tapButton(page, await getState(page), 'startButton');
+      const ok = await waitForRun(page, '(s) => s.state === "playing" && s.runs >= 1', 3000, 'START 탭 → playing').then(() => true, () => false);
+      if (ok) m.startTaps = i;
+    }
     s = await waitForRun(page, '(s) => s.state === "playing" && s.runs >= 1', 10000, 'START 탭 → playing');
-    check(res, 'START 버튼 탭으로 시작', s.state === 'playing', `runs=${s.runs}`);
+    check(res, 'START 버튼 탭으로 시작', s.state === 'playing', `runs=${s.runs} startTaps=${m.startTaps}`);
     const box = await canvasBox(page);
     for (let i = 0; i < 4; i++) {
       await sleep(900);
@@ -392,7 +410,7 @@ async function runSession(label, projectPath, port, round, full) {
 }
 
 const METRICS = [
-  ['titleMs', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
+  ['titleMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['startTaps', '', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
   ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {
@@ -433,7 +451,7 @@ test.describe('Mobile web game (tap runner) play benchmark', () => {
       const bySide = {};
       for (const side of sides) {
         const rs = sessions.filter((r) => r.label === side.label);
-        bySide[side.label] = { project: side.project, summary: summarize(rs), checksums: [...new Set(rs.map((r) => r.checksum))] };
+        bySide[side.label] = { project: side.project, summary: summarize(rs), checksums: [...new Set(rs.map((r) => r.checksum).filter(Boolean))] };
       }
       console.log(`\n📊 Mobile game — Unity ${UNITY_VERSION}, CPU x${CPU_THROTTLE}${RUN_DPR ? `, DPR ${RUN_DPR}` : ''}, ${ROUNDS} rounds/side (중앙값)`);
       const header = ['metric', ...sides.map((s) => s.label), ...(PAIR_MODE ? ['B−A'] : [])];

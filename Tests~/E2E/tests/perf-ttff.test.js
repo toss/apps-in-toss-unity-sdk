@@ -116,7 +116,13 @@ function detectCompression(distWeb) {
   try {
     const files = fs.readdirSync(path.resolve(distWeb, 'Build')).filter((f) => /\.(data|wasm)(\.|$)/.test(f));
     if (!files.length) return 'unknown';
-    const kinds = new Set(files.map((f) => (/\.br$/.test(f) ? 'brotli' : /\.gz$/.test(f) ? 'gzip' : /\.unityweb$/.test(f) ? 'unityweb' : 'none')));
+    // .unityweb(decompressionFallback 컨테이너)는 확장자로 포맷을 알 수 없어 앞 2바이트로 판정한다. gzip 은 1f 8b 매직이 있고,
+    // brotli 는 매직이 없으므로 gzip 이 아니면 brotli 로 본다(압축 없음 + fallback 조합은 쓰지 않는다).
+    const sniff = (f) => {
+      const fd = fs.openSync(path.resolve(distWeb, 'Build', f), 'r');
+      try { const b = Buffer.alloc(2); fs.readSync(fd, b, 0, 2, 0); return b[0] === 0x1f && b[1] === 0x8b ? 'gzip' : 'brotli'; } finally { fs.closeSync(fd); }
+    };
+    const kinds = new Set(files.map((f) => (/\.br$/.test(f) ? 'brotli' : /\.gz$/.test(f) ? 'gzip' : /\.unityweb$/.test(f) ? sniff(f) : 'none')));
     return kinds.size === 1 ? [...kinds][0] : 'mixed';
   } catch { return 'unknown'; }
 }

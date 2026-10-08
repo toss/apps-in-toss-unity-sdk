@@ -197,7 +197,7 @@ for (const engine of ENGINES) {
           try { browser = await chromium.launch({ channel: 'chrome' }); } catch { browser = await chromium.launch(); }
         }
       } catch (e) {
-        launchError = String(e && /** @type {Error} */ (e).message || e).split('\n')[0]; console.log('[launch-error]', engine, launchError);
+        launchError = String(e && /** @type {Error} */ (e).message || e).split('\n')[0]; console.log('[launch-error]', engine, String(e && /** @type {Error} */ (e).message || e));
       }
     });
 

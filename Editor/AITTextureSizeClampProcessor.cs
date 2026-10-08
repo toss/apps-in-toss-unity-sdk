@@ -458,14 +458,32 @@ namespace AppsInToss.Editor
                 {
                     File.Copy(bak, original, true);
                     File.Delete(bak);
+                    bool isMeta = original.EndsWith(".meta");
+                    // macOS 의 File.Copy 는 원본 mtime 을 보존해 에디터가 외부 변경을 놓칠 수 있다 — 지금 시각으로 갱신한다.
+                    try { File.SetLastWriteTimeUtc(original, DateTime.UtcNow); } catch { /* best-effort */ }
 
                     // reimport 대상 에셋 경로 산출: .meta 면 본체 경로로 환원, 아니면 그 파일 자체.
-                    string assetFull = original.EndsWith(".meta")
+                    string assetFull = isMeta
                         ? original.Substring(0, original.Length - ".meta".Length)
                         : original;
                     string rel = AbsoluteToProjectRelative(assetFull, projectRoot);
                     if (!string.IsNullOrEmpty(rel))
                     {
+                        if (!isMeta)
+                        {
+                            // SpriteAtlas 같은 네이티브 에셋은 2021.3 에서 ForceUpdate 재임포트 뒤에도 메모리의 객체가 캡 적용값을
+                            // 들고 있는 경우가 있다. 그대로 두면 이후 SaveAssets 가 캡 값을 디스크에 다시 써 원본을 오염시키므로
+                            // 메모리 객체를 내려 다음 로드가 복원된 파일을 읽게 한다.
+                            try
+                            {
+                                var loaded = AssetDatabase.LoadMainAssetAtPath(rel);
+                                if (loaded != null && !(loaded is GameObject) && !(loaded is Component))
+                                {
+                                    Resources.UnloadAsset(loaded);
+                                }
+                            }
+                            catch { /* best-effort: 재임포트는 아래에서 그대로 진행 */ }
+                        }
                         AssetDatabase.ImportAsset(rel, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
                     }
 

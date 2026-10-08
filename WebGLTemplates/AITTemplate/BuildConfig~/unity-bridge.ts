@@ -81,6 +81,12 @@ for (const [_name, _value] of Object.entries(_aitNamespaces)) {
   }
 }
 
+// window.AppsInToss 네임스페이스(특히 Storage) 설치 완료 신호.
+// ait-playerprefs.js 가 50ms 폴링 대신 이 이벤트로 즉시 Storage 를 해석한다.
+// 두 파일이 공유하는 계약이므로 이름('ait:bridge-ready')을 바꾸면 ait-playerprefs.js 도 함께 고친다.
+// 구 브리지·이벤트 유실 시에는 ait-playerprefs.js 의 폴링이 폴백한다.
+try { window.dispatchEvent(new Event('ait:bridge-ready')); } catch {}
+
 console.log('[Unity Bridge] AppsInToss bridge initialized with', Object.keys(WebFramework).length, 'exports');
 console.log('[Unity Bridge] Available:', Object.keys(WebFramework).join(', '));
 console.log('[Unity Bridge] Namespaces: Analytics, GoogleAdMob, IAP, SafeAreaInsets, Storage, TossAds, env, graniteEvent, partner, tdsEvent');

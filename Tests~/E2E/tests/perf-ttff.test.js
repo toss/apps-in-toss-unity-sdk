@@ -44,6 +44,8 @@ import { fileURLToPath } from 'url';
  *  - PERF_WARM          : 0이면 재방문(warm) 측정 생략(기본 1).
  *  - PERF_NO_GESTURE    : 1이면 첫 프레임 뒤 캔버스 클릭(사용자 제스처 1회)을 생략한다(기본 0 = 클릭). 클릭은 TTFF·전송량을 확정한 뒤에 보내므로
  *                         지표에는 영향이 없고, AudioContext 가 시작돼 오디오 디코드/미디어 요소 경로가 실제로 도는 상태를 재현한다.
+ *  - PERF_GPU_WARMUP    : 0이면 반복 전 GPU 프로세스 사전 워밍업을 생략한다(기본 1 = 워밍업). 첫 로드의 콜드 GPU 프로세스/SwiftShader 초기화
+ *                         꼬리(4× 스로틀에서 ~1s)를 일부러 재고 싶을 때만 끈다. 워밍업이 없으면 iter 0 만(페어 모드에서는 먼저 도는 A 만) 느려진다.
  *  - PERF_PAIR_PROJECT_PATH : (페어 A/B 모드) B 산출물의 프로젝트 경로. 미지정 시 기존 단일 측정과 동일.
  *  - PERF_LABEL_A / PERF_LABEL_B : 페어 모드에서 결과 JSON pairing 섹션에 남길 라벨(기본 'A'/'B').
  *
@@ -65,6 +67,7 @@ const NET_UP_MBPS = parseFloat(process.env.PERF_NET_UP_MBPS || '50');
 const NET_RTT_MS = parseFloat(process.env.PERF_NET_RTT_MS || '50');
 const MEASURE_WARM = process.env.PERF_WARM !== '0';
 const SEND_GESTURE = process.env.PERF_NO_GESTURE !== '1';
+const GPU_WARMUP = process.env.PERF_GPU_WARMUP !== '0';
 
 // ---- 페어 A/B 모드 (미지정 시 기존 단일 측정과 완전 동일) ----
 const PAIR_PROJECT = process.env.PERF_PAIR_PROJECT_PATH || '';
@@ -575,6 +578,86 @@ function median(values) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+/**
+ * GPU 프로세스 사전 워밍업. 반복 0 의 첫 getContext(Unity 의 SystemInfo 프로브)가 콜드 GPU 프로세스/SwiftShader 초기화(4× 에서 ~1s)를
+ * 떠안아 페어 모드의 A 샘플만 느려지므로, 반복 전에 일회용 컨텍스트에서 webgl2 컨텍스트를 한 번 만들어 GPU 프로세스를 띄워 둔다.
+ * 일회용 컨텍스트는 닫지만 브라우저(= GPU 프로세스)는 살아 있다. 실패해도 측정은 계속한다(ms 만 기록).
+ * 결과: { enabled, ms, ok? }. ms 는 컨텍스트 생성부터 loseContext 까지의 벽시계 시간이다.
+ */
+async function warmUpGpu(browser) {
+  if (!GPU_WARMUP) return { enabled: false, ms: null };
+  const t0 = Date.now();
+  let ok = false;
+  let context = null;
+  try {
+    context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    await page.setContent(`<!doctype html><canvas id="c" width="64" height="64"></canvas><script>
+      (function () {
+        var r = { ok: false };
+        try {
+          var gl = document.getElementById('c').getContext('webgl2');
+          if (gl) {
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+            var ext = gl.getExtension('WEBGL_lose_context');
+            if (ext) ext.loseContext();
+            r.ok = true;
+          }
+        } catch (e) { r.error = String(e); }
+        window.__gpuWarm = r;
+      })();
+    </script>`);
+    const r = await withDeadline(page.waitForFunction(() => window['__gpuWarm'] || null, undefined, { timeout: 60000 }).then((h) => h.jsonValue()), 65000, 'GPU 워밍업');
+    ok = !!(r && r.ok);
+    if (!ok) console.warn(`  GPU 워밍업: webgl2 컨텍스트를 못 만들었다 ${JSON.stringify(r)}`);
+  } catch (e) {
+    console.warn(`  GPU 워밍업 실패(무시): ${e && e.message}`);
+  } finally {
+    if (context) await withDeadline(context.close(), CLOSE_DEADLINE_MS, 'GPU 워밍업 컨텍스트 정리').catch(() => {});
+  }
+  return { enabled: true, ms: Math.max(1, Date.now() - t0), ok };
+}
+
+/**
+ * CPU 보정 점수(ms). 러너 CPU 세대 편차(EPYC 7763 vs 9V74 가 TTFF 를 ~480ms 움직인다)를 TTFF 와 같은 조건에서 재서
+ * ttffPerCalib = medianTtff / cpuCalibMs 로 러너 속도 대비 TTFF 를 비교할 수 있게 한다. 측정 페이지와 같은 CDP 스로틀(openThrottledPage)을 건
+ * 일회용 페이지에서 고정 워크로드를 3번 돌려 중앙값을 쓴다.
+ * 주의: 워크로드(아래 calibWorkload)는 결과 JSON 의 과거 값과 비교 가능해야 하므로 절대 바꾸지 않는다. 바꿔야 하면 새 필드로 추가한다.
+ */
+async function calibrateCpu(browser) {
+  const calibWorkload = () => {
+    const t0 = performance.now();
+    // 정수 해시(Math.imul) 2e6 회 — 분기 없는 ALU 위주 구간.
+    let h = 0x811c9dc5 | 0;
+    for (let i = 0; i < 2000000; i++) {
+      h = Math.imul(h ^ (i & 0xff), 0x01000193) | 0;
+      h = (h + ((h << 13) | (h >>> 19))) | 0;
+    }
+    // JSON 왕복 — 할당/문자열 처리 구간. 입력은 결정론적이다.
+    const obj = { items: [] };
+    for (let i = 0; i < 2000; i++) obj.items.push({ id: i, name: 'item-' + i, tags: ['a', 'b', 'c'], v: i * 0.5, nested: { x: i, y: [i, i + 1] } });
+    let size = 0;
+    for (let k = 0; k < 20; k++) size += JSON.stringify(JSON.parse(JSON.stringify(obj))).length;
+    return { ms: performance.now() - t0, sink: h + size };
+  };
+  let context = null;
+  try {
+    context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await openThrottledPage(context);
+    await page.goto('about:blank');
+    const runs = [];
+    for (let i = 0; i < 3; i++) runs.push((await page.evaluate(calibWorkload)).ms);
+    return median(runs);
+  } catch (e) {
+    console.warn(`  CPU 보정 실패(무시): ${e && e.message}`);
+    return null;
+  } finally {
+    if (context) await withDeadline(context.close(), CLOSE_DEADLINE_MS, 'CPU 보정 컨텍스트 정리').catch(() => {});
+  }
+}
+
 /** 새 페이지를 열고 CDP 스로틀을 건다(네비게이션 이전). 스로틀은 페이지 세션 단위라 페이지마다 다시 건다. */
 async function openThrottledPage(context) {
   const page = await context.newPage();
@@ -646,6 +729,16 @@ async function measureLoad(page, url) {
     ? Math.max(metrics.ttff, overlayHidden)
     : null;
 
+  // 템플릿/런타임이 남긴 부팅 마커(performance.mark('ait:*')) 수집: 이름 → startTime(ms, 0.1 단위). 마커가 없는 빌드는 빈 객체다.
+  // 첫 draw 뒤 오버레이 대기까지 끝난 시점에 읽어 TTFF 직후에 찍히는 마커도 담는다. 같은 이름이 여러 번이면 첫 값을 쓴다.
+  const bootMarks = await page.evaluate(() => {
+    const out = {};
+    for (const e of performance.getEntriesByType('mark')) {
+      if (e.name.indexOf('ait:') === 0 && !(e.name in out)) out[e.name] = Math.round(e.startTime * 10) / 10;
+    }
+    return out;
+  }).catch(() => ({}));
+
   // 사용자 제스처 1회(캔버스 중앙 클릭): TTFF·전송량·firstVisible 이 모두 확정된 뒤라 측정에는 영향이 없다. 브라우저 자동재생 정책 때문에
   // 제스처가 없으면 AudioContext 가 suspended 로 남아 외부화 오디오의 재수화/디코드 경로가 돌지 않는다(P0-1 진단 전제).
   if (gotDraw && SEND_GESTURE) {
@@ -659,7 +752,7 @@ async function measureLoad(page, url) {
       console.warn(`  제스처 클릭 실패(무시): ${e && e.message}`);
     }
   }
-  return { ...metrics, firstVisible, unityReady };
+  return { ...metrics, firstVisible, unityReady, bootMarks };
 }
 
 /**
@@ -856,6 +949,7 @@ async function measureIteration(browser, url, iter, label) {
       domContentLoadedMs: metrics.domContentLoaded,
       loadEventMs: metrics.loadEvent,
       onWireBytes: metrics.onWire,
+      bootMarks: metrics.bootMarks,
       wallClockMs: Date.now() - navStart,
     };
     // 페어 모드 전용 필드 — 단일 모드 결과 JSON 스키마는 기존과 완전히 동일해야 하므로 반드시 가드 안에서만 추가.
@@ -882,6 +976,7 @@ async function measureIteration(browser, url, iter, label) {
           ttffMs: warm.ttff,
           firstVisibleMs: warm.firstVisible,
           onWireBytes: warm.onWire,
+          bootMarks: warm.bootMarks,
         };
         warmNote = ` warm=${typeof warm.ttff === 'number' ? warm.ttff.toFixed(0) + 'ms' : 'N/A'}` +
           `(${((warm.onWire.wasm + warm.onWire.data) / 1048576).toFixed(2)}MB)`;
@@ -902,6 +997,11 @@ async function measureIteration(browser, url, iter, label) {
     await withDeadline(context.close(), CLOSE_DEADLINE_MS, 'context.close')
       .catch(e => console.warn(`  컨텍스트 정리 실패(iter ${iter + 1}): ${e.message}`));
   }
+}
+
+/** 러너 속도 대비 TTFF(= medianTtff / cpuCalibMs). 둘 중 하나라도 없으면 null. */
+function ttffPerCalib(medianTtff, calibMs) {
+  return (typeof medianTtff === 'number' && typeof calibMs === 'number' && calibMs > 0) ? medianTtff / calibMs : null;
 }
 
 /** 반복 샘플들을 집계해 결과 JSON 객체를 만든다(단일/페어 A/B 공용, pairing 필드는 호출부에서 추가). */
@@ -934,6 +1034,10 @@ function summarize(samples, projectPath) {
     },
     iterations: ITERATIONS,
     ttffMs: { median: median(ttffValues), values: ttffValues },
+    // 추가 필드(기존 필드명·중앙값 의미는 그대로): GPU 사전 워밍업 시간, CPU 보정 점수, 보정 대비 TTFF.
+    gpuWarmup: { enabled: gpuWarmupResult.enabled, ms: gpuWarmupResult.ms },
+    cpuCalibMs,
+    ttffPerCalib: ttffPerCalib(median(ttffValues), cpuCalibMs),
     // 아래 세 항목은 추가 지표다(없던 시절의 baseline JSON 에는 없다 — 소비 측은 부재를 허용해야 한다).
     firstVisibleMs: { median: median(visibleValues), values: visibleValues },
     warmTtffMs: { median: median(warmTtffValues), values: warmTtffValues },
@@ -956,6 +1060,9 @@ function summarize(samples, projectPath) {
 // ============================================================================
 let serverProcess = null;
 let pairServerProcess = null;
+// 반복 전에 한 번 재는 실행 단위 값. summarize 가 단일/페어(A/B) 결과 JSON 양쪽에 같은 값을 기록한다.
+let gpuWarmupResult = { enabled: GPU_WARMUP, ms: null };
+let cpuCalibMs = null;
 
 test.afterAll(async () => {
   await killServer(serverProcess, serverPort);
@@ -1018,6 +1125,11 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   const samplesA = [];
   const samplesB = [];
   const order = [];
+
+  // 반복 전에 GPU 프로세스를 띄우고(PERF_GPU_WARMUP=0 이면 생략) CPU 보정 점수를 잰다.
+  gpuWarmupResult = await warmUpGpu(browser);
+  cpuCalibMs = await calibrateCpu(browser);
+  console.log(`  GPU 워밍업: ${gpuWarmupResult.enabled ? `${gpuWarmupResult.ms}ms${gpuWarmupResult.ok === false ? ' (컨텍스트 생성 실패)' : ''}` : '생략(PERF_GPU_WARMUP=0)'} / CPU 보정(${CPU_THROTTLE}×): ${cpuCalibMs !== null ? cpuCalibMs.toFixed(1) + 'ms' : 'N/A'}`);
 
   let slowestIterMs = 0;
   for (let iter = 0; iter < ITERATIONS; iter++) {
@@ -1124,6 +1236,8 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
   console.log(`  TTFF median:      ${resultA.ttffMs.median !== null ? resultA.ttffMs.median.toFixed(0) + ' ms' : 'N/A'} ` +
     `(${resultA.ttffMs.values.length}/${ITERATIONS} valid)`);
   console.log(`  화면 노출 median: ${resultA.firstVisibleMs.median !== null ? resultA.firstVisibleMs.median.toFixed(0) + ' ms' : 'N/A'}`);
+  console.log(`  CPU 보정:         ${resultA.cpuCalibMs !== null ? resultA.cpuCalibMs.toFixed(1) + ' ms' : 'N/A'} ` +
+    `(ttffPerCalib=${resultA.ttffPerCalib !== null ? resultA.ttffPerCalib.toFixed(2) : 'N/A'}, GPU 워밍업=${resultA.gpuWarmup.enabled ? resultA.gpuWarmup.ms + ' ms' : '생략'})`);
   console.log(`  재방문 TTFF:      ${resultA.warmTtffMs.median !== null ? resultA.warmTtffMs.median.toFixed(0) + ' ms' : 'N/A'} ` +
     `(data+wasm 전송 ${resultA.warmCodeDataBytes.median !== null ? (resultA.warmCodeDataBytes.median / 1048576).toFixed(2) + ' MB' : 'N/A'})`);
   console.log(`  on-wire wasm:     ${resultA.onWireBytes.wasm.median ? (resultA.onWireBytes.wasm.median / 1048576).toFixed(2) + ' MB' : 'N/A'}`);

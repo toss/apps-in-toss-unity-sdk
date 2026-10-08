@@ -161,6 +161,14 @@ public static class HeavyBuildVariants
     }
 
     /// <summary>프레임워크 stacktrace-lazy 패치만 끈 대조군. 기본 빌드와 pair 로 돌려 부팅 중 jsStackTrace 제거 효과를 잰다.</summary>
+    [HeavyVariant("idbprewarm-off")]
+    public static void ApplyIdbPrewarmOff(AITEditorScriptObject config)
+    {
+        if (config == null) throw new ArgumentNullException(nameof(config));
+        config.idbPrewarm = 0;
+    }
+
+    /// <summary>IDBFS 프리워밍만 끈 대조군은 위, stacktrace-lazy 패치만 끈 대조군은 아래. 기본 빌드와 pair 로 돌린다.</summary>
     [HeavyVariant("stacklazy-off")]
     public static void ApplyStackLazyOff(AITEditorScriptObject config)
     {

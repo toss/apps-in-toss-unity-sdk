@@ -329,6 +329,7 @@ async function runSession(label, projectPath, port, round, full) {
     m.coins = s.coins;
     m.jumps = s.jumps;
     m.frames = s.frames;
+    m.renderPixels = (s.screenW || 0) * (s.screenH || 0); // 렌더 해상도(DPR 상한 반영) — 프레임 시간·메모리 차이 해석용
     m.avgFrameMs = s.avgMs;
     m.p50FrameMs = s.p50Ms;
     m.p95FrameMs = s.p95Ms;
@@ -390,7 +391,7 @@ async function runSession(label, projectPath, port, round, full) {
 
 const METRICS = [
   ['titleMs', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
-  ['fps', '', 1], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
+  ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {
   const out = {};

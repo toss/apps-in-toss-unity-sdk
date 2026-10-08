@@ -26,6 +26,7 @@
 //   audioPatched       bool     framework 패치의 compressed-clip-meta 가 적용됐는지. false 면 런타임이 압축 재생 경로를 쓰지 않는다   기본 false
 //   lowMemoryTier      bool     저사양 기기 티어 판별 사용(ait-mem.js 가 AITMemory.lowMemTier 를 계산)          기본 true
 //   pageCacheDeferredPut number tri-state 그대로(-1 자동=WebKit 만 / 0 끔 / 1 모든 엔진). 런타임이 UA 로 자동을 푼다  기본 -1
+//   idbPrewarm         bool     index.html head 에서 IDBFS DB("/idbfs" v21)를 미리 열어 콜드 생성 비용을 부팅 앞으로 뺌     기본 true
 //   textureStreamingMemoryBudgetMB number 스트림 텍스처 동시 RGBA32 메모리 예산(MB). 0 이하면 제한 없음               기본 16
 //   audioStreamLoopTranscode bool 루프 클립도 스트림 사본 재인코딩(빌드타임 게이트; 런타임은 로그용)                기본 false
 //   raw                object   설정의 원본 tri-state 값(-1/0/1). 디버깅·로그 전용
@@ -115,6 +116,12 @@ namespace AppsInToss.Editor.Package
             return c.pageCacheDeferredPut < 0 ? -1 : (c.pageCacheDeferredPut == 1 ? 1 : 0);
         }
 
+        /// <summary>IDBFS 프리워밍. 자동(-1)은 켜짐, 0 끔, 1 켬. 런타임은 키가 없으면 켠 것으로 본다.</summary>
+        internal static bool EffectiveIdbPrewarm(AITEditorScriptObject c)
+        {
+            return c == null || Resolve(c.idbPrewarm, AITDefaultSettings.GetDefaultIdbPrewarm());
+        }
+
         /// <summary>텍스처 스트리밍 동시 메모리 예산(MB). 0 이하는 0(제한 없음)으로 정규화한다.</summary>
         internal static int EffectiveTextureStreamingMemoryBudgetMB(AITEditorScriptObject c)
         {
@@ -191,6 +198,7 @@ namespace AppsInToss.Editor.Package
             AppendBool(sb, "audioPatched", audioPatched);
             AppendBool(sb, "lowMemoryTier", EffectiveLowMemoryTier(config));
             AppendInt(sb, "pageCacheDeferredPut", EffectivePageCacheDeferredPut(config));
+            AppendBool(sb, "idbPrewarm", EffectiveIdbPrewarm(config));
             AppendInt(sb, "textureStreamingMemoryBudgetMB", EffectiveTextureStreamingMemoryBudgetMB(config));
             AppendBool(sb, "audioStreamLoopTranscode", EffectiveAudioStreamLoopTranscode(config));
 
@@ -206,6 +214,7 @@ namespace AppsInToss.Editor.Package
             AppendInt(sb, "audioForceCompressedPlayback", config != null ? config.audioForceCompressedPlayback : -1);
             AppendInt(sb, "lowMemoryTier", config != null ? config.lowMemoryTier : -1);
             AppendInt(sb, "pageCacheDeferredPut", config != null ? config.pageCacheDeferredPut : -1);
+            AppendInt(sb, "idbPrewarm", config != null ? config.idbPrewarm : -1);
             AppendInt(sb, "audioStreamLoopTranscode", config != null ? config.audioStreamLoopTranscode : -1);
             sb.Append('}');
 

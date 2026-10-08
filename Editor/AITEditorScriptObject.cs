@@ -741,6 +741,11 @@ namespace AppsInToss
                  "WebKit(iOS) 은 put 중 본문 사본이 상주해 RSS 가 커지므로 자동에서도 켭니다. 캐시 히트는 다음 방문부터 적용됩니다.")]
         public int pageCacheDeferredPut = -1;
 
+        [Tooltip("IDBFS 프리워밍: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "콜드 첫 실행에서 Unity 가 부팅 critical path 에서 만드는 IndexedDB(\"/idbfs\", v21, FILE_DATA 스토어)를 index.html head 에서 미리 열어 생성합니다. " +
+                 "이미 있거나 버전이 달라도 조용히 무시하며 연결은 즉시 닫습니다. 런타임에서는 ?aitidbprewarm=0 으로도 끌 수 있습니다.")]
+        public int idbPrewarm = -1;
+
         [Tooltip("텍스처 스트리밍 동시 메모리 예산(MB, 기본 16). auto(-1) textureStreaming 은 (스텁 RGBA32 − 원본 GPU 바이트) 합계가 이 예산 안에 들어오는 텍스처만 외부화합니다. " +
                  "0 이하이면 제한 없음, textureStreaming=1 이면 이 값을 무시합니다.")]
         public int textureStreamingMemoryBudgetMB = 16;
@@ -1312,6 +1317,12 @@ namespace AppsInToss
         public static bool GetDefaultPageCacheDeferredPut()
         {
             return false;
+        }
+
+        /// <summary>IDBFS 프리워밍 자동 실효값: true. 콜드 부팅에서 IDBFS DB 생성을 head 로 앞당기고, 실패해도 조용히 무시한다.</summary>
+        public static bool GetDefaultIdbPrewarm()
+        {
+            return true;
         }
 
         /// <summary>루프 오디오 재인코딩 자동 실효값: false. 루프 이음새 청취 검증 전까지 opt-in.</summary>

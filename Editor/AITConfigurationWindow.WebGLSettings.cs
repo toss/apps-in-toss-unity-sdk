@@ -1426,6 +1426,7 @@ namespace AppsInToss.Editor
             if (config.lowMemoryTier >= 0 && (config.lowMemoryTier == 1) != AITDefaultSettings.GetDefaultLowMemoryTier()) count++;
             // pageCacheDeferredPut 은 자동(WebKit 만)이 엔진별로 갈리므로 0/1 어느 쪽이든 명시값이면 변경으로 본다.
             if (config.pageCacheDeferredPut >= 0) count++;
+            if (config.idbPrewarm >= 0 && (config.idbPrewarm == 1) != AITDefaultSettings.GetDefaultIdbPrewarm()) count++;
             if (config.audioStreamLoopTranscode >= 0 && (config.audioStreamLoopTranscode == 1) != AITDefaultSettings.GetDefaultAudioStreamLoopTranscode()) count++;
             if (config.textureStreamingMemoryBudgetMB != AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB) count++;
             if (config.textureStreamKeepGpuFormat >= 0 && (config.textureStreamKeepGpuFormat == 1) != AITDefaultSettings.GetDefaultTextureStreamKeepGpuFormat()) count++;
@@ -1681,6 +1682,7 @@ namespace AppsInToss.Editor
             config.audioForceCompressedMinSeconds = 10f;
             config.lowMemoryTier = -1;
             config.pageCacheDeferredPut = -1;
+            config.idbPrewarm = -1;
             config.audioStreamLoopTranscode = -1;
             config.textureStreamingMemoryBudgetMB = AITDefaultSettings.DefaultTextureStreamingMemoryBudgetMB;
             config.textureStreamKeepGpuFormat = -1;

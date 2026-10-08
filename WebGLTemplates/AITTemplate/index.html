@@ -12,6 +12,39 @@
         var __AIT_PERF = (function(){try{return JSON.parse('%AIT_PERF_FLAGS%')||{}}catch(e){return {}}})();
         window.__AIT_PERF = __AIT_PERF;
     </script>
+    <!-- IDBFS 프리워밍. 콜드 첫 실행에서는 Unity 가 preRun 의 FS.syncfs(true) 안에서 IndexedDB("/idbfs" v21, FILE_DATA 스토어,
+         timestamp 인덱스)를 처음 만들고, 이 생성(CI 측정 약 190ms, 웜 약 30ms)이 부팅 critical path 에 놓인다.
+         head 에서 같은 스키마로 미리 열어 두면 생성 비용이 다운로드와 겹친다. 버전 21 은 Unity 2021.3·6000.x 의 Emscripten IDBFS 와 같다.
+         __AIT_PERF.idbPrewarm 이 false/0 이거나 ?aitidbprewarm=0 이면 건너뛴다. 키가 없으면 켠다.
+         더 높은 버전의 DB 가 이미 있어 VersionError 가 나는 경우 등 모든 오류는 조용히 무시하고, 연결은 열리자마자 닫는다(이후 Unity 의 open/versionchange 를 막지 않음). -->
+    <script>
+        /* AIT-IDB-PREWARM:BEGIN */
+        (function () {
+            try {
+                var pf = window.__AIT_PERF;
+                if (pf && (pf.idbPrewarm === false || pf.idbPrewarm === 0)) return;
+                try { if (new URLSearchParams(location.search).get('aitidbprewarm') === '0') return; } catch (e) { /* URLSearchParams 미지원 — 플래그만 쓴다 */ }
+                if (!window.indexedDB) return;
+                var r = indexedDB.open('/idbfs', 21);
+                r.onupgradeneeded = function (e) {
+                    var db = e.target.result, t = e.target.transaction;
+                    var st = db.objectStoreNames.contains('FILE_DATA') ? t.objectStore('FILE_DATA') : db.createObjectStore('FILE_DATA');
+                    if (!st.indexNames.contains('timestamp')) st.createIndex('timestamp', 'timestamp', { unique: false });
+                };
+                r.onsuccess = function () {
+                    try {
+                        var db = r.result;
+                        db.onversionchange = function () { db.close(); };
+                        performance.mark('ait:idb-prewarm');
+                        db.close();
+                    } catch (e) { /* 무시 */ }
+                };
+                r.onerror = function (e) { try { e.preventDefault(); } catch (x) { /* 무시 */ } };
+                r.onblocked = function (e) { try { e.preventDefault(); } catch (x) { /* 무시 */ } };
+            } catch (e) { /* 프리워밍 실패는 부팅에 영향을 주지 않는다 */ }
+        })();
+        /* AIT-IDB-PREWARM:END */
+    </script>
     <title>Unity WebGL Player | %UNITY_WEB_NAME%</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <!-- TemplateData/style.css 링크 없음: 모든 스타일은 아래 인라인 <style>에 있고(파일은 죽은 참조로 보존),

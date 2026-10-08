@@ -38,6 +38,7 @@ const LABEL_A = process.env.PERF_LABEL_A || 'A';
 const LABEL_B = process.env.PERF_LABEL_B || 'B';
 const REQUIRE = process.env.RUN_REQUIRE === '1';
 const ROUNDS = Math.max(1, parseInt(process.env.RUN_ROUNDS || '3', 10));
+const RUN_DPR = parseFloat(process.env.RUN_DPR || '0') || 0;
 const CPU_THROTTLE = Math.max(1, parseFloat(process.env.PERF_CPU_THROTTLE || '4'));
 const CHANNEL = process.env.RUN_CHROME_CHANNEL === undefined ? 'chrome' : process.env.RUN_CHROME_CHANNEL;
 // 기본 설정(pnpm test)은 모든 *.test.js 를 돌린다. mobilegame 빌드를 지목한 실행에서만 돈다.
@@ -255,7 +256,8 @@ async function runSession(label, projectPath, port, round, full) {
   });
   const { defaultBrowserType, ...device } = devices['Pixel 7'];
   void defaultBrowserType;
-  const context = await browser.newContext({ ...device });
+  // RUN_DPR 로 기기 DPR 을 바꿀 수 있다. 2 이하면 SDK 의 자동 DPR 상한이 걸리지 않아 A/B 가 같은 픽셀 수를 그린다.
+  const context = await browser.newContext({ ...device, ...(RUN_DPR > 0 ? { deviceScaleFactor: RUN_DPR } : {}) });
   const page = await context.newPage();
   await page.addInitScript(INIT_SCRIPT);
   const origin = `http://127.0.0.1:${port}`;
@@ -433,7 +435,7 @@ test.describe('Mobile web game (tap runner) play benchmark', () => {
         const rs = sessions.filter((r) => r.label === side.label);
         bySide[side.label] = { project: side.project, summary: summarize(rs), checksums: [...new Set(rs.map((r) => r.checksum))] };
       }
-      console.log(`\n📊 Mobile game — Unity ${UNITY_VERSION}, CPU x${CPU_THROTTLE}, ${ROUNDS} rounds/side (중앙값)`);
+      console.log(`\n📊 Mobile game — Unity ${UNITY_VERSION}, CPU x${CPU_THROTTLE}${RUN_DPR ? `, DPR ${RUN_DPR}` : ''}, ${ROUNDS} rounds/side (중앙값)`);
       const header = ['metric', ...sides.map((s) => s.label), ...(PAIR_MODE ? ['B−A'] : [])];
       console.log('  ' + header.join(' | '));
       for (const [k] of METRICS) {
@@ -448,7 +450,7 @@ test.describe('Mobile web game (tap runner) play benchmark', () => {
       }
 
       const out = {
-        unityVersion: UNITY_VERSION, cpuThrottle: CPU_THROTTLE, rounds: ROUNDS, pairMode: PAIR_MODE,
+        unityVersion: UNITY_VERSION, cpuThrottle: CPU_THROTTLE, dpr: RUN_DPR || null, rounds: ROUNDS, pairMode: PAIR_MODE,
         labels: { a: LABEL_A, b: PAIR_MODE ? LABEL_B : null }, sides: bySide, sessions,
       };
       fs.writeFileSync(RESULT_PATH, JSON.stringify(out, null, 2));

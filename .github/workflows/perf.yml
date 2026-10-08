@@ -82,6 +82,12 @@ on:
         description: '반복 횟수(median-of-N). 미지정 시 5(기존 동작).'
         type: string
         default: ''
+      run_dpr:
+        description: >-
+          mobilegame 플레이 벤치의 에뮬레이션 기기 DPR(빈 값 = Pixel 7 기본 2.625).
+          2 로 주면 SDK 의 자동 DPR 상한(2)이 걸리지 않아 A/B 가 같은 픽셀 수를 그린다 — DPR 외 개선분만 분리할 때 쓴다.
+        type: string
+        default: ''
       memlimit:
         description: >-
           true 면 heavy 빌드 후 memlimit.yml(최소 생존 메모리 한도 스윕)을 같은 run 의 heavy 아티팩트로 이어서 실행한다
@@ -392,6 +398,7 @@ jobs:
           PERF_LABEL_A: ${{ needs.setup.outputs.base_run_id != '' && format('base#{0}', needs.setup.outputs.base_run_id) || format('run#{0}', github.run_id) }}
           PERF_LABEL_B: ${{ needs.setup.outputs.pair_run_id != '' && format('pair#{0}', needs.setup.outputs.pair_run_id) || '' }}
           PERF_CPU_THROTTLE: ${{ inputs.net_profile == 'mobile' && '6' || '4' }}
+          RUN_DPR: ${{ inputs.run_dpr || '' }}
           RUN_REQUIRE: "1"
           RUN_ROUNDS: ${{ needs.setup.outputs.pair_mode == 'true' && '5' || '3' }}
         run: pnpm run test:mobilegame

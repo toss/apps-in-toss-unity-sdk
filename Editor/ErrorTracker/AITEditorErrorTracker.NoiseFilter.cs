@@ -308,6 +308,12 @@ namespace AppsInToss.Editor.ErrorTracker
             //      Editor. See the Console for more details."
             // Sentry APPS-IN-TOSS-UNITY-SDK-13K.
             "Unable to reverse network traffic to device",
+            // Unity Android 키스토어 위치/비밀번호 설정 오류. 사용자 Player Settings의 Publishing Settings 문제로
+            // 발생하는 Unity 엔진 노이즈이며 SDK 출력이 아님. AitKeywords에 없어 보호 가드와 충돌 없음.
+            // 예: "UnityError: Unable to list keys in the keystore. Please make sure the location and password
+            //      of the keystore is correct."
+            // Sentry APPS-IN-TOSS-UNITY-SDK-1CR.
+            "Unable to list keys in the keystore",
         };
 
         // DetermineErrorSource에서 메시지를 SDK로 분류하는 추가 패턴.

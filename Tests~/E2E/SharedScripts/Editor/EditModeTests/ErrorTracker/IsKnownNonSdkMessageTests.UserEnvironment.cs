@@ -563,4 +563,24 @@ public partial class IsKnownNonSdkMessageTests
     }
 
     #endregion
+
+    #region Unity Android 키스토어 환경 오류 (APPS-IN-TOSS-UNITY-SDK-1CR)
+
+    [Test]
+    public void UnableToListKeysInKeystore_ReturnsTrue()
+    {
+        // 사용자 Android 키스토어 경로/비밀번호 설정 오류 — SDK 밖 출처
+        Assert.IsTrue(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "UnityError: Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."));
+    }
+
+    [Test]
+    public void UnableToListKeysInKeystore_AitPrefix_NotFiltered()
+    {
+        // [AIT 접두 SDK 로그는 보호 가드로 드롭되지 않음
+        Assert.IsFalse(AITEditorErrorTracker.IsKnownNonSdkMessage(
+            "[AIT] Unable to list keys in the keystore. Please make sure the location and password of the keystore is correct."));
+    }
+
+    #endregion
 }

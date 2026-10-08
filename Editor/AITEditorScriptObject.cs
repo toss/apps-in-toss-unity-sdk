@@ -3,6 +3,14 @@ using UnityEditor;
 
 namespace AppsInToss
 {
+    /// <summary>소프트 키보드 대응 방식. 0(Pan)이 기본값이라 필드가 없던 기존 에셋도 Pan 으로 읽힌다.</summary>
+    public enum AITKeyboardMode
+    {
+        Pan = 0,
+        Resize = 1,
+        None = 2,
+    }
+
     /// <summary>
     /// 빌드 프로필 설정
     /// Dev Server (개발용, 빌드 속도 우선)와 Production (배포용, 최적화 우선)으로 구분
@@ -760,6 +768,10 @@ namespace AppsInToss
                  "lowMemoryTier 1 이상인 기기에서 브라우저 디코드가 이미지를 줄여(tier 1: 512 초과 시 절반, tier 2: 256 초과 절반/1024 초과 1/4) GL 텍스처를 작게 올립니다. " +
                  "mip 이 없는 스프라이트/UI 텍스처는 전역 mip 제한이 먹지 않아 이 경로로만 줄일 수 있습니다. raw(GPU 포맷 보존)는 위쪽 mip 레벨을 건너뜁니다.")]
         public int textureStreamLowTierDownscale = -1;
+
+        [Header("키보드 설정")]
+        [Tooltip("소프트 키보드 대응: Pan(기본) = 탭한 입력창이 가리면 화면만 위로 이동, Resize = 캔버스 리사이즈, None = 상단 위치 보정만")]
+        public AITKeyboardMode keyboardMode = AITKeyboardMode.Pan;
 
         [Header("권한 설정")]
         public AITPermissionConfig permissionConfig = new AITPermissionConfig();

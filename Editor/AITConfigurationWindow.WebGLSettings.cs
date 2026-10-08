@@ -78,6 +78,11 @@ namespace AppsInToss.Editor
 
             GUILayout.Space(10);
 
+            // 소프트 키보드 대응
+            DrawKeyboardModeSetting();
+
+            GUILayout.Space(10);
+
             // 변경된 설정 개수 표시
             int modifiedCount = CountModifiedWebGLSettings(config);
             if (modifiedCount > 0)
@@ -1285,6 +1290,31 @@ namespace AppsInToss.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawKeyboardModeSetting()
+        {
+            bool isModified = config.keyboardMode != AITKeyboardMode.Pan;
+
+            EditorGUILayout.BeginHorizontal();
+
+            DrawModifiedIndicator(isModified);
+
+            string[] options = { "Pan (가려지면 화면 이동)", "Resize (캔버스 리사이즈)", "None (위치 보정만)" };
+            int newIndex = EditorGUILayout.Popup(
+                new GUIContent("소프트 키보드 대응",
+                    "Pan: 탭한 입력창이 키보드에 가려질 때만 화면을 위로 옮깁니다(캔버스 크기 불변, 기본값). " +
+                    "Resize: 키보드 위 영역에 맞춰 캔버스를 줄입니다(키보드 애니메이션 중 끊길 수 있음). " +
+                    "None: 상단 위치 보정만 하며 아래쪽 입력창은 가려질 수 있습니다."),
+                (int)config.keyboardMode, options);
+            config.keyboardMode = (AITKeyboardMode)newIndex;
+
+            if (isModified && DrawResetButton())
+            {
+                config.keyboardMode = AITKeyboardMode.Pan;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
         /// <summary>
         /// WebGL 최적화 레버 중 기본값에서 벗어난 항목 수를 센다("N개 설정이 기본값에서 변경됨" 배지).
         ///
@@ -1402,6 +1432,8 @@ namespace AppsInToss.Editor
             if (config.textureStreamBrowserDecode >= 0 && (config.textureStreamBrowserDecode == 1) != AITDefaultSettings.GetDefaultTextureStreamBrowserDecode()) count++;
             if (config.textureStreamLowTierDownscale >= 0 && (config.textureStreamLowTierDownscale == 1) != AITDefaultSettings.GetDefaultTextureStreamLowTierDownscale()) count++;
             if (config.fontStreamingUnloadBundle >= 0 && (config.fontStreamingUnloadBundle == 1) != AITDefaultSettings.GetDefaultFontStreamingUnloadBundle()) count++;
+
+            if (config.keyboardMode != AITKeyboardMode.Pan) count++;
 
             return count;
         }
@@ -1655,6 +1687,7 @@ namespace AppsInToss.Editor
             config.textureStreamBrowserDecode = -1;
             config.textureStreamLowTierDownscale = -1;
             config.fontStreamingUnloadBundle = -1;
+            config.keyboardMode = AITKeyboardMode.Pan;
         }
 
     }

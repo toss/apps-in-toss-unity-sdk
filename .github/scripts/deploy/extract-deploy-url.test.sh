@@ -38,40 +38,40 @@ echo "extract-deploy-url.sh 셸 테스트"
 
 # 박스 래핑 접합 (DeployUrlTests.cs: ExtractDeployUrl_BoxWrappedUrl_JoinsContinuationLines)
 BOX_WRAPPED_INPUT="╭──────────────────────────────────────────────────────────────────────────────╮
-│  intoss-private://unity-sdk-sample?_deploymentId=01a01868-f10b-7279-b96f-ab  │
-│  bcd6865b68  │
+│  intoss-private://unity-sdk-sample?_deploymentId=00000000-0000-7000-8000-00  │
+│  0000000002  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 "
 assert_extract \
   "박스 래핑된 URL을 접합한다" \
   "$BOX_WRAPPED_INPUT" \
-  'intoss-private://unity-sdk-sample?_deploymentId=01a01868-f10b-7279-b96f-abbcd6865b68&host=appsInTossHost'
+  'intoss-private://unity-sdk-sample?_deploymentId=00000000-0000-7000-8000-000000000002&host=appsInTossHost'
 
 # host 파라미터가 두 번째 줄로 래핑된 경우 (ExtractDeployUrl_HostParamWrappedToSecondLine_JoinsAndKeepsHost)
-HOST_WRAPPED_INPUT="│  intoss-private://ait?_deploymentId=01a018fc-a0e5-7558-9a3a-166fcf  │
-│  e4e4e1&host=appsInTossHost  │
+HOST_WRAPPED_INPUT="│  intoss-private://ait?_deploymentId=00000000-0000-7000-8000-000000  │
+│  000003&host=appsInTossHost  │
 "
 assert_extract \
   "host 파라미터가 래핑돼도 접합 후 유지한다" \
   "$HOST_WRAPPED_INPUT" \
-  'intoss-private://ait?_deploymentId=01a018fc-a0e5-7558-9a3a-166fcfe4e4e1&host=appsInTossHost'
+  'intoss-private://ait?_deploymentId=00000000-0000-7000-8000-000000000003&host=appsInTossHost'
 
 # URL이 줄 끝까지 닿지 않으면(래핑 아님) 다음 줄 텍스트를 삼키지 않는다
 # (ExtractDeployUrl_UnwrappedUrlFollowedByText_DoesNotSwallowNextLine)
-UNWRAPPED_INPUT="│  intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec 완료  │
+UNWRAPPED_INPUT="│  intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001 완료  │
 │  SUCCESS  │
 "
 assert_extract \
   "래핑이 아닌 URL 뒤 텍스트를 삼키지 않는다" \
   "$UNWRAPPED_INPUT" \
-  'intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec&host=appsInTossHost'
+  'intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001&host=appsInTossHost'
 
 # host가 이미 있으면 중복 부가하지 않는다 (ExtractDeployUrl_HostAlreadyPresent_DoesNotDuplicate)
 assert_extract \
   "host가 이미 있으면 중복 부가하지 않는다" \
-  "intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec&host=appsInTossHost
+  "intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001&host=appsInTossHost
 " \
-  'intoss-private://app?_deploymentId=0198c10b-68c3-7d2b-a0ab-2c9626b475ec&host=appsInTossHost'
+  'intoss-private://app?_deploymentId=00000000-0000-7000-8000-000000000001&host=appsInTossHost'
 
 # 쿼리스트링이 없으면 ?host=로 부가한다 (ExtractDeployUrl_NoQueryString_AppendsHostWithQuestionMark)
 assert_extract \

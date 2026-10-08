@@ -122,8 +122,67 @@ public class InteractiveAPITesterUI
         BuildParameterInputView();
         BuildResultView();
 
+        BuildKeyboardOverlay(_safeArea);
+
         // 초기 상태
         ShowView(ViewState.APIList);
+    }
+
+    // ─── 소프트 키보드 검증용 오버레이 ───
+    // 우하단 "KB" 버튼으로 토글. 하단 채팅형 입력창(화면 하단 8%)과 중앙 모달 입력창(화면 높이 약 60%)을 띄워
+    // 키보드에 가려지는 위치의 입력 동작을 수동/자동으로 확인한다. 레이아웃 그룹 밖(앵커 고정)이라 기존 목록 좌표를 바꾸지 않는다.
+
+    private GameObject _keyboardOverlay;
+
+    private static void Anchor(RectTransform rt, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 pos, Vector2 size)
+    {
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.pivot = pivot;
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = size;
+    }
+
+    private void BuildKeyboardOverlay(RectTransform parent)
+    {
+        // 오버레이 루트: 전체 화면 딤. 빈 곳을 탭하면 닫힌다.
+        var dim = UIBuilder.CreatePanel(parent, new Color(0f, 0f, 0f, 0.55f));
+        dim.name = "KeyboardOverlay";
+        UIBuilder.SetStretch(dim);
+        _keyboardOverlay = dim.gameObject;
+        var dimBtn = dim.gameObject.AddComponent<Button>();
+        dimBtn.transition = Selectable.Transition.None;
+        dimBtn.onClick.AddListener(() => _keyboardOverlay.SetActive(false));
+
+        // (a) 하단 채팅형 입력창: 하단에서 8% 위
+        var chat = UIBuilder.CreateInputField(dim, "Chat (bottom)...");
+        chat.name = "KeyboardChatInput";
+        Anchor((RectTransform)chat.transform, new Vector2(0.04f, 0.08f), new Vector2(0.96f, 0.08f),
+            new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0f, 48f));
+
+        // (b) 중앙 모달: 화면 위에서 약 60% 지점이 입력창 중심
+        var modal = UIBuilder.CreatePanel(dim, UIBuilder.Theme.SectionBg);
+        modal.name = "KeyboardModal";
+        Anchor(modal, new Vector2(0.5f, 0.4f), new Vector2(0.5f, 0.4f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(340f, 200f));
+        var modalBlock = modal.gameObject.AddComponent<Button>(); // 패널 탭이 딤의 닫기로 새지 않게 막는다
+        modalBlock.transition = Selectable.Transition.None;
+
+        var title = UIBuilder.CreateText(modal, "Modal input", UIBuilder.Theme.FontNormal, UIBuilder.Theme.TextPrimary, TextAnchor.MiddleCenter);
+        Anchor(title.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 64f), new Vector2(300f, 32f));
+
+        var modalInput = UIBuilder.CreateInputField(modal, "Modal (center)...");
+        modalInput.name = "KeyboardModalInput";
+        Anchor((RectTransform)modalInput.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(300f, 48f));
+
+        var close = UIBuilder.CreateButton(modal, "Close", () => _keyboardOverlay.SetActive(false));
+        Anchor((RectTransform)close.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -64f), new Vector2(300f, 40f));
+
+        _keyboardOverlay.SetActive(false);
+
+        // 토글 버튼: 우하단 고정, 오버레이 위에 항상 보이도록 마지막 형제
+        var toggle = UIBuilder.CreateButton(parent, "KB", () => _keyboardOverlay.SetActive(!_keyboardOverlay.activeSelf));
+        toggle.name = "KeyboardToggleButton";
+        Anchor((RectTransform)toggle.transform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-12f, 12f), new Vector2(64f, 40f));
     }
 
     /// <summary>

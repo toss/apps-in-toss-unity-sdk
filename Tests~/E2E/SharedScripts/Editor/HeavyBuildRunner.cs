@@ -34,6 +34,29 @@ public class HeavyBuildRunner
         Debug.Log("Heavy Perf Fixture Build");
         Debug.Log("========================================");
 
+        // 벤치 브랜치: main SDK 위에서 perf/consolidated 의 mobilegame posture 와 같은 게임을 같은 절차로 빌드한다
+        // (헤비 콘텐츠·E2E 픽스처·Sentry 없이 게임 씬 + SDK, AIT_PERF_MINIMAL 로 E2E 부트스트래퍼 차단).
+        AssetDatabase.DeleteAsset(HeavyRoot);
+        AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
+        AssetDatabase.DeleteAsset("Assets/link.xml");
+        System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
+        string[] runScenes;
+        try
+        {
+            runScenes = MobileGameBuilder.Generate();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Mobile game fixture generation FAILED: {ex}");
+            EditorApplication.Exit(1);
+            return;
+        }
+        System.Environment.SetEnvironmentVariable(MobileGameBuilder.ScenesEnvVar, string.Join(";", runScenes));
+        Debug.Log($"[heavy] mobilegame (bench): {runScenes[0]} 로 빌드");
+        E2EBuildRunner.BuildWithSDK(minimal: true);
+        return;
+
+#pragma warning disable CS0162
         try
         {
             GenerateHeavyContent();
@@ -52,6 +75,7 @@ public class HeavyBuildRunner
         // 생성 콘텐츠가 임포트된 상태에서 검증된 E2E 빌드 파이프라인을 그대로 재사용.
         // (씬/SDK 설정/포트 오프셋/산출물 검증/exit code 처리 전부 E2EBuildRunner 소유)
         E2EBuildRunner.BuildWithSDK();
+#pragma warning restore CS0162
     }
 
     /// <summary>커맨드라인 진입점 (perf CI / run-local-tests.sh --heavy 에서 호출).</summary>

@@ -8,7 +8,10 @@ using AppsInToss;
 /// </summary>
 public static class E2EBootstrapper
 {
+    // 벤치(minimal) 빌드(AIT_PERF_MINIMAL)는 픽스처 없이 게임만 재므로 자동 부팅을 끈다.
+#if !AIT_PERF_MINIMAL
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+#endif
     private static void OnAfterSceneLoad()
     {
         Initialize();

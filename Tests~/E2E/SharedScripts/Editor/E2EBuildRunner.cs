@@ -10,8 +10,16 @@ using AppsInToss.Editor;
 /// </summary>
 public class E2EBuildRunner
 {
+    internal const string MinimalDefine = "AIT_PERF_MINIMAL";
+
     [MenuItem("E2E/Build with SDK")]
     public static void BuildWithSDK()
+    {
+        BuildWithSDK(minimal: false);
+    }
+
+    /// <param name="minimal">true 면 벤치 씬 픽스처와 E2E 부트스트래퍼를 빼고(AIT_PERF_MINIMAL) 빌드한다.</param>
+    public static void BuildWithSDK(bool minimal)
     {
         Debug.Log("========================================");
         Debug.Log("E2E Build with Apps in Toss SDK");
@@ -31,6 +39,12 @@ public class E2EBuildRunner
         // webGLExceptionSupport가 커밋값 1에서 3으로 고착돼 ProjectSettings.asset이 계속 dirty였다).
         // E2E 하네스는 픽스처를 더럽히면 안 되므로 러너가 직접 원본을 들고 있다가 빌드 후 되돌린다.
         var preBuildPlayerSettings = PlayerSettingsSnapshot.Capture();
+        string originalWebGLDefines = GetWebGLDefines();
+        if (minimal)
+        {
+            SetWebGLDefines(string.IsNullOrEmpty(originalWebGLDefines) ? MinimalDefine : originalWebGLDefines + ";" + MinimalDefine);
+            Debug.Log($"✓ WebGL 스크립팅 디파인에 {MinimalDefine} 추가");
+        }
 
         // 1. 씬 생성 및 설정
         Debug.Log("[1/5] Creating and setting up benchmark scene...");
@@ -61,7 +75,10 @@ public class E2EBuildRunner
 #else
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 #endif
-        SetupBenchmarkScene();
+        if (!minimal)
+        {
+            SetupBenchmarkScene();
+        }
 
         // 씬 저장
         EditorSceneManager.SaveScene(scene, scenePath);
@@ -79,6 +96,27 @@ public class E2EBuildRunner
         };
         EditorBuildSettings.scenes = scenes;
         Debug.Log("✓ Scene added to Build Settings");
+
+        // 다중 씬 픽스처 훅: AIT_BUILD_SCENES 에 ';' 로 이은 씬 경로 목록이 있으면 빌드 씬 전체를 그 목록으로 바꾼다(index 0 = 부트 씬).
+        string multiScenes = System.Environment.GetEnvironmentVariable("AIT_BUILD_SCENES");
+        if (!string.IsNullOrEmpty(multiScenes))
+        {
+            var sceneList = new System.Collections.Generic.List<EditorBuildSettingsScene>();
+            foreach (var raw in multiScenes.Split(';'))
+            {
+                string sp = raw.Trim();
+                if (sp.Length == 0) continue;
+                if (!File.Exists(sp))
+                {
+                    Debug.LogError($"[E2E] AIT_BUILD_SCENES 의 씬이 없습니다: {sp}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+                sceneList.Add(new EditorBuildSettingsScene(sp, true));
+            }
+            EditorBuildSettings.scenes = sceneList.ToArray();
+            Debug.Log($"✓ Build Settings 씬을 AIT_BUILD_SCENES 로 교체 ({sceneList.Count}개, index 0 = {sceneList[0].path})");
+        }
 
         // 2. SDK 설정 구성
         Debug.Log("[2/5] Configuring Apps in Toss SDK...");
@@ -143,6 +181,10 @@ public class E2EBuildRunner
         // 결과에 영향이 없다. EditorApplication.Exit 이후에는 finally가 보장되지 않으므로
         // 분기 이전에 처리한다.
         preBuildPlayerSettings.Restore();
+        if (minimal)
+        {
+            SetWebGLDefines(originalWebGLDefines);
+        }
         AssetDatabase.SaveAssets();
         Debug.Log("✓ PlayerSettings restored to pre-build state");
 
@@ -367,6 +409,24 @@ public class E2EBuildRunner
         }
 
         Debug.Log("Benchmark scene setup complete (scripts will be added at runtime by E2EBootstrapper)");
+    }
+
+    private static string GetWebGLDefines()
+    {
+#if UNITY_6000_0_OR_NEWER
+        return PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.WebGL);
+#else
+        return PlayerSettings.GetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL);
+#endif
+    }
+
+    private static void SetWebGLDefines(string defines)
+    {
+#if UNITY_6000_0_OR_NEWER
+        PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.WebGL, defines);
+#else
+        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.WebGL, defines);
+#endif
     }
 
     private static Light FindLight()

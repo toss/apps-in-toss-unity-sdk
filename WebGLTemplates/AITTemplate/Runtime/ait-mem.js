@@ -249,9 +249,11 @@
                 if (bootState.stage !== 'first-frame') return;
                 bootState.stage = 'stable';
                 mem.bootStage = 'stable';
+                // 숨김 상태에서 stable 에 닿으면 post.end 를 'bg' 로 시작한다(Android 는 숨겨져도 타이머가 돈다. '' 로 두면 백그라운드 종료가 늦은 사망으로 읽힌다).
+                var postEnd = bootState.end === 'exit' ? 'exit' : (isHidden() ? 'bg' : '');
                 bootState.end = '';
                 bootState.fails = [];
-                bootState.post = { end: '', t: Date.now(), lvl: bootState.lvl };
+                bootState.post = { end: postEnd, t: Date.now(), lvl: bootState.lvl };
                 mem.stableReached = true;
                 writeBoot();
             }, BOOT_STABLE_MS);

@@ -19,7 +19,10 @@
 //  stacktrace-lazy             Unity prejs/Error.js 가 framework 함수 최상위에서 jsStackTrace() 를 불러 Module.stackTraceRegExp 를
 //                              만드는 문장을, 첫 접근 때 계산하는 getter 로 바꾼다. 스택을 문자열로 만들 때 V8 이 바깥 framework
 //                              함수 전체를 다시 파싱(소스 위치 수집)하는 비용이 부팅에서 빠진다. 소비자는 로더 errorHandler 뿐이다.
-//                              마커 /*ait-stacklazy1*/ . 오디오 패치가 꺼져 있어도 단독으로 적용된다(frameworkLazyStackTraceMode).
+//                              프로퍼티는 non-enumerable 이다: Emscripten 의 moduleOverrides 복사(Object.assign({},Module) / for-in)가
+//                              열거 가능한 accessor 를 읽으면 getter 가 부팅 중에 실행돼 지연 효과가 사라진다.
+//                              계산이 던지면 다음 접근에서 다시 시도한다(setter 로 대입한 값은 그대로 유지).
+//                              마커 /*ait-stacklazy2*/ . 오디오 패치가 꺼져 있어도 단독으로 적용된다(frameworkLazyStackTraceMode).
 //
 // === 안전 계약 ===
 //  - 그룹 단위로 원자적이다. 그룹의 모든 앵커가 현재 텍스트에서 정확히 1회 일치할 때만 적용하고,
@@ -64,7 +67,7 @@ namespace AppsInToss.Editor
         internal const string GroupStackTraceLazy = "stacktrace-lazy";
 
         /// <summary>stacktrace-lazy 그룹의 패치 마커. 오디오 마커와 별개라 한쪽만 적용된 파일도 멱등이다.</summary>
-        internal const string StackLazyMarker = "/*ait-stacklazy1*/";
+        internal const string StackLazyMarker = "/*ait-stacklazy2*/";
 
         /// <summary>stacktrace-lazy 환경 변수 오버라이드(1/true = 강제 켬, 0/false = 끔).</summary>
         internal const string LazyStackTraceEnvVar = "AIT_FW_LAZY_STACKTRACE";
@@ -128,11 +131,11 @@ namespace AppsInToss.Editor
 
         private const string StackLazyHead =
             "var stackTraceReferenceMatch;(function(){var c,d=false;Object.defineProperty(Module,\"stackTraceRegExp\","
-            + "{configurable:true,enumerable:true,get:function(){if(!d){d=true;try{"
+            + "{configurable:true,enumerable:false,get:function(){if(!d){d=true;try{"
             + "stackTraceReferenceMatch=jsStackTrace().match(new RegExp(stackTraceReference));if(stackTraceReferenceMatch)c=";
 
         private const string StackLazyTail =
-            "}catch(e){}}return c},set:function(v){d=true;c=v}})})();" + StackLazyMarker;
+            "}catch(e){d=false}}return c},set:function(v){d=true;c=v}})})();" + StackLazyMarker;
 
         /// <summary>
         /// stacktrace-lazy 적용. 앵커가 정확히 1회가 아니거나 우변 끝을 확신할 수 없으면 입력을 그대로 두고 false 와 사유를 돌려준다.

@@ -223,12 +223,53 @@ function generateReport(data, meta) {
       nearEmptyLines.push(`- ${v} near-empty target < ${NEAR_EMPTY_TARGET_MS} ms: TTFF median - (측정값 없음)`);
       continue;
     }
-    nearEmptyLines.push(
-      `- ${v} near-empty target < ${NEAR_EMPTY_TARGET_MS} ms: TTFF median ${Math.round(med)} ms — ${med < NEAR_EMPTY_TARGET_MS ? "OK" : "OVER"}`
-    );
+    let line = `- ${v} near-empty target < ${NEAR_EMPTY_TARGET_MS} ms: TTFF median ${Math.round(med)} ms — ${med < NEAR_EMPTY_TARGET_MS ? "OK" : "OVER"}`;
+    // 구버전 결과 JSON 에는 아래 필드가 없다. 없거나 null 이면 조용히 건너뛴다.
+    const warm = cur.warmTtffMs?.median;
+    if (warm != null && !isNaN(warm)) {
+      line += ` · warm median ${Math.round(warm)} ms (${warm < NEAR_EMPTY_TARGET_MS ? "OK" : "OVER"})`;
+    }
+    if (typeof cur.cpuCalibMs === "number" && !isNaN(cur.cpuCalibMs)) {
+      line += ` · cpuCalib ${cur.cpuCalibMs} ms`;
+    }
+    if (typeof cur.ttffPerCalib === "number" && !isNaN(cur.ttffPerCalib)) {
+      line += ` · ttff/calib ${cur.ttffPerCalib.toFixed(2)}`;
+    }
+    nearEmptyLines.push(line);
   }
   if (nearEmptyLines.length) {
     md += nearEmptyLines.join("\n") + "\n\n";
+  }
+
+  // ait:* 부팅 마크 표(minimal 결과 전용, 기록 전용): 샘플별 bootMarks(cold)와 warm.bootMarks(warm)의 마크 이름 합집합 × 중앙값.
+  // 기준값을 아직 수집하지 않아 임계값·종료 코드는 없다.
+  const markMedian = (samples, pick, name) => {
+    const vals = samples.map((smp) => pick(smp)?.[name]).filter((x) => typeof x === "number" && !isNaN(x)).sort((a, b) => a - b);
+    if (!vals.length) return null;
+    const mid = vals.length >> 1;
+    return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+  };
+  const markRows = [];
+  for (const v of UNITY_VERSIONS) {
+    const cur = data[v]?.current;
+    if (cur?.posture !== "minimal") continue;
+    const samples = Array.isArray(cur.samples) ? cur.samples : [];
+    const names = new Set();
+    for (const smp of samples) {
+      for (const n of Object.keys(smp?.bootMarks || {})) if (n.startsWith("ait:")) names.add(n);
+      for (const n of Object.keys(smp?.warm?.bootMarks || {})) if (n.startsWith("ait:")) names.add(n);
+    }
+    for (const n of [...names].sort()) {
+      const cold = markMedian(samples, (smp) => smp?.bootMarks, n);
+      const warmM = markMedian(samples, (smp) => smp?.warm?.bootMarks, n);
+      markRows.push(`| ${v} | \`${n}\` | ${fmtMs(cold)} | ${fmtMs(warmM)} |`);
+    }
+  }
+  if (markRows.length) {
+    md += "<details>\n<summary>부팅 마크(ait:*) 중앙값</summary>\n\n";
+    md += "| Unity | 마크 | cold 중앙값 | warm 중앙값 |\n";
+    md += "|:------|:-----|-----------:|-----------:|\n";
+    md += markRows.join("\n") + "\n\n</details>\n\n";
   }
 
   // ===== 페어 A/B 표 (pairing 데이터 없으면 섹션 자체를 추가하지 않음 — 기존 리포트와 바이트 동일) =====

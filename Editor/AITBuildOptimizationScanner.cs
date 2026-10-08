@@ -303,8 +303,19 @@ namespace AppsInToss.Editor
             return result;
         }
 
-        // Read/Write 이슈 판정 임계치: 텍스처 CPU 사본 합계(MB). 모델은 1개라도 있으면 이슈.
+        // Read/Write 이슈 판정 임계치: 텍스처 CPU 사본 합계(MB). 모델은 개수만 참고용으로 보여 주고 이슈 판정에는 쓰지 않는다.
+        // 이슈가 되면 Release/Package 빌드 전 차단 모달이 뜨는데, 의도적으로 readable 인 모델 1개 때문에 모달이 계속 뜨면
+        // '다음부터 건너뛰기' 로 최적화 검사 전체가 꺼지기 때문이다.
         private const double ReadableTextureMbThreshold = 8.0;
+
+        /// <summary>
+        /// Read/Write 활성 에셋을 빌드 차단 이슈로 올릴지. 텍스처 CPU 사본 합계가 임계치 이상일 때만 true.
+        /// modelCount 는 판정에 쓰지 않는다(설명에만 표시).
+        /// </summary>
+        internal static bool IsReadableIssue(double textureMb, int modelCount)
+        {
+            return textureMb >= ReadableTextureMbThreshold;
+        }
 
         /// <summary>
         /// isReadable 텍스처가 wasm heap 에 남기는 CPU 사본 크기 추정(바이트).
@@ -313,6 +324,36 @@ namespace AppsInToss.Editor
         internal static long EstimateTextureCpuBytes(int w, int h, bool mips)
         {
             return (long)(w * (long)h * 4 * (mips ? 4.0 / 3.0 : 1.0));
+        }
+
+        /// <summary>
+        /// isReadable 텍스처의 CPU 사본 크기 추정(바이트). w/h 는 maxTextureSize 로 이미 줄인 값이다.
+        /// WebGL 플랫폼 오버라이드가 Automatic 이 아니면 그 포맷의 블록 크기로 계산한다(예: ASTC_6x6 2048² 밉맵 ≈ 2.5 MB).
+        /// 오버라이드가 없고 압축이 Uncompressed 면 RGBA32 기준(EstimateTextureCpuBytes),
+        /// 그 외는 기본 압축 WebGL 포맷(DXT5/ASTC 4x4)의 상한인 1 B/px × 밉맵 배수로 본다.
+        /// </summary>
+        internal static long EstimateReadableCpuBytes(TextureImporter importer, int w, int h)
+        {
+            bool mips = importer.mipmapEnabled;
+            int mipCount = 1;
+            if (mips)
+            {
+                // floor(log2(최장변)) + 1 — 부동소수점 없이 정수로 센다.
+                for (int v = Mathf.Max(w, h); v > 1; v >>= 1) mipCount++;
+            }
+
+            var platformSettings = importer.GetPlatformTextureSettings("WebGL");
+            if (platformSettings.overridden && platformSettings.format != TextureImporterFormat.Automatic)
+            {
+                return AITTextureStreamPlanner.EstimateGpuBytes(platformSettings.format.ToString(), w, h, mipCount);
+            }
+
+            if (importer.textureCompression == TextureImporterCompression.Uncompressed)
+            {
+                return EstimateTextureCpuBytes(w, h, mips);
+            }
+
+            return (long)(w * (long)h * 1.0 * (mips ? 4.0 / 3.0 : 1.0));
         }
 
         /// <summary>
@@ -388,7 +429,7 @@ namespace AppsInToss.Editor
                     var platformSettings = importer.GetPlatformTextureSettings("WebGL");
                     int maxSize = platformSettings.overridden ? platformSettings.maxTextureSize : importer.maxTextureSize;
                     ClampToMaxTextureSize(ref w, ref h, maxSize);
-                    textureBytes += EstimateTextureCpuBytes(w, h, importer.mipmapEnabled);
+                    textureBytes += EstimateReadableCpuBytes(importer, w, h);
                 }
             }
 
@@ -403,8 +444,8 @@ namespace AppsInToss.Editor
                 modelCount++;
             }
 
-            double textureMb = textureBytes / 1e6; // 십진 MB (2048² 밉맵 텍스처 ≈ 22 MB)
-            if (textureMb >= ReadableTextureMbThreshold || modelCount >= 1)
+            double textureMb = textureBytes / 1e6; // 십진 MB (비압축 2048² 밉맵 텍스처 ≈ 22 MB)
+            if (IsReadableIssue(textureMb, modelCount))
             {
                 issue.status = OptimizationStatus.Issue;
                 issue.description = $"{textureCount}개 텍스처(CPU 사본 약 {textureMb:F0} MB) · {modelCount}개 모델이 Read/Write 활성 — " +
@@ -412,8 +453,11 @@ namespace AppsInToss.Editor
             }
             else
             {
+                // 임계치 미만이면 빌드를 막지 않는다. assetPaths 는 남겨 창에서 목록을 볼 수 있게 한다.
                 issue.status = OptimizationStatus.AlreadyOptimal;
-                issue.description = "Read/Write 활성 에셋의 CPU 사본이 작음";
+                issue.description = (textureCount > 0 || modelCount > 0)
+                    ? $"텍스처 CPU 사본 약 {textureMb:F0} MB · Read/Write 모델 {modelCount}개 (참고)"
+                    : "Read/Write 활성 에셋의 CPU 사본이 작음";
             }
 
             return issue;

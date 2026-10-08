@@ -159,6 +159,14 @@ public static class HeavyBuildVariants
         config.audioStreamingCompressedPlayback = 0;   // 기존 레버: 외부화된 긴 클립 압축 재생
     }
 
+    /// <summary>프레임워크 stacktrace-lazy 패치만 끈 대조군. 기본 빌드와 pair 로 돌려 부팅 중 jsStackTrace 제거 효과를 잰다.</summary>
+    [HeavyVariant("stacklazy-off")]
+    public static void ApplyStackLazyOff(AITEditorScriptObject config)
+    {
+        if (config == null) throw new ArgumentNullException(nameof(config));
+        config.frameworkLazyStackTraceMode = 0;
+    }
+
     // [HeavyVariant] 속성이 붙은 정적 메서드를 한 번 수집한다.
     private static void CollectAttributedVariants()
     {

@@ -160,7 +160,7 @@ public static class HeavyBuildVariants
         config.audioStreamingCompressedPlayback = 0;   // 기존 레버: 외부화된 긴 클립 압축 재생
     }
 
-    /// <summary>프레임워크 stacktrace-lazy 패치만 끈 대조군. 기본 빌드와 pair 로 돌려 부팅 중 jsStackTrace 제거 효과를 잰다.</summary>
+    /// <summary>IDBFS 프리워밍(idbPrewarm)만 끈 대조군. 기본 빌드와 pair 로 돌려 콜드 부팅의 IndexedDB 생성 선행 효과를 잰다.</summary>
     [HeavyVariant("idbprewarm-off")]
     public static void ApplyIdbPrewarmOff(AITEditorScriptObject config)
     {
@@ -168,7 +168,7 @@ public static class HeavyBuildVariants
         config.idbPrewarm = 0;
     }
 
-    /// <summary>IDBFS 프리워밍만 끈 대조군은 위, stacktrace-lazy 패치만 끈 대조군은 아래. 기본 빌드와 pair 로 돌린다.</summary>
+    /// <summary>프레임워크 stacktrace-lazy 패치만 끈 대조군. 기본 빌드와 pair 로 돌려 부팅 중 jsStackTrace 제거 효과를 잰다.</summary>
     [HeavyVariant("stacklazy-off")]
     public static void ApplyStackLazyOff(AITEditorScriptObject config)
     {

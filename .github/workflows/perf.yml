@@ -393,7 +393,7 @@ jobs:
           PERF_LABEL_B: ${{ needs.setup.outputs.pair_run_id != '' && format('pair#{0}', needs.setup.outputs.pair_run_id) || '' }}
           PERF_CPU_THROTTLE: ${{ inputs.net_profile == 'mobile' && '6' || '4' }}
           RUN_REQUIRE: "1"
-          RUN_ROUNDS: "3"
+          RUN_ROUNDS: ${{ needs.setup.outputs.pair_mode == 'true' && '5' || '3' }}
         run: pnpm run test:mobilegame
 
       - name: Upload Mobile Game Result

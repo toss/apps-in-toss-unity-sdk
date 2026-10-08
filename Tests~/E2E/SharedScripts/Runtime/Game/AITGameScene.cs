@@ -1,12 +1,21 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
-/// game posture 픽스처의 씬 컨트롤러. 씬 파일에는 이 컴포넌트 하나(에셋 참조 포함)만 직렬화되고 나머지는 전부 런타임에 만든다.
-/// mode: title | play | result
+/// game posture 픽스처의 씬 컨트롤러. mode: title | play | result
+/// 씬 파일에는 엔진 내장 컴포넌트만 직렬화한다: 루트 "AITGameScene" 아래 "Mode:&lt;mode&gt;" 자식,
+/// 클립을 든 AudioSource 자식(bgm·sfxHit·sfxBreak·sfxClick), 머티리얼을 든 꺼진 MeshRenderer 자식
+/// (matBackground·matPaddle·matBall·matBricks). 이 컴포넌트는 씬 로드 때 런타임에 붙이고 그 자식들에서 참조를 읽는다.
+/// Unity 6 배치모드에서 같은 세션에 AddComponent 로 붙여 저장한 사용자 스크립트는 콜드 컴파일 빌드에서
+/// "missing script" 로 필드 없이 구워지고, 타입트리가 없는 WebGL 플레이어는 그 씬을 "corrupted" 로 거부한다
+/// (E2EBootstrapper 가 런타임 생성으로 피한 것과 같은 문제).
 /// </summary>
 public class AITGameScene : MonoBehaviour
 {
+    public const string RootName = "AITGameScene";
+    public const string ModePrefix = "Mode:";
+
     public string mode = "title";
     public AudioClip bgm;
     public AudioClip sfxHit;
@@ -18,8 +27,58 @@ public class AITGameScene : MonoBehaviour
     public Material matBall;
     public Material[] matBricks;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void HookSceneLoads()
+    {
+        SceneManager.sceneLoaded -= AttachToScene;
+        SceneManager.sceneLoaded += AttachToScene;
+    }
+
+    // 픽스처 씬(루트 "AITGameScene")에만 붙는다. 다른 E2E 프로젝트의 씬에서는 아무 일도 하지 않는다.
+    private static void AttachToScene(Scene scene, LoadSceneMode loadMode)
+    {
+        foreach (var root in scene.GetRootGameObjects())
+        {
+            if (root.name == RootName && root.GetComponent<AITGameScene>() == null) root.AddComponent<AITGameScene>();
+        }
+    }
+
+    // 씬에 직렬화된 내장 컴포넌트에서 mode 와 에셋 참조를 읽는다.
+    private void ReadSceneRefs()
+    {
+        foreach (Transform child in transform)
+        {
+            string n = child.name;
+            if (n.StartsWith(ModePrefix)) { mode = n.Substring(ModePrefix.Length); continue; }
+            var src = child.GetComponent<AudioSource>();
+            if (src != null)
+            {
+                if (n == "bgm") bgm = src.clip;
+                else if (n == "sfxHit") sfxHit = src.clip;
+                else if (n == "sfxBreak") sfxBreak = src.clip;
+                else if (n == "sfxClick") sfxClick = src.clip;
+                continue;
+            }
+            var mr = child.GetComponent<MeshRenderer>();
+            if (mr == null) continue;
+            if (n == "matBackground") matBackground = mr.sharedMaterial;
+            else if (n == "matPaddle") matPaddle = mr.sharedMaterial;
+            else if (n == "matBall") matBall = mr.sharedMaterial;
+            else if (n == "matBricks") matBricks = mr.sharedMaterials;
+        }
+        if (font == null)
+        {
+#if UNITY_2022_2_OR_NEWER
+            font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+#else
+            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+#endif
+        }
+    }
+
     private void Awake()
     {
+        ReadSceneRefs();
         var driver = AITGameDriver.Ensure(this);
         driver.OnSceneBegin();
         if (font == null) font = driver.UiFont;

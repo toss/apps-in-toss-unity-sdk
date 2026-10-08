@@ -477,6 +477,25 @@ export function registerPlayerPrefsTests(ctx) {
         return result;
       }
 
+      // waitForFunction 대신 evaluate 폴링으로 기다린다. 예산 초과로 버린 waitForFunction 이
+      // finally 의 close 와 겹쳐 늦게 resolve 되면 JSHandle 이 이미 해제된 연결로 돌아와
+      // "was not bound in the connection" 이 테스트 오류로 올라온다. evaluate 는 handle 을
+      // 만들지 않고, stop() 뒤에는 다음 폴링을 시작하지 않는다.
+      let polling = true;
+      async function pollUntil(fn, arg, budgetMs) {
+        const deadline = Date.now() + budgetMs;
+        while (polling && Date.now() < deadline) {
+          try {
+            const v = await controlPage.evaluate(fn, arg);
+            if (v) return v;
+          } catch (e) {
+            // reload 중 컨텍스트 파괴 등은 무시하고 계속 폴링
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        throw new Error(`pollUntil ${budgetMs}ms 초과`);
+      }
+
       const controlPage = await browser.newPage();
       try {
         await controlPage.addInitScript(() => {
@@ -523,18 +542,22 @@ export function registerPlayerPrefsTests(ctx) {
           const r = await controlPage.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
           return r ? r.status() : null;
         }));
-        diag.push(await bestEffort('boot', 70000, () => waitForUnityInstance(controlPage)));
-        diag.push(await bestEffort('get', 25000, () => triggerPlayerPrefsAndWait(
-          controlPage,
-          () => controlPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp6'),
-          'get', 15000
-        )));
+        diag.push(await bestEffort('boot', 70000, () => pollUntil(() => window['unityInstance'] !== undefined, null, 68000)));
+        diag.push(await bestEffort('get', 25000, async () => {
+          await controlPage.evaluate(() => { delete window['__E2E_PLAYERPREFS_DATA__']; });
+          await controlPage.evaluate((key) => window['TriggerPlayerPrefsGet'](key), 'ait_e2e_pp6');
+          return pollUntil(() => {
+            const d = window['__E2E_PLAYERPREFS_DATA__'];
+            return d && d.op === 'get' ? d : null;
+          }, null, 15000);
+        }));
 
         // 해석: get value가 ''이거나 스텝이 wedge로 좌초하면 순정 Unity도 동일하게
         // 저장이 죽는다는 증명(9-4 skip의 근거). 'v6'이면 이 셀에서는 미재현.
         console.log(`[9-6] stock control diagnostics: ${JSON.stringify(diag)}`);
       } finally {
-        await controlPage.close();
+        polling = false;
+        await controlPage.close().catch((e) => console.log(`[9-6] close: ${e && e.message}`));
       }
     });
 

@@ -139,6 +139,28 @@ public class E2EBuildRunner
             Debug.Log($"✓ Deploy probe scene added to Build Settings (index 1): {probeScenePath}");
         }
 
+        // 다중 씬 픽스처 훅(perf game posture): AIT_BUILD_SCENES 에 ';' 로 이은 씬 경로 목록이 있으면 빌드 씬 전체를 그 목록으로 바꾼다
+        // (index 0 이 부트 씬). 위 단일 씬/프로브 훅은 그대로 두고, 이 환경 변수가 없으면 아무 일도 하지 않는다.
+        string multiScenes = System.Environment.GetEnvironmentVariable("AIT_BUILD_SCENES");
+        if (!string.IsNullOrEmpty(multiScenes))
+        {
+            var sceneList = new System.Collections.Generic.List<EditorBuildSettingsScene>();
+            foreach (var raw in multiScenes.Split(';'))
+            {
+                string sp = raw.Trim();
+                if (sp.Length == 0) continue;
+                if (!File.Exists(sp))
+                {
+                    Debug.LogError($"[E2E] AIT_BUILD_SCENES 의 씬이 없습니다: {sp}");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+                sceneList.Add(new EditorBuildSettingsScene(sp, true));
+            }
+            EditorBuildSettings.scenes = sceneList.ToArray();
+            Debug.Log($"✓ Build Settings 씬을 AIT_BUILD_SCENES 로 교체 ({sceneList.Count}개, index 0 = {sceneList[0].path})");
+        }
+
         // 2. SDK 설정 구성
         Debug.Log("[2/5] Configuring Apps in Toss SDK...");
         var config = UnityUtil.GetEditorConf();

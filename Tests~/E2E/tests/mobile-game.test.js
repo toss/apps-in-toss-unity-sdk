@@ -186,6 +186,16 @@ const INIT_SCRIPT = `
   } catch (e) {}
   window.__ctxLost = 0;
   window.addEventListener('webglcontextlost', function () { window.__ctxLost++; }, true);
+  // 템플릿이 createUnityInstance 결과를 window.unityInstance 에 넣는 시각. 오버레이 해제(interactiveMs)가 늦을 때
+  // 인스턴스 준비가 늦은 것인지, 준비 뒤 해제가 늦은 것인지 가른다.
+  try {
+    var _inst;
+    Object.defineProperty(window, 'unityInstance', {
+      configurable: true,
+      get: function () { return _inst; },
+      set: function (v) { if (v && window.__aitInstanceMs == null) window.__aitInstanceMs = performance.now(); _inst = v; },
+    });
+  } catch (e) {}
 })();
 `;
 const getState = (page) => page.evaluate(() => window['__AIT_RUN'] || null).catch(() => null);
@@ -300,6 +310,7 @@ async function runSession(label, projectPath, port, round, full) {
     check(res, '타이틀 화면', s.state === 'title' && s.startButton && s.startButton.visible, `titleMs=${m.titleMs && m.titleMs.toFixed(0)} unity=${s.unity}`);
     const bootBest = s.bootBest;
     m.interactiveMs = await waitInteractive(page);
+    m.instanceMs = await page.evaluate(() => window['__aitInstanceMs'] ?? null);
     check(res, '입력 가능(오버레이 해제)', m.interactiveMs != null, `interactiveMs=${m.interactiveMs && m.interactiveMs.toFixed(0)}`);
     await sleep(500);
 
@@ -423,7 +434,7 @@ async function runSession(label, projectPath, port, round, full) {
 }
 
 const METRICS = [
-  ['titleMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
+  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
   ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {

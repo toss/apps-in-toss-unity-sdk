@@ -144,9 +144,10 @@ namespace AppsInToss
             using (var req = UnityWebRequest.Get(url))
             {
                 yield return req.SendWebRequest();
-                if (!IsSuccess(req))
+                if (!IsSuccess(req) || !LooksLikeManifest(req.downloadHandler.text))
                 {
                     // 매니페스트 없음 = 이 빌드는 오디오 외부화를 안 함. 정상 경로(no-op).
+                    // 없는 경로에 index.html 을 200 으로 돌려주는 정적 호스트(SPA 폴백)도 같은 경우다.
                     yield break;
                 }
 
@@ -391,6 +392,19 @@ namespace AppsInToss
         }
 
 #if AIT_HAS_UNITYWEBREQUEST
+        // 매니페스트는 JSON 객체다. 첫 글자가 '{' 가 아니면(HTML 폴백 페이지 등) 매니페스트가 없는 것으로 본다.
+        private static bool LooksLikeManifest(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == '\uFEFF' || char.IsWhiteSpace(c)) continue;
+                return c == '{';
+            }
+            return false;
+        }
+
         private static bool IsSuccess(UnityWebRequest req)
         {
 #if UNITY_2020_2_OR_NEWER

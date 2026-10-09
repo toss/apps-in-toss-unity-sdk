@@ -26,8 +26,8 @@ public static class MobileGameBuilder
         if (File.Exists(Root + ".meta")) File.Delete(Root + ".meta");
     }
 
-    /// <summary>에셋과 씬을 생성하고 빌드 씬 경로를 돌려준다.</summary>
-    public static string[] Generate()
+    /// <summary>에셋과 씬을 생성하고 빌드 씬 경로를 돌려준다. heavy=true 면 mobileheavy posture 콘텐츠(<see cref="AITRunHeavy"/>)를 더한다.</summary>
+    public static string[] Generate(bool heavy = false)
     {
         Cleanup();
         EnsureFolder(Root + "/Art");
@@ -64,8 +64,11 @@ public static class MobileGameBuilder
         File.WriteAllText(Root + "/link.xml",
             "<linker>\n  <assembly fullname=\"AppsInTossTestScripts\">\n    <type fullname=\"AITRun*\" preserve=\"all\" />\n  </assembly>\n</linker>\n");
 
+        if (heavy) WriteHeavyAssets();
+
         AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
+        if (heavy) ImportHeavyAssets();
         foreach (var s in sprites)
         {
             var imp = (TextureImporter)AssetImporter.GetAtPath(ArtPath(s.Name));
@@ -88,13 +91,14 @@ public static class MobileGameBuilder
         AddClipRef(root, "sfxHit", Root + "/Audio/sfx_hit.wav");
         AddClipRef(root, "sfxClick", Root + "/Audio/sfx_click.wav");
         foreach (var s in sprites) AddSpriteRef(root, s.Name, ArtPath(s.Name));
+        if (heavy) BuildHeavyScene(root);
         if (!EditorSceneManager.SaveScene(scene, ScenePath))
             throw new Exception("[mobilegame] 씬 저장 실패: " + ScenePath);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         if (!File.Exists(ScenePath)) throw new Exception("[mobilegame] 씬 파일이 없다: " + ScenePath);
-        Debug.Log("[mobilegame] fixture generated: " + ScenePath);
+        Debug.Log("[mobilegame] fixture generated: " + ScenePath + (heavy ? " (heavy)" : ""));
         return new[] { ScenePath };
     }
 
@@ -163,6 +167,234 @@ public static class MobileGameBuilder
         byte[] png = tex.EncodeToPNG();
         UnityEngine.Object.DestroyImmediate(tex);
         File.WriteAllBytes(path, png);
+    }
+
+    // ---- mobileheavy 콘텐츠 ----
+
+    private const string HeavyRes = Root + "/Resources/RunHeavy";
+    private const string MatDir = Root + "/Mat";
+    private const string Props0Path = Root + "/Art/props0.png";
+    private const int HeavyStages = 4;   // AITRunHeavy.StageCount 와 같다. 스테이지 0 의 배경은 기본 스프라이트를 쓴다.
+
+    private static string StageDir(int k)
+    {
+        return HeavyRes + "/s" + k;
+    }
+
+    /// <summary>스테이지별 색 변환(1=가을, 2=눈, 3=밤). 같은 그림이라도 스테이지마다 다른 텍스처가 되도록 노이즈 시드도 바꾼다.</summary>
+    private static Color32 StageTint(Color32 c, int stage, int x, int y)
+    {
+        if (c.a == 0) return c;
+        int n = Noise(x, y, 100 + stage, 5);
+        switch (stage)
+        {
+            case 1: return new Color32(B(c.r * 5 / 4 + 30 + n), B(c.g * 4 / 5 + n), B(c.b / 2 + n), c.a);
+            case 2: return new Color32(B((c.r + 255) / 2 + n), B((c.g + 255) / 2 + n), B((c.b + 255) / 2 + 10 + n), c.a);
+            case 3: return new Color32(B(c.r / 3 + n), B(c.g / 3 + 5 + n), B(c.b / 2 + 30 + n), c.a);
+            default: return new Color32(B(c.r + n), B(c.g + n), B(c.b + n), c.a);
+        }
+    }
+
+    /// <summary>건물 외벽: 창문 격자 + 노이즈. 3D 소품 머티리얼(Props)의 알베도로 스테이지마다 교체된다.</summary>
+    private static Color32 Facade(int x, int y, int stage)
+    {
+        bool window = (x % 64) > 14 && (x % 64) < 50 && (y % 80) > 18 && (y % 80) < 62;
+        bool lit = Noise(x / 64, y / 80, 300 + stage, 1) >= 0;
+        Color32 wall = new Color32(B(150 + Noise(x, y, 31, 14)), B(140 + Noise(x, y, 32, 14)), B(135 + Noise(x, y, 33, 14)), 255);
+        if (!window) return StageTint(wall, stage, x, y);
+        return lit ? new Color32(255, B(225 + Noise(x, y, 34, 20)), 140, 255) : StageTint(new Color32(60, 80, 110, 255), stage, x, y);
+    }
+
+    private static void WriteHeavyAssets()
+    {
+        EnsureFolder(MatDir);
+        for (int k = 0; k < HeavyStages; k++) EnsureFolder(StageDir(k));
+
+        int stage0 = 0;
+        WritePng(Props0Path, 1024, 1024, (x, y) => Facade(x, y, stage0));
+        for (int k = 1; k < HeavyStages; k++)
+        {
+            int st = k;
+            WritePng(StageDir(k) + "/far.png", 2048, 2048, (x, y) => StageTint(SkyFar(x, y), st, x, y));
+            WritePng(StageDir(k) + "/near.png", 2048, 1024, (x, y) => StageTint(Hills(x, y), st, x, y));
+            WritePng(StageDir(k) + "/ground.png", 256, 256, (x, y) => StageTint(Ground(x, y), st, x, y));
+            WritePng(StageDir(k) + "/props.png", 1024, 1024, (x, y) => Facade(x, y, st));
+        }
+        for (int k = 0; k < HeavyStages; k++)
+            File.WriteAllBytes(StageDir(k) + "/amb.wav", BuildAmbience(k));
+    }
+
+    private static void ImportHeavyAssets()
+    {
+        for (int k = 1; k < HeavyStages; k++)
+        {
+            SetSpriteImport(StageDir(k) + "/far.png", 204.8f);
+            SetSpriteImport(StageDir(k) + "/near.png", 204.8f);
+            SetSpriteImport(StageDir(k) + "/ground.png", 128f);
+        }
+        // props*.png 와 amb.wav 는 임포트 기본값(텍스처: Default·밉맵, 오디오: 기본 로드 타입·압축) 그대로 둔다.
+    }
+
+    private static void SetSpriteImport(string path, float ppu)
+    {
+        var imp = (TextureImporter)AssetImporter.GetAtPath(path);
+        if (imp == null) throw new Exception("[mobilegame] TextureImporter 없음: " + path);
+        imp.textureType = TextureImporterType.Sprite;
+        imp.spriteImportMode = SpriteImportMode.Single;
+        imp.spritePixelsPerUnit = ppu;
+        imp.alphaIsTransparency = true;
+        imp.mipmapEnabled = false;
+        imp.wrapMode = TextureWrapMode.Clamp;
+        imp.SaveAndReimport();
+    }
+
+    private static Material MakeMaterial(string name, Color color, Texture tex)
+    {
+        var shader = Shader.Find("Standard");
+        if (shader == null) throw new Exception("[mobilegame] Standard 셰이더 없음");
+        var mat = new Material(shader) { name = name, color = color };
+        if (tex != null) mat.mainTexture = tex;
+        mat.SetFloat("_Glossiness", 0.25f);
+        string path = MatDir + "/" + name + ".mat";
+        AssetDatabase.CreateAsset(mat, path);
+        return AssetDatabase.LoadAssetAtPath<Material>(path);
+    }
+
+    private static GameObject Prim(PrimitiveType type, string name, Transform parent, Vector3 pos, Vector3 scale, Material mat, bool keepCollider)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = pos;
+        go.transform.localScale = scale;
+        go.GetComponent<MeshRenderer>().sharedMaterial = mat;
+        if (!keepCollider) UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+        return go;
+    }
+
+    private static Transform Group(string name, Transform parent)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        return go.transform;
+    }
+
+    private static float Hash01(int i, int seed)
+    {
+        return (Noise(i, 0, seed, 5000) + 5000) / 10000f;
+    }
+
+    /// <summary>AITRunHeavy 가 이름으로 찾는 구성을 루트 아래에 만든다. 사용자 스크립트는 붙이지 않는다(내장 컴포넌트만).</summary>
+    private static void BuildHeavyScene(GameObject root)
+    {
+        new GameObject(AITRunHeavy.MarkerName).transform.SetParent(root.transform, false);
+        var g3 = Group(AITRunHeavy.Group3D, root.transform);
+
+        var props0 = AssetDatabase.LoadAssetAtPath<Texture2D>(Props0Path);
+        if (props0 == null) throw new Exception("[mobilegame] props0 텍스처 없음");
+        var matProps = MakeMaterial("Props", Color.white, props0);
+        var matPole = MakeMaterial("Pole", new Color(0.85f, 0.85f, 0.8f), null);
+        var matBlade = MakeMaterial("Blade", new Color(0.95f, 0.95f, 0.98f), null);
+        var matBall = MakeMaterial("Ball", new Color(1f, 0.45f, 0.35f), null);
+        var matWall = MakeMaterial("Wall", new Color(0.35f, 0.4f, 0.5f), null);
+        var matDebris = MakeMaterial("Debris", new Color(0.6f, 0.38f, 0.2f), null);
+
+        var sunGo = new GameObject("Sun");
+        sunGo.transform.SetParent(g3, false);
+        sunGo.transform.localRotation = Quaternion.Euler(35f, -40f, 0f);
+        var sun = sunGo.AddComponent<Light>();
+        sun.type = LightType.Directional;
+        sun.intensity = 1.1f;
+        sun.shadows = LightShadows.Soft;
+        sun.shadowStrength = 0.7f;
+
+        const float baseY = -2.6f;   // AITRunGame.GroundTop(-3) 보다 조금 위(근경 언덕 뒤로 솟는다)
+        var city = Group("City", g3);
+        for (int i = 0; i < 160; i++)
+        {
+            float x = -6f + i * (12f / 160f) + (Hash01(i, 41) - 0.5f) * 0.05f;
+            float w = 0.3f + Hash01(i, 42) * 0.4f;
+            float h = 0.8f + Hash01(i, 43) * 2.6f;
+            float z = 4.2f + Hash01(i, 44) * 0.7f;
+            Prim(PrimitiveType.Cube, "b" + i, city, new Vector3(x, baseY + h * 0.5f, z), new Vector3(w, h, w), matProps, false);
+        }
+
+        var mills = Group("Windmills", g3);
+        for (int i = 0; i < 24; i++)
+        {
+            var wm = Group("w" + i, mills);
+            wm.localPosition = new Vector3(-6f + i * 0.5f + 0.25f, baseY, 4.1f);
+            Prim(PrimitiveType.Cylinder, "pole", wm, new Vector3(0f, 1.6f, 0f), new Vector3(0.08f, 1.6f, 0.08f), matPole, false);
+            var rotor = Group("rotor", wm);
+            rotor.localPosition = new Vector3(0f, 3.2f, -0.06f);
+            for (int b = 0; b < 4; b++)
+            {
+                var pivot = Group("arm" + b, rotor);
+                pivot.localRotation = Quaternion.Euler(0f, 0f, b * 90f);
+                Prim(PrimitiveType.Cube, "blade", pivot, new Vector3(0f, 0.38f, 0f), new Vector3(0.09f, 0.7f, 0.02f), matBlade, false);
+            }
+        }
+
+        // 물리 통: 벽·바닥(정적 콜라이더), 회전 패들(키네매틱), 공 60개. 앞벽은 보이지 않는 콜라이더만 둔다.
+        var hopper = Group("Hopper", g3);
+        hopper.localPosition = new Vector3(1.7f, 2.6f, 3.5f);
+        Prim(PrimitiveType.Cube, "wallL", hopper, new Vector3(-0.62f, 0f, 0f), new Vector3(0.08f, 1.6f, 0.6f), matWall, true);
+        Prim(PrimitiveType.Cube, "wallR", hopper, new Vector3(0.62f, 0f, 0f), new Vector3(0.08f, 1.6f, 0.6f), matWall, true);
+        Prim(PrimitiveType.Cube, "floor", hopper, new Vector3(0f, -0.8f, 0f), new Vector3(1.32f, 0.08f, 0.6f), matWall, true);
+        Prim(PrimitiveType.Cube, "back", hopper, new Vector3(0f, 0f, 0.3f), new Vector3(1.32f, 1.6f, 0.04f), matWall, true);
+        var front = new GameObject("front");
+        front.transform.SetParent(hopper, false);
+        front.transform.localPosition = new Vector3(0f, 0f, -0.3f);
+        front.transform.localScale = new Vector3(1.32f, 1.6f, 0.04f);
+        front.AddComponent<BoxCollider>();
+        var paddle = Prim(PrimitiveType.Cube, "paddle", hopper, new Vector3(0f, -0.35f, 0f), new Vector3(0.8f, 0.06f, 0.5f), matWall, true);
+        var prb = paddle.AddComponent<Rigidbody>();
+        prb.isKinematic = true;
+        prb.interpolation = RigidbodyInterpolation.Interpolate;
+        var ballRoot = Group("balls", hopper);
+        for (int i = 0; i < 60; i++)
+        {
+            // 6(x) × 2(z) × 5(y) 격자. 맨 윗줄도 벽 높이(0.8) 아래에서 시작한다.
+            var pos = new Vector3(-0.45f + (i % 6) * 0.18f, -0.15f + (i / 12) * 0.17f, -0.1f + ((i / 6) % 2) * 0.2f);
+            var ball = Prim(PrimitiveType.Sphere, "ball" + i, ballRoot, pos, Vector3.one * 0.16f, matBall, true);
+            var rb = ball.AddComponent<Rigidbody>();
+            rb.mass = 0.1f;
+        }
+
+        var debris = Group("Debris", g3);
+        for (int i = 0; i < 24; i++)
+        {
+            var d = Prim(PrimitiveType.Cube, "d" + i, debris, Vector3.zero, Vector3.one * 0.14f, matDebris, true);
+            d.AddComponent<Rigidbody>().mass = 0.2f;
+            d.SetActive(false);
+        }
+    }
+
+    /// <summary>스테이지 앰비언스 40초 스테레오 루프: 바람 소리(저역 통과 노이즈) + 스테이지마다 다른 느린 패드 화음.</summary>
+    private static byte[] BuildAmbience(int stage)
+    {
+        const int rate = 44100;
+        const int seconds = 40;
+        var buf = new float[rate * seconds * 2];
+        uint st = 991u + (uint)stage * 7919u;
+        float lpL = 0f, lpR = 0f;
+        float[] roots = { 196f, 174.61f, 220f, 146.83f };   // G3, F3, A3, D3
+        float root = roots[stage % roots.Length];
+        for (int i = 0; i < rate * seconds; i++)
+        {
+            unchecked { st = st * 1664525u + 1013904223u; }
+            float nL = ((st >> 8) & 0xFFFF) / 32767.5f - 1f;
+            unchecked { st = st * 1664525u + 1013904223u; }
+            float nR = ((st >> 8) & 0xFFFF) / 32767.5f - 1f;
+            lpL += (nL - lpL) * 0.02f;
+            lpR += (nR - lpR) * 0.02f;
+            float t = (float)i / rate;
+            float swell = 0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * t / 10f);
+            float pad = (Mathf.Sin(2f * Mathf.PI * root * t) + 0.6f * Mathf.Sin(2f * Mathf.PI * root * 1.5f * t) + 0.4f * Mathf.Sin(2f * Mathf.PI * root * 2.5198f * t)) * 0.06f * swell;
+            buf[i * 2] = lpL * 0.9f + pad;
+            buf[i * 2 + 1] = lpR * 0.9f + pad;
+        }
+        return ToWav16(buf, 2, rate);
     }
 
     // ---- 픽셀 함수 ----

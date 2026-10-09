@@ -42,7 +42,9 @@ const RUN_DPR = parseFloat(process.env.RUN_DPR || '0') || 0;
 const CPU_THROTTLE = Math.max(1, parseFloat(process.env.PERF_CPU_THROTTLE || '4'));
 const CHANNEL = process.env.RUN_CHROME_CHANNEL === undefined ? 'chrome' : process.env.RUN_CHROME_CHANNEL;
 // 기본 설정(pnpm test)은 모든 *.test.js 를 돌린다. mobilegame 빌드를 지목한 실행에서만 돈다.
-const ENABLED = REQUIRE || process.env.RUN_MOBILEGAME === '1' || process.env.AIT_PERF_POSTURE === 'mobilegame';
+const ENABLED = REQUIRE || process.env.RUN_MOBILEGAME === '1' || ['mobilegame', 'mobileheavy'].includes(process.env.AIT_PERF_POSTURE || '');
+// mobileheavy 빌드면 무거운 계층(AITRunHeavy)의 보고 필드가 반드시 있어야 한다.
+const EXPECT_HEAVY = (process.env.RUN_POSTURE || process.env.AIT_PERF_POSTURE || '') === 'mobileheavy';
 
 function findProject() {
   const envPath = process.env.UNITY_PROJECT_PATH;
@@ -359,6 +361,17 @@ async function runSession(label, projectPath, port, round, full) {
     m.fps = s.avgMs ? 1000 / s.avgMs : null;
     check(res, '자동 플레이 진행', s.checksumAt > 0 && s.checksum.length === 8, `checksum=${s.checksum}@${s.checksumAt} score=${s.score} coins=${s.coins} jumps=${s.jumps}`);
     check(res, '플레이 프레임 통계', s.frames > 100, `frames=${s.frames} avg=${s.avgMs}ms p95=${s.p95Ms}ms long=${s.longFrames}`);
+    if (EXPECT_HEAVY || s.heavy) {
+      // 스테이지는 375 스텝마다 바뀐다. 체크섬 스텝까지 간 런이면 최소 3번(스테이지 1·2·3) 읽어야 한다.
+      const wantLoads = Math.min(3, Math.floor((s.checksumAt || 0) / 375));
+      m.stageLoadMsMax = s.stageLoadMsMax;
+      m.stageLoads = s.stageLoads;
+      check(res, '무거운 계층 동작', s.heavy === true, `heavy=${s.heavy}`);
+      check(res, '스테이지 스트리밍(Resources 비동기 로드·언로드)', s.stageLoads >= wantLoads && s.stageErrors === 0 && s.stageUnloads >= Math.max(0, wantLoads - 1),
+        `stage=${s.stage} loads=${s.stageLoads}/${wantLoads} errors=${s.stageErrors} unloads=${s.stageUnloads} loadMsMax=${s.stageLoadMsMax}`);
+      check(res, '물리·파티클·3D 활성', s.bodies >= 60 && s.particles >= 120 && s.buildings >= 184, `bodies=${s.bodies} particles=${s.particles} buildings=${s.buildings}`);
+      check(res, '스테이지 앰비언스 재생', s.ambiencePlaying === true, `ambiencePlaying=${s.ambiencePlaying}`);
+    }
     const heap = await pageCdp.send('Runtime.getHeapUsage').catch(() => null);
     m.jsHeapUsedBytes = heap ? heap.usedSize : null;
     m.wasmHeapBytes = await page.evaluate(() => {
@@ -410,7 +423,7 @@ async function runSession(label, projectPath, port, round, full) {
 }
 
 const METRICS = [
-  ['titleMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['startTaps', '', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
+  ['titleMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
   ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {

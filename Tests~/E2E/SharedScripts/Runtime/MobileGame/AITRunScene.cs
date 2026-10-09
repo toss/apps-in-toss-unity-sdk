@@ -40,6 +40,8 @@ public class AITRunScene : MonoBehaviour
         ReadRefs();
         var game = gameObject.AddComponent<AITRunGame>();
         game.Init(this);
+        // mobileheavy posture: 생성기가 "heavy" 표식 자식과 3D·물리·스테이지 콘텐츠를 함께 굽는다.
+        if (transform.Find(AITRunHeavy.MarkerName) != null) gameObject.AddComponent<AITRunHeavy>().Init(game, this);
     }
 
     private void ReadRefs()

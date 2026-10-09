@@ -47,7 +47,7 @@ on:
         type: string
         default: '1'
       posture:
-        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성, fullmesh=full+meshCompression — Mesh 레버 A/B용, speed=코드 크기 레버를 실행 속도 쪽으로 뒤집은 A/B용, minimal=콘텐츠·픽스처·Sentry 없는 빈 씬 + SDK 로 로드 하한 측정, game=실제 게임형 픽스처(브레이크아웃: 3D 물리·uGUI·오디오·Resources/StreamingAssets·PlayerPrefs)를 빌드하고 TTFF 뒤에 Playwright 플레이 기능 테스트(game-play.test.js)를 실행 — pair_run_id 와 함께 쓰면 최적화 ON/OFF 결정론 체크섬이 같은지도 검증. mobilegame=세로 화면 탭 점프 러너(스프라이트·uGUI·BGM/효과음·PlayerPrefs, 엔진 물리 없음)를 빌드하고 TTFF 뒤에 플레이 벤치(mobile-game.test.js: 터치 플레이 기능 검증 + 플레이 중 프레임 시간·메모리)를 실행 — SDK 설정 필드를 쓰지 않아 다른 SDK 버전 브랜치에서 빌드한 run 과 pair 로 비교할 수 있다. 어느 posture 든 -explicit 을 붙이면 WebGL 예외 처리를 ExplicitlyThrownExceptionsOnly, -nostack 을 붙이면 FullWithoutStacktrace 로 빌드)'
+        description: '벤치 posture (default=자동 기본값, full=opt-in 레버 활성, fullmesh=full+meshCompression — Mesh 레버 A/B용, speed=코드 크기 레버를 실행 속도 쪽으로 뒤집은 A/B용, minimal=콘텐츠·픽스처·Sentry 없는 빈 씬 + SDK 로 로드 하한 측정, game=실제 게임형 픽스처(브레이크아웃: 3D 물리·uGUI·오디오·Resources/StreamingAssets·PlayerPrefs)를 빌드하고 TTFF 뒤에 Playwright 플레이 기능 테스트(game-play.test.js)를 실행 — pair_run_id 와 함께 쓰면 최적화 ON/OFF 결정론 체크섬이 같은지도 검증. mobilegame=세로 화면 탭 점프 러너(스프라이트·uGUI·BGM/효과음·PlayerPrefs, 엔진 물리 없음)를 빌드하고 TTFF 뒤에 플레이 벤치(mobile-game.test.js: 터치 플레이 기능 검증 + 플레이 중 프레임 시간·메모리)를 실행 — SDK 설정 필드를 쓰지 않아 다른 SDK 버전 브랜치에서 빌드한 run 과 pair 로 비교할 수 있다. mobileheavy=같은 러너에 스테이지 스트리밍(Resources 텍스처·오디오)·3D 건물과 그림자·물리·대량 파티클·스크롤 UI 를 얹은 무거운 변형(같은 플레이 벤치, 체크섬도 같다). 어느 posture 든 -explicit 을 붙이면 WebGL 예외 처리를 ExplicitlyThrownExceptionsOnly, -nostack 을 붙이면 FullWithoutStacktrace 로 빌드)'
         type: string
         default: 'default'
       net_profile:
@@ -168,7 +168,7 @@ jobs:
             POSTURE=minimal
           fi
           case "$POSTURE" in
-            ''|default|full|fullmesh|speed|minimal|game|mobilegame|*-explicit|*-nostack) ;;
+            ''|default|full|fullmesh|speed|minimal|game|mobilegame|mobileheavy|*-explicit|*-nostack) ;;
             *) echo "::error::허용되지 않는 posture: '$POSTURE'"; exit 1;;
           esac
 
@@ -386,10 +386,10 @@ jobs:
           GAME_REQUIRE: "1"
         run: pnpm run test:game
 
-      - name: Run Mobile Game Play Benchmark (mobilegame posture)
+      - name: Run Mobile Game Play Benchmark (mobilegame/mobileheavy posture)
         # mobilegame posture 에서만. TTFF 단계가 실패해도 돌린다(!cancelled()). 페어 모드면 A/B 세션을 번갈아 돌려
         # 지표별 중앙값과 B−A 를 남기고, 같은 Unity 버전의 A/B 결정론 체크섬이 같은지 단언한다.
-        if: ${{ !cancelled() && needs.setup.outputs.posture == 'mobilegame' }}
+        if: ${{ !cancelled() && (needs.setup.outputs.posture == 'mobilegame' || needs.setup.outputs.posture == 'mobileheavy') }}
         working-directory: Tests~/E2E/tests
         env:
           UNITY_PROJECT_PATH: ${{ env.HEAVY_PROJECT }}
@@ -399,12 +399,13 @@ jobs:
           PERF_LABEL_B: ${{ needs.setup.outputs.pair_run_id != '' && format('pair#{0}', needs.setup.outputs.pair_run_id) || '' }}
           PERF_CPU_THROTTLE: ${{ inputs.net_profile == 'mobile' && '6' || '4' }}
           RUN_DPR: ${{ inputs.run_dpr || '' }}
+          RUN_POSTURE: ${{ needs.setup.outputs.posture }}
           RUN_REQUIRE: "1"
           RUN_ROUNDS: ${{ needs.setup.outputs.pair_mode == 'true' && '5' || '3' }}
         run: pnpm run test:mobilegame
 
       - name: Upload Mobile Game Result
-        if: ${{ always() && needs.setup.outputs.posture == 'mobilegame' }}
+        if: ${{ always() && (needs.setup.outputs.posture == 'mobilegame' || needs.setup.outputs.posture == 'mobileheavy') }}
         uses: actions/upload-artifact@v7
         with:
           name: mobile-game-results-${{ matrix.unity-version }}

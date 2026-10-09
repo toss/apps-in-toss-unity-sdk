@@ -116,6 +116,29 @@ public class AITRunGame : MonoBehaviour
     private RectTransform startButton;
     private RectTransform retryButton;
 
+    // ---- 확장 훅(mobileheavy posture 의 AITRunHeavy 가 쓴다). 시뮬레이션·체크섬에는 영향이 없다. ----
+    public bool IsPlaying { get { return state == State.Playing; } }
+    public int Step { get { return step; } }
+    public float WorldX { get { return worldX; } }
+    public float HalfWidth { get { return halfWidth; } }
+    public Camera Cam { get { return cam; } }
+    public Transform TitlePanel { get { return titlePanel.transform; } }
+    public Transform UiRoot { get; private set; }
+    /// <summary>코인 획득(화면 좌표 기준 월드 위치).</summary>
+    public event Action<Vector2> CoinCollected;
+    /// <summary>충돌로 게임오버(플레이어 위치).</summary>
+    public event Action<Vector2> Crashed;
+    /// <summary>보고 JSON 끝에 필드를 덧붙인다(",\"key\":value" 형태로 Append).</summary>
+    public Action<StringBuilder> ExtraReport;
+
+    /// <summary>스테이지 배경 교체. 크기가 다르면 스크롤 폭도 다시 잰다.</summary>
+    public void SetStageArt(Sprite far, Sprite near, Sprite ground)
+    {
+        if (far != null) { foreach (var sr in farLayer) sr.sprite = far; farW = far.bounds.size.x; }
+        if (near != null) { foreach (var sr in nearLayer) sr.sprite = near; nearW = near.bounds.size.x; }
+        if (ground != null) { foreach (var sr in groundTiles) sr.sprite = ground; groundTileW = ground.bounds.size.x; }
+    }
+
     public void Init(AITRunScene src)
     {
         refs = src;
@@ -287,6 +310,7 @@ public class AITRunGame : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
         canvasGo.AddComponent<GraphicRaycaster>();
         var root = canvasGo.transform;
+        UiRoot = root;
 
         scoreText = MakeText(root, "Score", 72, TextAnchor.UpperLeft, new Vector2(0f, 1f), new Vector2(600f, 120f));
         scoreText.rectTransform.pivot = new Vector2(0f, 1f);
@@ -459,6 +483,7 @@ public class AITRunGame : MonoBehaviour
                 Mathf.Abs(oy - playerY) < o.HalfH + PlayerHalfH * 0.85f)
             {
                 EndRun();
+                if (Crashed != null) Crashed(new Vector2(PlayerX, playerY));
                 return;
             }
         }
@@ -473,6 +498,7 @@ public class AITRunGame : MonoBehaviour
                 coins++;
                 PlaySfx(refs.SfxCoin);
                 Burst(new Vector2(PlayerX + (c.X - px), c.Y));
+                if (CoinCollected != null) CoinCollected(new Vector2(PlayerX + (c.X - px), c.Y));
             }
         }
 
@@ -744,6 +770,7 @@ public class AITRunGame : MonoBehaviour
         AppendFrameStats(sb);
         AppendRect(sb, "startButton", startButton);
         AppendRect(sb, "retryButton", retryButton);
+        if (ExtraReport != null) ExtraReport(sb);
         sb.Append('}');
         AITRunBridge.Report(sb.ToString());
     }

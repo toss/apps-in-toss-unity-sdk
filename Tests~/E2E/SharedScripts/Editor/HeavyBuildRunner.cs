@@ -106,12 +106,13 @@ public class HeavyBuildRunner
         // game 생성물(Assets/GameGen, StreamingAssets/ait-game)은 Resources 를 끼고 있어 남아 있으면 다른 posture 의 .data 에 실린다.
         // game posture 가 아니면 항상 먼저 지운다(game 은 아래에서 Generate 가 다시 만든다).
         if (posture != "game") GameFixtureBuilder.Cleanup();
-        if (posture != "mobilegame") MobileGameBuilder.Cleanup();
+        if (posture != "mobilegame" && posture != "mobileheavy") MobileGameBuilder.Cleanup();
 
         // perf mobilegame posture: 세로 화면 탭 점프 러너(스프라이트·uGUI·BGM/효과음·PlayerPrefs, 엔진 물리 없음)를 절차 생성해 빌드한다.
         // 하이퍼캐주얼 미니게임 형태의 실제 앱으로 로드·프레임·메모리를 재고 mobile-game.test.js 로 플레이 기능을 검증한다.
         // 생성기와 런타임이 SDK 설정 필드를 쓰지 않아 다른 SDK 버전(예: main) 위에서도 같은 게임을 빌드해 pair 로 비교할 수 있다.
-        if (posture == "mobilegame")
+        // mobileheavy 는 같은 러너에 스테이지 스트리밍(Resources)·3D 건물과 그림자·물리·대량 파티클·스크롤 UI 를 얹은 무거운 변형이다.
+        if (posture == "mobilegame" || posture == "mobileheavy")
         {
             AssetDatabase.DeleteAsset(HeavyRoot);
             AssetDatabase.DeleteAsset(HeavyGenRoot);
@@ -122,7 +123,7 @@ public class HeavyBuildRunner
             string[] runScenes;
             try
             {
-                runScenes = MobileGameBuilder.Generate();
+                runScenes = MobileGameBuilder.Generate(heavy: posture == "mobileheavy");
             }
             catch (System.Exception ex)
             {
@@ -133,7 +134,7 @@ public class HeavyBuildRunner
                 return;
             }
             System.Environment.SetEnvironmentVariable(MobileGameBuilder.ScenesEnvVar, string.Join(";", runScenes));
-            Debug.Log($"[heavy] mobilegame posture: {runScenes[0]} 로 빌드");
+            Debug.Log($"[heavy] {posture} posture: {runScenes[0]} 로 빌드");
             if (!ApplyPerfVariants()) return;
             E2EBuildRunner.BuildWithSDK(minimal: true);
             return;

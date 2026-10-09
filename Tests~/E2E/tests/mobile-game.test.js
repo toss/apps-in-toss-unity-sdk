@@ -193,8 +193,26 @@ const INIT_SCRIPT = `
     Object.defineProperty(window, 'unityInstance', {
       configurable: true,
       get: function () { return _inst; },
-      set: function (v) { if (v && window.__aitInstanceMs == null) window.__aitInstanceMs = performance.now(); _inst = v; },
+      set: function (v) {
+        if (v && window.__aitInstanceMs == null) {
+          window.__aitInstanceMs = performance.now();
+          // 로딩 화면 숨김 함수가 실제로 불린 시각(AITLoading 완료 콜백). interactiveMs 와의 차이는 폴링 지연이다.
+          try { window.AITLoading.onComplete(function () { window.__aitHideMs = performance.now(); }); } catch (e) {}
+        }
+        _inst = v;
+      },
     });
+  } catch (e) {}
+  // 인스턴스 준비 뒤 메인 스레드를 막은 롱태스크(합·최대). 준비→입력 가능 구간이 길 때 원인이 메인 스레드인지 본다.
+  window.__aitLong = { sum: 0, max: 0, n: 0 };
+  try {
+    new PerformanceObserver(function (list) {
+      list.getEntries().forEach(function (e) {
+        if (window.__aitInstanceMs == null || e.startTime + e.duration < window.__aitInstanceMs) return;
+        if (window.__aitInteractiveMs != null && e.startTime > window.__aitInteractiveMs) return;
+        var L = window.__aitLong; L.sum += e.duration; L.n++; if (e.duration > L.max) L.max = e.duration;
+      });
+    }).observe({ type: 'longtask', buffered: true });
   } catch (e) {}
 })();
 `;
@@ -310,7 +328,14 @@ async function runSession(label, projectPath, port, round, full) {
     check(res, '타이틀 화면', s.state === 'title' && s.startButton && s.startButton.visible, `titleMs=${m.titleMs && m.titleMs.toFixed(0)} unity=${s.unity}`);
     const bootBest = s.bootBest;
     m.interactiveMs = await waitInteractive(page);
-    m.instanceMs = await page.evaluate(() => window['__aitInstanceMs'] ?? null);
+    if (m.interactiveMs != null) await page.evaluate((t) => { window['__aitInteractiveMs'] = t; }, m.interactiveMs);
+    await sleep(200);
+    Object.assign(m, await page.evaluate(() => ({
+      instanceMs: window['__aitInstanceMs'] ?? null,
+      hideMs: window['__aitHideMs'] ?? null,
+      postReadyLongMs: window['__aitLong'] ? window['__aitLong'].sum : null,
+      postReadyLongMaxMs: window['__aitLong'] ? window['__aitLong'].max : null,
+    })));
     check(res, '입력 가능(오버레이 해제)', m.interactiveMs != null, `interactiveMs=${m.interactiveMs && m.interactiveMs.toFixed(0)}`);
     await sleep(500);
 
@@ -434,7 +459,7 @@ async function runSession(label, projectPath, port, round, full) {
 }
 
 const METRICS = [
-  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
+  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['hideMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['postReadyLongMs', 'ms', 0], ['postReadyLongMaxMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
   ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {

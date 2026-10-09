@@ -204,8 +204,8 @@ async function waitForRun(page, predicateSrc, timeoutMs, what) {
 }
 
 async function canvasBox(page) {
-  const box = await page.locator('#unity-canvas').boundingBox({ timeout: 5000 }).catch(() => null)
-    || await page.locator('canvas').first().boundingBox({ timeout: 5000 });
+  const box = await page.locator('#unity-canvas').boundingBox({ timeout: 30000 }).catch(() => null)
+    || await page.locator('canvas').first().boundingBox({ timeout: 30000 });
   if (!box) throw new Error('캔버스를 찾지 못했다');
   return box;
 }

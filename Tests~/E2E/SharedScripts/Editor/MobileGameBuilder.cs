@@ -305,8 +305,9 @@ public static class MobileGameBuilder
         var sun = sunGo.AddComponent<Light>();
         sun.type = LightType.Directional;
         sun.intensity = 1.1f;
-        sun.shadows = LightShadows.Soft;
-        sun.shadowStrength = 0.7f;
+        // 그림자는 끈다. CI 러너의 소프트웨어 GL 에서 2048² 섀도맵과 화면 공간 그림자 패스가 프레임을 ~0.8초로 늘려
+        // 입력·오디오 검증까지 무너뜨렸다. 비교 대상은 SDK 로딩·메모리·스트리밍이지 래스터라이저가 아니다.
+        sun.shadows = LightShadows.None;
 
         const float baseY = -2.6f;   // AITRunGame.GroundTop(-3) 보다 조금 위(근경 언덕 뒤로 솟는다)
         var city = Group("City", g3);

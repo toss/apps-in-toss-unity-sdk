@@ -209,6 +209,7 @@ const INIT_SCRIPT = `
     new PerformanceObserver(function (list) {
       list.getEntries().forEach(function (e) {
         if (window.__aitInstanceMs == null || e.startTime + e.duration < window.__aitInstanceMs) return;
+        (window.__aitLongAll = window.__aitLongAll || []).push([e.startTime, e.duration]);
         if (window.__aitInteractiveMs != null && e.startTime > window.__aitInteractiveMs) return;
         var L = window.__aitLong; L.sum += e.duration; L.n++; if (e.duration > L.max) L.max = e.duration;
       });
@@ -360,6 +361,16 @@ async function runSession(label, projectPath, port, round, full) {
     s = await getState(page);
     // 장애물에 부딪혀 게임오버가 되면 그 뒤 탭은 세지 않는다(플레이 중 탭만 센다). 그 경우 받은 탭 수 요건은 면제하고 점프 1회 이상만 본다.
     check(res, '탭으로 점프', s.jumps >= 1 && (s.taps >= 4 || s.state === 'over'), `taps=${s.taps} jumps=${s.jumps} state=${s.state}`);
+    // 준비 뒤 8초 안의 큰 멈춤(1초 이상 롱태스크). 오버레이를 일찍 걷어도 첫 렌더 작업이 그 뒤로 밀리면 사용자는 멈춘 화면을 본다.
+    // settledMs 는 그런 멈춤이 마지막으로 끝난 시각(없으면 준비 시각), freezeAfterHideMs 는 오버레이를 걷은 뒤 겪는 멈춤의 합이다.
+    Object.assign(m, await page.evaluate(() => {
+      const inst = window['__aitInstanceMs'], hide = window['__aitHideMs'];
+      if (inst == null) return {};
+      const big = (window['__aitLongAll'] || []).filter(([st, d]) => d >= 1000 && st + d > inst && st < inst + 8000);
+      const settled = big.reduce((a, [st, d]) => Math.max(a, st + d), inst);
+      const afterHide = hide == null ? null : big.reduce((a, [st, d]) => a + Math.max(0, st + d - Math.max(st, hide)), 0);
+      return { settledMs: settled, freezeAfterHideMs: afterHide };
+    }));
     check(res, '효과음 재생', s.sfxCount >= 3, `sfxCount=${s.sfxCount}`);
     if (s.state === 'playing') await sendCmd(page, 'over');
     s = await waitForRun(page, '(s) => s.state === "over"', 10000, '게임오버');
@@ -459,7 +470,7 @@ async function runSession(label, projectPath, port, round, full) {
 }
 
 const METRICS = [
-  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['hideMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['postReadyLongMs', 'ms', 0], ['postReadyLongMaxMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
+  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['hideMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['postReadyLongMs', 'ms', 0], ['postReadyLongMaxMs', 'ms', 0], ['settledMs', 'ms', 0], ['freezeAfterHideMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
   ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {

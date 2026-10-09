@@ -27,6 +27,9 @@ public class HeavyBuildRunner
 {
     private const string HeavyRoot = "Assets/Resources/HeavyGen";
 
+    /// <summary>벤치 브랜치 전용: true 면 perf/consolidated 의 mobileheavy posture, false 면 mobilegame posture 와 같은 게임을 빌드한다.</summary>
+    private static readonly bool BenchHeavy = true;
+
     [MenuItem("E2E/Build Heavy (perf fixture)")]
     public static void BuildHeavy()
     {
@@ -43,7 +46,7 @@ public class HeavyBuildRunner
         string[] runScenes;
         try
         {
-            runScenes = MobileGameBuilder.Generate();
+            runScenes = MobileGameBuilder.Generate(heavy: BenchHeavy);
         }
         catch (System.Exception ex)
         {
@@ -52,7 +55,7 @@ public class HeavyBuildRunner
             return;
         }
         System.Environment.SetEnvironmentVariable(MobileGameBuilder.ScenesEnvVar, string.Join(";", runScenes));
-        Debug.Log($"[heavy] mobilegame (bench): {runScenes[0]} 로 빌드");
+        Debug.Log($"[heavy] {(BenchHeavy ? "mobileheavy" : "mobilegame")} (bench): {runScenes[0]} 로 빌드");
         E2EBuildRunner.BuildWithSDK(minimal: true);
         return;
 

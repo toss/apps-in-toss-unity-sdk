@@ -88,6 +88,16 @@ on:
           2 로 주면 SDK 의 자동 DPR 상한(2)이 걸리지 않아 A/B 가 같은 픽셀 수를 그린다 — DPR 외 개선분만 분리할 때 쓴다.
         type: string
         default: ''
+      measure_runner:
+        description: >-
+          측정 잡을 돌릴 러너. hosted=GitHub hosted ubuntu(GPU 없음, WebGL 은 SwiftShader 소프트웨어 렌더링 — 기존 동작).
+          mac=self-hosted Mac(Apple GPU, Metal). mac 은 Mac 호스트 독점 잠금을 잡아 그 Mac 의 Unity 빌드가 끝나길 기다렸다가
+          혼자 측정하고, 측정하는 동안 새 빌드는 기다린다. 브라우저가 소프트웨어 렌더러로 뜨면 측정 전에 실패한다.
+        type: choice
+        options:
+          - hosted
+          - mac
+        default: hosted
       memlimit:
         description: >-
           true 면 heavy 빌드 후 memlimit.yml(최소 생존 메모리 한도 스윕)을 같은 run 의 heavy 아티팩트로 이어서 실행한다
@@ -253,14 +263,15 @@ jobs:
         needs.build-heavy.result == 'success' ||
         (needs.setup.outputs.base_run_id != '' && needs.build-heavy.result == 'skipped')
       )
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.measure_runner == 'mac' && fromJSON('["self-hosted", "macOS", "ARM64", "enabled"]') || 'ubuntu-latest' }}
     # job-level permissions 는 workflow-level(pull-requests/issues write 포함)을 병합이 아니라 완전히
     # 대체한다 — 이 잡에는 PR 코멘트 스텝이 없어 그 두 권한 상실은 영향 없음. 교차 run 아티팩트
     # 다운로드(actions:read)만 최소 권한으로 부여한다.
     permissions:
       contents: read
       actions: read
-    timeout-minutes: ${{ needs.setup.outputs.pair_mode == 'true' && 90 || 45 }}
+    # mac 은 버전 3개가 Mac 호스트 독점 잠금을 차례로 잡으므로 대기(최대 150분)를 더한다.
+    timeout-minutes: ${{ inputs.measure_runner == 'mac' && 240 || (needs.setup.outputs.pair_mode == 'true' && 90 || 45) }}
 
     strategy:
       fail-fast: false
@@ -275,6 +286,71 @@ jobs:
       AIT_BUILD_DIR_PAIR: ${{ github.workspace }}/Tests~/E2E/HeavySampleUnityProject-${{ matrix.unity-version }}-pair/ait-build
 
     steps:
+      - name: Acquire Mac host lock (exclusive)
+        # Mac 러너 5개(macos-1-1..5)는 물리 Mac 한 대를 나눠 쓴다. 빌드는 공유(shared), GPU 측정은 독점(exclusive) 잠금을
+        # 잡아 측정 중에는 그 Mac 에서 Unity 빌드가 돌지 않게 한다. gate 파일로 측정이 기다리는 동안 새 빌드가 끼어들지 못하게 한다.
+        # 잠금을 쥔 프로세스가 죽으면 커널이 잠금을 푼다(job 종료 시 러너가 고아 프로세스를 정리하고, 홀더도 Runner.Worker 가
+        # 사라지면 스스로 끝난다). 이 스텝은 unity-build.yml 과 perf.yml 에 같은 내용으로 있다 — 체크아웃 전에 돌아야 해서
+        # 저장소 파일을 쓰지 못한다. 한쪽을 고치면 다른 쪽도 같이 고친다.
+        if: inputs.measure_runner == 'mac'
+        shell: bash
+        env:
+          LOCK_MODE: exclusive
+          LOCK_WAIT_MIN: '150'
+          LOCK_ON_TIMEOUT: fail
+        run: |
+          set -euo pipefail
+          dir="$HOME/.ait-ci-lock"; mkdir -p "$dir"
+          holder="$RUNNER_TEMP/ait-host-lock.pl"
+          cat > "$holder" <<'PERL'
+          use strict; use warnings; use Fcntl qw(:flock); use Time::HiRes qw(sleep time);
+          my ($mode, $dir, $wait_s, $ready, $worker, $tag) = @ARGV;
+          open(my $gate, '>>', "$dir/gate.lock") or die "gate: $!";
+          open(my $main, '>>', "$dir/main.lock") or die "main: $!";
+          my $deadline = time + $wait_s;
+          sub alive { return !$worker || kill(0, $worker); }
+          sub take { my ($fh, $op) = @_; while (1) { return 1 if flock($fh, $op | LOCK_NB); return 0 if time > $deadline || !alive(); sleep 2; } }
+          my $ok = $mode eq 'exclusive' ? (take($gate, LOCK_EX) && take($main, LOCK_EX)) : (take($gate, LOCK_SH) && take($main, LOCK_SH));
+          flock($gate, LOCK_UN) if $ok && $mode ne 'exclusive';
+          my $me = "$dir/holder.$$";
+          if ($ok) { open(my $h, '>', $me); print $h "$mode $tag\n"; close $h; $SIG{TERM} = $SIG{INT} = sub { unlink $me; exit 0 }; }
+          open(my $r, '>', "$ready.tmp"); print $r ($ok ? "ok\n" : "timeout\n"); close $r; rename("$ready.tmp", $ready);
+          exit 3 unless $ok;
+          while (alive()) { sleep 5; }
+          unlink $me;
+          PERL
+          # Runner.Worker(=이 job) 프로세스를 찾아 홀더가 job 과 함께 끝나게 한다.
+          worker=0; p=$PPID
+          for _ in $(seq 1 20); do
+            [ -z "$p" ] || [ "$p" -le 1 ] && break
+            if ps -o command= -p "$p" 2>/dev/null | grep -q 'Runner.Worker'; then worker=$p; break; fi
+            p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)
+          done
+          ready="$RUNNER_TEMP/ait-host-lock.ready"; rm -f "$ready"
+          for f in "$dir"/holder.*; do
+            [ -e "$f" ] || continue
+            if kill -0 "${f##*.}" 2>/dev/null; then echo "현재 잠금 보유: $(cat "$f")"; else rm -f "$f"; fi
+          done
+          start=$(date +%s)
+          nohup perl "$holder" "$LOCK_MODE" "$dir" "$((LOCK_WAIT_MIN * 60))" "$ready" "$worker" "${GITHUB_WORKFLOW}/${GITHUB_JOB}#${GITHUB_RUN_ID} ${RUNNER_NAME}" \
+            > "$RUNNER_TEMP/ait-host-lock.log" 2>&1 &
+          pid=$!; echo "$pid" > "$RUNNER_TEMP/ait-host-lock.pid"
+          while [ ! -s "$ready" ] && kill -0 "$pid" 2>/dev/null; do sleep 1; done
+          waited=$(( $(date +%s) - start ))
+          if [ "$(cat "$ready" 2>/dev/null)" = "ok" ]; then
+            echo "Mac 호스트 잠금 획득: $LOCK_MODE (대기 ${waited}s, worker=$worker)"
+            echo "uptime: $(uptime)"
+            if [ "$LOCK_MODE" = exclusive ]; then
+              echo "Unity 프로세스: $( (pgrep -f 'Unity.app/Contents/MacOS/Unity' || true) | wc -l | tr -d ' ')"
+              nohup caffeinate -dims -w "$pid" >/dev/null 2>&1 &
+            fi
+          else
+            cat "$RUNNER_TEMP/ait-host-lock.log" || true
+            msg="Mac 호스트 잠금($LOCK_MODE)을 ${LOCK_WAIT_MIN}분 안에 얻지 못했다"
+            if [ "$LOCK_ON_TIMEOUT" = fail ]; then echo "::error::$msg"; exit 1; fi
+            echo "::warning::$msg — 잠금 없이 진행한다(이 시간대의 Mac GPU 측정은 오염됐을 수 있다)"
+          fi
+
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
@@ -345,6 +421,33 @@ jobs:
         # 빌드 스크립트/브라우저 다운로드 불필요. AIT 설치와 동일 정책(비-frozen + 스크립트 무시).
         run: pnpm install --no-frozen-lockfile --ignore-scripts
 
+      - name: Select GPU browser (mac)
+        # Playwright 기본 headless 셸은 Mac 에서도 SwiftShader 로 뜬다. ANGLE 을 Metal 로 지정해야 Apple GPU 를 쓴다.
+        # 시스템 Chrome 이 없으면 Playwright 번들 chromium(사용자 캐시, sudo 불필요)을 받아 쓴다.
+        # 그런 다음 측정과 같은 옵션으로 브라우저를 띄워 WebGL 렌더러를 찍고, 소프트웨어 렌더러면 실패한다.
+        if: inputs.measure_runner == 'mac'
+        working-directory: Tests~/E2E/tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "AIT_BROWSER_GPU=metal" >> "$GITHUB_ENV"
+          channel=chrome
+          if [ ! -d "/Applications/Google Chrome.app" ]; then
+            channel=""
+            pnpm exec playwright install chromium
+            echo "RUN_CHROME_CHANNEL=" >> "$GITHUB_ENV"
+            echo "PERF_CHROME_CHANNEL=" >> "$GITHUB_ENV"
+          fi
+          CH="$channel" node --input-type=module -e "
+            import { chromium } from '@playwright/test';
+            const b = await chromium.launch({ channel: process.env.CH || undefined, headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+            const p = await b.newPage();
+            const r = await p.evaluate(() => { const g = document.createElement('canvas').getContext('webgl2'); const e = g && g.getExtension('WEBGL_debug_renderer_info'); return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'webgl2=' + !!g; });
+            console.log('browser', b.version(), 'channel', process.env.CH || 'bundled', '| WebGL renderer:', r);
+            await b.close();
+            if (!/Metal|Apple/i.test(r) || /SwiftShader|llvmpipe|software/i.test(r)) { console.error('::error::GPU 렌더러가 아니다: ' + r); process.exit(1); }
+          "
+
       - name: Run Perf (TTFF median-of-N)
         working-directory: Tests~/E2E/tests
         env:
@@ -403,6 +506,14 @@ jobs:
           RUN_REQUIRE: "1"
           RUN_ROUNDS: ${{ needs.setup.outputs.pair_mode == 'true' && '5' || '3' }}
         run: pnpm run test:mobilegame
+
+      - name: Release Mac host lock
+        if: always() && inputs.measure_runner == 'mac'
+        shell: bash
+        run: |
+          pid=$(cat "$RUNNER_TEMP/ait-host-lock.pid" 2>/dev/null || true)
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill "$pid"; echo "Mac 호스트 잠금 해제(pid $pid)"; fi
+          echo "uptime: $(uptime)"
 
       - name: Upload Mobile Game Result
         if: ${{ always() && (needs.setup.outputs.posture == 'mobilegame' || needs.setup.outputs.posture == 'mobileheavy') }}

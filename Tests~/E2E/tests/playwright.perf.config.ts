@@ -30,9 +30,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     launchOptions: {
+      // AIT_BROWSER_GPU=metal(self-hosted Mac 측정)이면 ANGLE 을 Metal 로 띄운다. 기본 headless 셸은 Mac 에서도 SwiftShader 로 뜬다.
       args: [
         '--enable-webgl',
-        '--use-angle=default',
+        ...(process.env.AIT_BROWSER_GPU === 'metal'
+          ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
+          : ['--use-angle=default']),
         '--enable-features=VaapiVideoDecoder',
       ],
     },
@@ -43,7 +46,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        channel: 'chrome',
+        // PERF_CHROME_CHANNEL 이 빈 값이면 번들 chromium(시스템 Chrome 이 없는 러너).
+        channel: process.env.PERF_CHROME_CHANNEL === undefined ? 'chrome' : (process.env.PERF_CHROME_CHANNEL || undefined),
       },
     },
   ],

@@ -27,6 +27,7 @@ import { fileURLToPath } from 'url';
  *  - RUN_ROUNDS           : 프로젝트당 세션 수(기본 3)
  *  - PERF_CPU_THROTTLE    : CDP CPU 감속 배율(기본 4)
  *  - RUN_CHROME_CHANNEL   : Playwright channel(기본 chrome, 빈 값이면 번들 chromium)
+ *  - AIT_BROWSER_GPU      : metal 이면 ANGLE 을 Metal 로 띄워 Apple GPU 로 그린다(self-hosted Mac 측정). 빈 값이면 기본(Linux 는 SwiftShader)
  */
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,6 +42,9 @@ const ROUNDS = Math.max(1, parseInt(process.env.RUN_ROUNDS || '3', 10));
 const RUN_DPR = parseFloat(process.env.RUN_DPR || '0') || 0;
 const CPU_THROTTLE = Math.max(1, parseFloat(process.env.PERF_CPU_THROTTLE || '4'));
 const CHANNEL = process.env.RUN_CHROME_CHANNEL === undefined ? 'chrome' : process.env.RUN_CHROME_CHANNEL;
+const GPU_ARGS = process.env.AIT_BROWSER_GPU === 'metal'
+  ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
+  : ['--use-angle=default'];
 // 기본 설정(pnpm test)은 모든 *.test.js 를 돌린다. mobilegame 빌드를 지목한 실행에서만 돈다.
 const ENABLED = REQUIRE || process.env.RUN_MOBILEGAME === '1' || ['mobilegame', 'mobileheavy'].includes(process.env.AIT_PERF_POSTURE || '');
 // mobileheavy 빌드면 무거운 계층(AITRunHeavy)의 보고 필드가 반드시 있어야 한다.
@@ -293,7 +297,7 @@ async function runSession(label, projectPath, port, round, full) {
   const browser = await chromium.launch({
     channel: CHANNEL || undefined,
     headless: true,
-    args: ['--enable-webgl', '--use-angle=default', '--autoplay-policy=no-user-gesture-required'],
+    args: ['--enable-webgl', ...GPU_ARGS, '--autoplay-policy=no-user-gesture-required'],
   });
   const { defaultBrowserType, ...device } = devices['Pixel 7'];
   void defaultBrowserType;
@@ -398,6 +402,12 @@ async function runSession(label, projectPath, port, round, full) {
     m.coins = s.coins;
     m.jumps = s.jumps;
     m.frames = s.frames;
+    res.glRenderer = await page.evaluate(() => {
+      const g = document.createElement('canvas').getContext('webgl2');
+      const e = g && g.getExtension('WEBGL_debug_renderer_info');
+      return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : null;
+    }).catch(() => null);
+    if (round === 0) console.log(`  WebGL 렌더러 [${label}]: ${res.glRenderer}`);
     m.renderPixels = (s.screenW || 0) * (s.screenH || 0); // 렌더 해상도(DPR 상한 반영) — 프레임 시간·메모리 차이 해석용
     m.avgFrameMs = s.avgMs;
     m.p50FrameMs = s.p50Ms;

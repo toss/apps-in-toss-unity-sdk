@@ -1,0 +1,502 @@
+// -----------------------------------------------------------------------
+// <copyright file="AIT.StreamingAudio.cs" company="Toss">
+//     Copyright (c) Toss. All rights reserved.
+//     Apps in Toss Unity SDK - Streaming Audio (runtime rehydrator)
+// </copyright>
+// -----------------------------------------------------------------------
+//
+// 빌드 단계에서 초기 .data 밖(StreamingAssets)으로 외부화된 대용량 AudioClip을,
+// 게임이 interactive 된 이후 비동기로 스트리밍 로드하여 원래 재생을 복원한다.
+// 씬/직렬화 배열을 변형하지 않으므로 코드 구동 재생(예: source.clip = clips[i]; Play())
+// 패턴에도 강건하다.
+//
+// 동작:
+//   1) [RuntimeInitializeOnLoadMethod] 로 자동 부팅 (게임 코드 수정 불필요).
+//   2) StreamingAssets/ait-stream-audio/manifest.json 로드 → name→entry 맵.
+//   3) 주기적으로(throttle) 살아있는 AudioSource 스캔. clip이 "무음 스텁"
+//      (manifest에 이름 존재 && clip.length < STUB_MAX_SEC)이면 실 오디오를
+//      UnityWebRequestMultimedia로 async 로드 → clip 핫스왑(loop/재생위치/isPlaying 보존).
+//   4) 로드된 실 클립은 캐시 → 트랙 전환/재요청 시 재다운로드 없음.
+//
+// TTI 영향: 스왑은 interactive(=TTI 측정 시점) 이후에 일어나므로 TTI에 영향 없음.
+// 초기 .data 에서 오디오 바이트가 빠진 만큼 초기 다운로드/TTI가 줄어드는 것이 본질 효과.
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+#if AIT_HAS_UNITYWEBREQUEST
+using UnityEngine.Networking;
+#endif
+using UnityEngine.Scripting;
+
+namespace AppsInToss
+{
+    /// <summary>
+    /// 외부화된 오디오를 런타임에 스트리밍으로 복원하는 SDK 컴포넌트.
+    /// 빌드 단계(<c>AITAudioStreamingProcessor</c>)가 매니페스트와 StreamingAssets 사본을 만들어 두면,
+    /// 이 컴포넌트가 자동 부팅되어 무음 스텁 AudioSource를 실 오디오로 핫스왑한다.
+    /// 매니페스트가 없는 빌드(기능 미사용)에서는 조용히 no-op 후 자체 종료한다.
+    /// </summary>
+    [DefaultExecutionOrder(-10000)]
+    public sealed class AITStreamingAudio : MonoBehaviour
+    {
+        /// <summary>스텁 무음 클립 길이(초)보다 큰 클립은 "실 클립"으로 간주 → 재스왑 안 함.</summary>
+        private const float StubMaxSeconds = 0.5f;
+
+        /// <summary>AudioSource 스캔 주기(초). 너무 잦으면 GC/CPU, 너무 느리면 BGM 시작 지연.</summary>
+        private const float ScanIntervalSeconds = 0.2f;
+
+        // --- 진단 카운터(P0-1): 재수화한 클립의 다운로드 페이로드 바이트 누계(압축 재생 경로면 이 크기가 곧 상주분의 하한). AITUnityMemReporter 가 읽는다.
+        internal static long HeldBytes;
+        internal static int HeldCount;
+
+        private const string ManifestRelativePath = "ait-stream-audio/manifest.json";
+        private const string StreamDirRelativePath = "ait-stream-audio/";
+
+        [System.Serializable]
+        private struct Entry
+        {
+            public string guid;
+            public string name;
+            public string file;
+            public float length;
+            public bool compressed;
+
+            /// <summary>컨테이너 mime(예: 변환된 AAC "audio/mp4"). 빈 값/부재(구 매니페스트)는 확장자로 판정한다.</summary>
+            public string mime;
+        }
+
+        [System.Serializable]
+        private struct Manifest
+        {
+            public Entry[] entries;
+        }
+
+        private readonly Dictionary<string, Entry> byName = new Dictionary<string, Entry>();
+        private readonly Dictionary<string, AudioClip> loaded = new Dictionary<string, AudioClip>();
+        private readonly HashSet<string> loading = new HashSet<string>();
+
+        /// <summary>엔트리별 다운로드 실패 횟수(name 키). 상한 초과 시 포기해 무한 재다운로드를 차단.</summary>
+        private readonly Dictionary<string, int> downloadFailCounts = new Dictionary<string, int>();
+
+        /// <summary>엔트리별 디코드/적용 실패 횟수(name 키). 같은 바이트는 재시도해도 같게 실패하므로 상한이 작다.</summary>
+        private readonly Dictionary<string, int> applyFailCounts = new Dictionary<string, int>();
+
+        /// <summary>일시적일 수 있는 다운로드 실패의 시도 상한(초과 시 포기 — 스텁 유지, 기능 저하일 뿐 안전).</summary>
+        private const int MaxDownloadAttempts = 8;
+
+        /// <summary>결정적(같은 페이로드 → 같은 결과) 디코드/적용 실패의 시도 상한.</summary>
+        private const int MaxApplyAttempts = 2;
+
+        private bool ready;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        [Preserve]
+        private static void Bootstrap()
+        {
+            using var _hookTimer = AITHookTimer.Begin("StreamingAudio");
+
+            // SDK가 오디오 외부화를 수행한 빌드에서만 매니페스트가 존재한다.
+            // 부팅 후 매니페스트가 없으면 Run() 코루틴이 스스로 종료한다.
+            var go = new GameObject("[AIT] StreamingAudio");
+            Object.DontDestroyOnLoad(go);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            go.AddComponent<AITStreamingAudio>();
+        }
+
+        private void Start() => StartCoroutine(Run());
+
+        private IEnumerator Run()
+        {
+#if !AIT_HAS_UNITYWEBREQUEST || !AIT_HAS_UWR_AUDIO
+#if !AIT_HAS_UNITYWEBREQUEST
+            // unitywebrequest 모듈이 비활성화된 환경: 매니페스트 로드 자체가 불가능하므로 컴포넌트 정리 후 종료.
+            Debug.LogWarning("[AIT] unitywebrequest 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+#else
+            // unitywebrequestaudio 모듈이 비활성화된 환경: 복원 불가이므로 컴포넌트 정리 후 종료.
+            Debug.LogWarning("[AIT] unitywebrequestaudio 모듈이 비활성화되어 오디오 스트리밍 복원을 건너뜁니다");
+#endif
+            Destroy(gameObject);
+            yield break;
+#endif
+            // 매니페스트 요청(UnityWebRequest 첫 사용)이 첫 프레임 앞에 끼지 않도록 한 프레임 미룬다.
+            yield return null;
+            yield return LoadManifest();
+            if (!ready || byName.Count == 0)
+            {
+                // 외부화된 오디오가 없는 빌드 → 워처 종료(자원 회수).
+                Destroy(gameObject);
+                yield break;
+            }
+
+            var wait = new WaitForSeconds(ScanIntervalSeconds);
+            while (true)
+            {
+                ScanAndSwap();
+                yield return wait;
+            }
+        }
+
+        private IEnumerator LoadManifest()
+        {
+#if AIT_HAS_UNITYWEBREQUEST
+            string url = ResolveStreamingUrl(ManifestRelativePath);
+            using (var req = UnityWebRequest.Get(url))
+            {
+                yield return req.SendWebRequest();
+                if (!IsSuccess(req) || !LooksLikeManifest(req.downloadHandler.text))
+                {
+                    // 매니페스트 없음 = 이 빌드는 오디오 외부화를 안 함. 정상 경로(no-op).
+                    // 없는 경로에 index.html 을 200 으로 돌려주는 정적 호스트(SPA 폴백)도 같은 경우다.
+                    yield break;
+                }
+
+                try
+                {
+                    var m = JsonUtility.FromJson<Manifest>(req.downloadHandler.text);
+                    if (m.entries != null)
+                    {
+                        foreach (var e in m.entries)
+                        {
+                            if (!string.IsNullOrEmpty(e.name))
+                            {
+                                byName[e.name] = e;
+                            }
+                        }
+                    }
+
+                    ready = true;
+                    Debug.Log($"[AIT-StreamingAudio] 매니페스트 로드: {byName.Count}개 외부화 오디오");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[AIT-StreamingAudio] 매니페스트 파싱 실패: {ex.Message}");
+                }
+            }
+#else
+            // AIT_HAS_UNITYWEBREQUEST 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            yield return null;
+#endif
+        }
+
+        private void ScanAndSwap()
+        {
+            // 활성 AudioSource 전수 스캔. (BGM은 보통 소수 — 비용 작음.)
+#if UNITY_2023_1_OR_NEWER
+            var sources = Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None);
+#else
+            var sources = Object.FindObjectsOfType<AudioSource>();
+#endif
+            foreach (var src in sources)
+            {
+                var clip = src.clip;
+                if (clip == null)
+                {
+                    continue;
+                }
+
+                if (!IsStubLength(clip.length))
+                {
+                    continue; // 이미 실 클립
+                }
+
+                if (!byName.TryGetValue(clip.name, out var entry))
+                {
+                    continue; // 외부화 대상 아님
+                }
+
+                if (loaded.TryGetValue(entry.name, out var real) && real != null)
+                {
+                    // 압축 클립은 메타데이터(길이)가 늦게 채워져 length 가 한동안 0 일 수 있다.
+                    // 이미 실 클립이 붙어 있으면 스텁으로 오판해 매 스캔마다 HotSwap 을 다시 부르지 않는다.
+                    if (src.clip != real)
+                    {
+                        HotSwap(src, real);
+                    }
+
+                    continue;
+                }
+
+                if (loading.Add(entry.name))
+                {
+                    StartCoroutine(LoadClip(entry, src));
+                }
+            }
+        }
+
+        private IEnumerator LoadClip(Entry entry, AudioSource firstRequester)
+        {
+#if AIT_HAS_UNITYWEBREQUEST && AIT_HAS_UWR_AUDIO
+            string url = ResolveStreamingUrl(StreamDirRelativePath + entry.file);
+            var type = GuessAudioType(entry.file, entry.mime);
+            using (var req = UnityWebRequestMultimedia.GetAudioClip(url, type))
+            {
+                var audioHandler = (DownloadHandlerAudioClip)req.downloadHandler;
+                // 긴 클립은 압축 상태(브라우저 미디어 요소 재생)로 둔다. WebGL 은 비압축 클립을 float32 PCM AudioBuffer 로 통째 풀어 두지만
+                // 압축 클립은 PCM 을 상주시키지 않는다. 다만 엔진이 stream 을 compressed 보다 먼저 보므로(stream → FMOD 가 wasm 안에서
+                // 디코드한 PCM 을 _JS_Sound_Load_PCM 으로 넘김) compressed 만 켜서는 효과가 없다 — 압축 재생은 stream 을 꺼야 선택된다.
+                DecideLoadMode(entry.compressed, IsFrameworkAudioPatched(), out bool streamAudio, out bool compressedClip,
+                    RequiresMediaElement(entry.file, entry.mime));
+                audioHandler.streamAudio = streamAudio;
+                audioHandler.compressed = compressedClip;
+                yield return req.SendWebRequest();
+                if (!IsSuccess(req))
+                {
+                    // 실패 → loading 에서 제거해 다음 스캔에서 재시도하되, 상한 초과 시 포기(스텁 유지)해
+                    // 0.2초 간격 무한 재다운로드(배터리/네트워크 소모)를 차단한다.
+                    loading.Remove(entry.name);
+                    int dlFails = IncrementFailure(downloadFailCounts, entry.name);
+                    if (dlFails >= MaxDownloadAttempts)
+                    {
+                        byName.Remove(entry.name);
+                        Debug.LogWarning($"[AIT-StreamingAudio] 로드 실패 {entry.file}: {req.error} — {dlFails}회 누적, 포기(스텁 유지)");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[AIT-StreamingAudio] 로드 실패 {entry.file}: {req.error} (재시도 {dlFails}/{MaxDownloadAttempts})");
+                    }
+
+                    yield break;
+                }
+
+                AudioClip real = null;
+                try
+                {
+                    real = DownloadHandlerAudioClip.GetContent(req);
+                }
+                catch (System.Exception ex)
+                {
+                    // GetContent 가 null 반환 대신 예외를 던지는 코너케이스(손상 페이로드 등)도
+                    // 아래의 적용 실패 경로(포기/재시도 카운트)에 합류시킨다.
+                    Debug.LogWarning($"[AIT-StreamingAudio] 클립 디코드 예외 {entry.file}: {ex.Message}");
+                }
+
+                if (real != null)
+                {
+                    HeldBytes += (long)req.downloadedBytes;
+                    HeldCount++;
+                    real.name = entry.name; // 이름 보존(이후 동일 클립 식별)
+                    Debug.Log($"[AIT-StreamingAudio] 재수화 {entry.name} loadType={real.loadType} compressed={entry.compressed} stream={streamAudio} len={real.length:0.0}s");
+                    loaded[entry.name] = real;
+                    if (firstRequester != null && firstRequester.clip != null
+                        && firstRequester.clip.name == entry.name && IsStubLength(firstRequester.clip.length))
+                    {
+                        HotSwap(firstRequester, real);
+                    }
+                }
+                else
+                {
+                    // 적용 실패(null 반환 또는 디코드 예외) → 같은 바이트는 재시도해도 같게 실패하므로(예: 디코드 불가 손상 페이로드)
+                    // 소수 시도 후 포기(스텁 유지)해 0.2초 간격 무한 재다운로드 루프를 차단한다.
+                    int apFails = IncrementFailure(applyFailCounts, entry.name);
+                    if (apFails >= MaxApplyAttempts)
+                    {
+                        byName.Remove(entry.name);
+                        Debug.LogWarning($"[AIT-StreamingAudio] 클립 적용 실패 {entry.file} — {apFails}회(디코드 불가/손상 페이로드), 포기(스텁 유지)");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[AIT-StreamingAudio] 클립 적용 실패 {entry.file} (재시도 {apFails}/{MaxApplyAttempts})");
+                    }
+                }
+
+                loading.Remove(entry.name);
+            }
+#else
+            // AIT_HAS_UNITYWEBREQUEST/AIT_HAS_UWR_AUDIO 미정의 시: Run() 진입부에서 이미 종료하므로 여기에 도달하지 않음.
+            loading.Remove(entry.name);
+            yield break;
+#endif
+        }
+
+        /// <summary>
+        /// 외부화 클립을 어떤 모드로 받을지 결정한다(테스트 가능한 순수 함수).
+        /// entryCompressed(빌드가 길이·설정으로 정한 값): true 면 stream=false + compressed=true(압축 상태 media element 재생),
+        /// false 면 기존 그대로 stream=true + compressed=false.
+        /// stream=false 일 때는 항상 compressed=true 다 — compressed=false 로 두면 WebGL 이 클립을 PCM 으로 통째 풀어
+        /// (짧은 클립까지) 메모리가 늘어나는 회귀가 생긴다.
+        /// </summary>
+        /// <param name="entryCompressed">빌드가 정한 압축 재생 대상 여부.</param>
+        /// <param name="frameworkPatched">framework 오디오 패치(compressed-clip-meta)가 적용된 빌드인가. 미적용 빌드의 압축 클립은
+        /// length 가 0 이 되므로 이 경우 압축 경로를 쓰지 않는다.</param>
+        /// <param name="mediaElementOnly">브라우저 media element 로만 재생할 수 있는 컨테이너(AAC/m4a)인가. FMOD(wasm)가 이 코덱을 못 풀 수
+        /// 있어 stream=true 경로가 실패하므로, 패치 여부와 무관하게 압축 경로를 쓴다(stock framework 도 이 경로는 media element 로 만든다 —
+        /// 패치가 없으면 clip.length 가 0 일 뿐이고 ScanAndSwap 의 loaded 맵이 재스왑을 막는다).</param>
+        internal static void DecideLoadMode(bool entryCompressed, bool frameworkPatched, out bool streamAudio, out bool compressed,
+            bool mediaElementOnly = false)
+        {
+            if (entryCompressed && (frameworkPatched || mediaElementOnly))
+            {
+                streamAudio = false;
+                compressed = true;
+            }
+            else
+            {
+                streamAudio = true;
+                compressed = false;
+            }
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern int __AITDebugLog_AudioPatched();
+#endif
+
+        /// <summary>
+        /// 이 빌드의 framework 가 오디오 패치를 받았는지(__AIT_PERF.audioPatched). 에디터·WebGL 이 아닌 곳은 true.
+        /// 읽기에 실패하면 false(압축 경로를 피하는 안전한 쪽).
+        /// </summary>
+        internal static bool IsFrameworkAudioPatched()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try
+            {
+                return __AITDebugLog_AudioPatched() != 0;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+#else
+            return true;
+#endif
+        }
+
+        /// <summary>name 의 실패 횟수를 1 올리고 누적값을 반환한다.</summary>
+        private static int IncrementFailure(Dictionary<string, int> counts, string name)
+        {
+            counts.TryGetValue(name, out int n);
+            counts[name] = ++n;
+            return n;
+        }
+
+        /// <summary>클립 길이가 무음 스텁 임계값보다 짧으면 재수화 대상(=스텁)으로 판정. (테스트 가능한 순수 함수)</summary>
+        internal static bool IsStubLength(float clipLength) => clipLength < StubMaxSeconds;
+
+        /// <summary>무음 스텁이 재생 중이던 AudioSource를 실 클립으로 교체하고 재생 상태를 보존.</summary>
+        internal static void HotSwap(AudioSource src, AudioClip real)
+        {
+            if (src.clip == real)
+            {
+                return;
+            }
+
+            bool wasPlaying = src.isPlaying;
+            float t = src.time; // 스텁(짧은 loop)에서의 위치 — 보통 0 근처
+            src.clip = real;
+            if (wasPlaying)
+            {
+                src.time = (t < real.length) ? t : 0f;
+                src.Play();
+            }
+        }
+
+#if AIT_HAS_UNITYWEBREQUEST
+        // 매니페스트는 JSON 객체다. 첫 글자가 '{' 가 아니면(HTML 폴백 페이지 등) 매니페스트가 없는 것으로 본다.
+        private static bool LooksLikeManifest(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == '\uFEFF' || char.IsWhiteSpace(c)) continue;
+                return c == '{';
+            }
+            return false;
+        }
+
+        private static bool IsSuccess(UnityWebRequest req)
+        {
+#if UNITY_2020_2_OR_NEWER
+            return req.result == UnityWebRequest.Result.Success;
+#else
+            return !req.isHttpError && !req.isNetworkError;
+#endif
+        }
+#endif
+
+        /// <summary>
+        /// 변환된 AAC(.m4a/.mp4/.aac, 또는 mime audio/mp4·audio/aac)처럼 media element 로만 풀 수 있는 컨테이너인지.
+        /// (테스트 가능한 순수 함수)
+        /// </summary>
+        internal static bool RequiresMediaElement(string file, string mime)
+        {
+            if (!string.IsNullOrEmpty(mime))
+            {
+                string m = mime.ToLowerInvariant();
+                if (m.StartsWith("audio/mp4") || m.StartsWith("audio/aac") || m.StartsWith("audio/x-m4a"))
+                {
+                    return true;
+                }
+            }
+
+            if (string.IsNullOrEmpty(file))
+            {
+                return false;
+            }
+
+            string f = file.ToLowerInvariant();
+            return f.EndsWith(".m4a") || f.EndsWith(".mp4") || f.EndsWith(".aac");
+        }
+
+        internal static AudioType GuessAudioType(string file, string mime = null)
+        {
+            string f = file.ToLowerInvariant();
+            if (f.EndsWith(".m4a") || f.EndsWith(".mp4") || f.EndsWith(".aac"))
+            {
+                // Unity 의 AAC 항목은 철자가 ACC 다(AudioType.ACC). WebGL 은 브라우저가 컨테이너를 판별하므로 실제 mime 은
+                // framework 패치의 컨테이너 probe(audio/mp4)가 정한다.
+                return AudioType.ACC;
+            }
+
+            if (f.EndsWith(".mp3"))
+            {
+                return AudioType.MPEG;
+            }
+
+            if (f.EndsWith(".ogg"))
+            {
+                return AudioType.OGGVORBIS;
+            }
+
+            if (f.EndsWith(".wav"))
+            {
+                return AudioType.WAV;
+            }
+
+            if (f.EndsWith(".aiff") || f.EndsWith(".aif"))
+            {
+                return AudioType.AIFF;
+            }
+
+            // 확장자로 못 정하면 매니페스트 mime 으로 보조 판정(구 매니페스트는 mime 이 없어 UNKNOWN 그대로).
+            if (!string.IsNullOrEmpty(mime))
+            {
+                string m = mime.ToLowerInvariant();
+                if (m.StartsWith("audio/mp4") || m.StartsWith("audio/aac"))
+                {
+                    return AudioType.ACC;
+                }
+
+                if (m.StartsWith("audio/mpeg"))
+                {
+                    return AudioType.MPEG;
+                }
+            }
+
+            return AudioType.UNKNOWN;
+        }
+
+        // WebGL: streamingAssetsPath는 상대/절대 URL. UnityWebRequest는 file:// 또는 http(s):// 모두 처리.
+        private static string ResolveStreamingUrl(string rel)
+        {
+            return JoinUrl(Application.streamingAssetsPath, rel);
+        }
+
+        /// <summary>basePath와 상대 경로를 슬래시 중복 없이 결합. (테스트 가능한 순수 함수)</summary>
+        internal static string JoinUrl(string basePath, string rel)
+        {
+            return basePath.EndsWith("/") ? basePath + rel : basePath + "/" + rel;
+        }
+    }
+}

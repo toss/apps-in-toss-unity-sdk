@@ -16,6 +16,7 @@ using UnityEngine;
 using UnityEngine.Scripting;
 
 [assembly: InternalsVisibleTo("AppsInToss.Helpers")]
+[assembly: InternalsVisibleTo("AppsInTossEditModeTests")]
 
 namespace AppsInToss
 {
@@ -218,6 +219,252 @@ namespace AppsInToss
         public string data = "";
         [Preserve]
         public string error = "";
+    }
+
+    /// <summary>
+    /// JS 브리지 봉투(CallbackData, APIResponse) 파서.
+    /// 봉투는 jslib 가 JSON.stringify 로 만든 문자열·bool 값만 든 평평한 객체라 직접 읽는다.
+    /// 부팅 중 첫 브리지 콜백이 Newtonsoft 계약 생성 비용을 봉투 두 겹에 대해 치르지 않게 하려는 것이다.
+    /// 형식이 다르면 Newtonsoft 로 넘겨 결과를 종전과 같게 유지한다.
+    /// </summary>
+    internal static class AITBridgeEnvelope
+    {
+        internal static AITCore.CallbackData ParseCallback(string json)
+        {
+            var parser = new FlatObjectParser(json);
+            var data = new AITCore.CallbackData();
+            if (parser.Begin())
+            {
+                string key;
+                while (parser.NextKey(out key))
+                {
+                    string value;
+                    if (!parser.ReadStringOrNull(out value)) goto Fallback;
+                    if (string.Equals(key, "CallbackId", StringComparison.OrdinalIgnoreCase)) data.CallbackId = value;
+                    else if (string.Equals(key, "TypeName", StringComparison.OrdinalIgnoreCase)) data.TypeName = value;
+                    else if (string.Equals(key, "Result", StringComparison.OrdinalIgnoreCase)) data.Result = value;
+                }
+                if (parser.End()) return data;
+            }
+        Fallback:
+            return JsonConvert.DeserializeObject<AITCore.CallbackData>(json);
+        }
+
+        internal static APIResponse ParseResponse(string json)
+        {
+            var parser = new FlatObjectParser(json);
+            var response = new APIResponse();
+            if (parser.Begin())
+            {
+                string key;
+                while (parser.NextKey(out key))
+                {
+                    if (string.Equals(key, "success", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool flag;
+                        if (!parser.ReadBool(out flag)) goto Fallback;
+                        response.success = flag;
+                    }
+                    else
+                    {
+                        string value;
+                        if (!parser.ReadStringOrNull(out value)) goto Fallback;
+                        if (string.Equals(key, "data", StringComparison.OrdinalIgnoreCase)) response.data = value;
+                        else if (string.Equals(key, "error", StringComparison.OrdinalIgnoreCase)) response.error = value;
+                    }
+                }
+                if (parser.End()) return response;
+            }
+        Fallback:
+            return JsonConvert.DeserializeObject<APIResponse>(json);
+        }
+
+        /// <summary>
+        /// 문자열·bool·null 값만 든 JSON 객체 한 개를 읽는다. 다른 형식을 만나면 실패로 끝나고 Failed 가 켜진다.
+        /// </summary>
+        private struct FlatObjectParser
+        {
+            private readonly string _s;
+            private int _i;
+            private bool _first;
+            private bool _closed;
+            internal bool Failed;
+
+            internal FlatObjectParser(string s)
+            {
+                _s = s;
+                _i = 0;
+                _first = true;
+                _closed = false;
+                Failed = s == null;
+            }
+
+            internal bool Begin()
+            {
+                if (Failed) return false;
+                SkipWhitespace();
+                if (_i < _s.Length && _s[_i] == '{') { _i++; return true; }
+                Failed = true;
+                return false;
+            }
+
+            /// <summary>다음 키와 ':' 까지 읽는다. 객체가 닫혔거나 형식이 틀리면 false.</summary>
+            internal bool NextKey(out string key)
+            {
+                key = null;
+                if (Failed || _closed) return false;
+                SkipWhitespace();
+                if (_i >= _s.Length) { Failed = true; return false; }
+                if (_s[_i] == '}')
+                {
+                    if (!_first) { Failed = true; return false; }
+                    _i++;
+                    _closed = true;
+                    return false;
+                }
+                if (!_first)
+                {
+                    if (_s[_i] != ',') { Failed = true; return false; }
+                    _i++;
+                    SkipWhitespace();
+                }
+                _first = false;
+                if (!ReadString(out key)) { Failed = true; return false; }
+                SkipWhitespace();
+                if (_i >= _s.Length || _s[_i] != ':') { Failed = true; return false; }
+                _i++;
+                SkipWhitespace();
+                return true;
+            }
+
+            /// <summary>값 뒤 '}' 로 객체가 닫혔는지 보고, 닫혔으면 뒤에 공백만 남았는지 확인한다.</summary>
+            internal bool End()
+            {
+                if (Failed) return false;
+                if (!_closed)
+                {
+                    SkipWhitespace();
+                    if (_i >= _s.Length || _s[_i] != '}') return false;
+                    _i++;
+                }
+                SkipWhitespace();
+                return _i == _s.Length;
+            }
+
+            internal bool ReadStringOrNull(out string value)
+            {
+                value = null;
+                if (Match("null")) return AfterValue();
+                return ReadString(out value) && AfterValue();
+            }
+
+            internal bool ReadBool(out bool value)
+            {
+                value = false;
+                if (Match("true")) { value = true; return AfterValue(); }
+                if (Match("false")) return AfterValue();
+                Failed = true;
+                return false;
+            }
+
+            // 값 다음에 '}' 가 오면 객체를 닫아 NextKey 가 false 를 돌려주게 한다. ',' 는 NextKey 가 소비한다.
+            private bool AfterValue()
+            {
+                SkipWhitespace();
+                if (_i < _s.Length && _s[_i] == '}')
+                {
+                    _i++;
+                    _closed = true;
+                    return true;
+                }
+                if (_i < _s.Length && _s[_i] == ',') return true;
+                Failed = true;
+                return false;
+            }
+
+            private bool Match(string literal)
+            {
+                if (string.CompareOrdinal(_s, _i, literal, 0, literal.Length) != 0) return false;
+                int end = _i + literal.Length;
+                if (end < _s.Length && char.IsLetterOrDigit(_s[end])) return false;
+                _i = end;
+                return true;
+            }
+
+            private bool ReadString(out string value)
+            {
+                value = null;
+                if (_i >= _s.Length || _s[_i] != '"') { Failed = true; return false; }
+                int start = ++_i;
+                System.Text.StringBuilder sb = null;
+                while (_i < _s.Length)
+                {
+                    char c = _s[_i];
+                    if (c == '"')
+                    {
+                        value = sb == null ? _s.Substring(start, _i - start) : sb.Append(_s, start, _i - start).ToString();
+                        _i++;
+                        return true;
+                    }
+                    if (c != '\\') { _i++; continue; }
+
+                    if (sb == null) sb = new System.Text.StringBuilder(_s.Length - start);
+                    sb.Append(_s, start, _i - start);
+                    if (_i + 1 >= _s.Length) break;
+                    char e = _s[_i + 1];
+                    _i += 2;
+                    switch (e)
+                    {
+                        case '"': sb.Append('"'); break;
+                        case '\\': sb.Append('\\'); break;
+                        case '/': sb.Append('/'); break;
+                        case 'b': sb.Append('\b'); break;
+                        case 'f': sb.Append('\f'); break;
+                        case 'n': sb.Append('\n'); break;
+                        case 'r': sb.Append('\r'); break;
+                        case 't': sb.Append('\t'); break;
+                        case 'u':
+                            if (_i + 4 > _s.Length) { Failed = true; return false; }
+                            int code = 0;
+                            for (int k = 0; k < 4; k++)
+                            {
+                                int h = HexValue(_s[_i + k]);
+                                if (h < 0) { Failed = true; return false; }
+                                code = (code << 4) | h;
+                            }
+                            // 이스케이프된 서로게이트는 짝 처리 규칙이 Newtonsoft 와 어긋날 수 있어 넘긴다.
+                            if (code >= 0xD800 && code <= 0xDFFF) { Failed = true; return false; }
+                            sb.Append((char)code);
+                            _i += 4;
+                            break;
+                        default:
+                            Failed = true;
+                            return false;
+                    }
+                    start = _i;
+                }
+                Failed = true;
+                return false;
+            }
+
+            private static int HexValue(char c)
+            {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return -1;
+            }
+
+            private void SkipWhitespace()
+            {
+                while (_i < _s.Length)
+                {
+                    char c = _s[_i];
+                    if (c != ' ' && c != '\t' && c != '\n' && c != '\r') break;
+                    _i++;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -468,7 +715,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnAITEventCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                var callbackData = AITBridgeEnvelope.ParseCallback(jsonPayload);
                 if (VerboseLogging) Debug.Log($"[AITCore] Routing event callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteSubscriptionCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -527,7 +774,7 @@ namespace AppsInToss
                 return;
             }
 
-            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+            var apiResponse = AITBridgeEnvelope.ParseResponse(resultJson);
 
             if (apiResponse.success)
             {
@@ -566,7 +813,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                var callbackData = AITBridgeEnvelope.ParseCallback(jsonPayload);
                 if (VerboseLogging) Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -584,7 +831,7 @@ namespace AppsInToss
         private void RouteCallback(string callbackId, string typeName, string resultJson)
         {
             // Parse APIResponse first (success/data/error format)
-            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+            var apiResponse = AITBridgeEnvelope.ParseResponse(resultJson);
 
             switch (typeName)
             {

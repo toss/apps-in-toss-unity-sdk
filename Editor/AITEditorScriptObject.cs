@@ -268,21 +268,118 @@ namespace AppsInToss
 
         public bool nameFilesAsHashes = true;
 
+        /// <summary>
+        /// (숨김) 빌드 산출물의 brotli(.br) 파일을 q11 로 in-place 재인코딩할지 여부.
+        /// Unity 내장 brotli 는 저품질(대략 q5 수준)이라, 빌드 후 .br 을 디코드→q11 재인코딩(동일 파일명)하면
+        /// data/wasm 이 유의미하게 더 작아진다(입력 바이트가 줄어 브라우저 디코드도 소폭 빨라진다). 유일한 비용은
+        /// 인코딩 시간(대형 앱 기준 수 분, 싱글스레드)이다.
+        /// 이 bool 은 직렬화 호환을 위해 그대로 두며(이름·타입 변경 시 기존 에셋 값이 유실됨), true 면 강제 활성(레거시 의미)이다.
+        /// 자동/비활성 선택은 <see cref="brotliRecompressMode"/> 가 맡는다.
+        /// UI(AITConfigurationWindow)에는 노출하지 않는 숨김 설정이며(dataCaching 과 동일 취급),
+        /// ResetWebGLOptimizationDefaults(기본값 복원) 대상에서도 제외한다 — 화면에 보이지 않는 값을
+        /// 복원 버튼이 조용히 덮어쓰면 안 되기 때문이다.
+        /// AIT_BROTLI_RECOMPRESS 환경 변수로 오버라이드 가능(1/true=활성, 0/false=비활성 — AIT_COMPRESSION_FORMAT 과 동일 패턴).
+        /// .unityweb(decompressionFallback 산출물, brotli 메타데이터에 Unity 감지 마커 포함)은 재인코딩 대상에서 제외된다.
+        /// </summary>
+        public bool brotliRecompress = false;
+
+        /// <summary>
+        /// (숨김) brotli q11 재인코딩 tri-state. -1 = 자동(빠른 빌드 Deploy (Test) 가 아닐 때 활성 — 정식 빌드는 ON),
+        /// 0 = 비활성(끄려면 0), 1 = 활성. 기존 에셋에는 필드가 없어 -1 로 역직렬화된다.
+        /// <see cref="brotliRecompress"/>==true(레거시)는 이 값과 무관하게 활성이다. AIT_BROTLI_RECOMPRESS 환경 변수가 최우선.
+        /// </summary>
+        public int brotliRecompressMode = -1;
+
+        [Header("에디터 자동 최적화")]
+        [Tooltip("에디터 로드 시 3D 물리를 쓰지 않는 프로젝트의 물리 백엔드(PhysX, Unity 6000.3+)를 자동으로 끕니다. " +
+                 "-1 = 자동 (켜짐), 1 = 켜짐, 0 = 비활성(자동으로 끄지 않음). " +
+                 "배치 모드에서는 동작하지 않으며, 3D 물리 사용 흔적이 있으면 적용하지 않습니다. 에디터 재시작 후 반영됩니다. " +
+                 "되돌리려면 고급 설정의 'PhysX 켜기'를 누르세요(이 값이 0으로 바뀌어 다시 끄지 않습니다).")]
+        public int physicsBackendAutoDisable = -1;
+
+        [Tooltip("에디터 로드 시 UI Toolkit을 쓰지 않는 프로젝트의 내장 모듈(com.unity.modules.uielements)을 자동으로 제거합니다. " +
+                 "-1 = 자동 (켜짐), 1 = 켜짐, 0 = 비활성(자동으로 제거하지 않음). " +
+                 "배치 모드에서는 동작하지 않으며, UI Toolkit 사용 흔적이나 의존 패키지가 있으면 적용하지 않습니다. " +
+                 "되돌리려면 고급 설정의 '모듈 켜기'를 누르세요(이 값이 0으로 바뀌어 다시 제거하지 않습니다).")]
+        public int uiToolkitAutoRemove = -1;
+
+        /// <summary>(숨김) 물리 백엔드를 자동으로 끈 적이 있으면 1. 이후 PhysX가 다시 켜져 있으면 사용자가 직접 켠 것으로 보고 physicsBackendAutoDisable을 0으로 둔다.</summary>
+        [HideInInspector] public int physicsBackendAutoApplied = 0;
+
+        /// <summary>(숨김) UI Toolkit 모듈을 자동으로 제거한 적이 있으면 1. 이후 모듈이 다시 켜져 있으면 사용자가 직접 켠 것으로 보고 uiToolkitAutoRemove를 0으로 둔다.</summary>
+        [HideInInspector] public int uiToolkitAutoApplied = 0;
+
+        [Header("로딩 최적화 — 페이지 캐시(CacheStorage 재방문 서빙)")]
+        [Tooltip("재방문 시 Build/* 자산을 CacheStorage 에서 직접 서빙합니다(ServiceWorker 불필요). " +
+                 "첫 방문(콜드)에는 효과가 없고, 미지원/비보안 환경에서는 자동으로 원래 로드로 무해 통과합니다. " +
+                 "호스트(슈퍼앱)가 decode-free(Content-Encoding 미포함 raw bytes)로 동일 캐시명에 pre-fill 하면 " +
+                 "첫 방문도 가속됩니다. -1 = 자동 (true), 0 = 비활성, 1 = 활성.")]
+        public int pageCache = -1;
+
+        [Tooltip("페이지 캐시 버킷 이름. 호스트 백그라운드 pre-fill 페이지와 '동일한 이름'을 써야 같은 캐시를 공유합니다. " +
+                 "비우면 appName(앱 식별자)에서 자동 파생합니다. 런타임 window.__AIT_CACHE_NAME 으로도 오버라이드 가능.")]
+        public string pageCacheName = "";
+
+        /// <summary>
+        /// 빌드 시 ait-warm-manifest.json 산출 여부 (호스트 warm 연동용).
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// pageCache 실효값이 OFF 이면 warmManifest 도 no-op (AND 게이팅).
+        /// pageCache 실효값이 OFF 이면서 warmManifest 실효값이 ON 이면 경고 로그를 출력합니다.
+        /// </summary>
+        [Tooltip("빌드 시 ait-warm-manifest.json 을 산출합니다. 호스트(슈퍼앱)가 선다운로드(warm) diff 기준으로 사용합니다. " +
+                 "pageCache 실효값이 OFF 이면 회색 비활성 + no-op (AND 게이팅). -1=자동(true), 0=비활성, 1=활성.")]
+        public int warmManifest = -1;
+
+        /// <summary>
+        /// 빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다.
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다(AND 게이팅).
+        /// pageCache·warmManifest 실효값이 모두 ON 일 때만 실제 산출되는 AND 게이트이며,
+        /// 산출물은 정적 파일 1개 추가일 뿐 게임 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "빌드 시 self-warming 페이지(ait-warm.html)를 함께 산출합니다. " +
+                 "호스트가 숨김 WebView 로 열면 매니페스트 변경분을 미리 캐시에 적재합니다. " +
+                 "warmManifest 실효값과 pageCache 실효값이 모두 ON 이어야 동작합니다.")]
+        public int warmPage = -1;
+
+        /// <summary>
+        /// 페이지 캐시 인터셉터가 호스트 네이티브 프리페치 결과를 우선 소스로 사용할지 여부.
+        /// tri-state: -1=자동(true, 기본 ON), 0=비활성, 1=활성.
+        /// 인터셉터가 존재해야(pageCache 실효값 ON) 동작하는 AND 게이트이며,
+        /// 호스트가 window.__aitResolveAsset(url) 리졸버를 주입하지 않으면 신호만 노출되고
+        /// 자동으로 CacheStorage→network 폴백으로 흡수되어 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "페이지 캐시 인터셉터가 Build/* 요청에 대해 호스트 네이티브 프리페치 결과를 우선 사용합니다. " +
+                 "호스트가 window.__aitResolveAsset 리졸버를 주입하면 native→CacheStorage→network 순으로 해석합니다. " +
+                 "리졸버 미주입 시 신호만 노출되고 기존 캐시-퍼스트 동작으로 자동 폴백됩니다. " +
+                 "pageCache 실효값이 ON 이어야 동작합니다.")]
+        public int nativeAssetSource = -1;
+
         [Header("렌더링 품질 설정")]
-        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 자동 결정), 1/2/3 = 고정값. 높을수록 고품질이지만 GPU 부하 증가")]
+        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 결정하되 최대 2로 제한), 1/2/3 = 고정값(상한 미적용, 3 지정 시 DPR 3 허용). 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;
 
         [Header("IL2CPP/Stripping 설정")]
         public bool stripEngineCode = true;
 
-        [Tooltip("-1 = 자동 (Release)")]
+        [Tooltip("-1 = 자동 (Release). WebGL에서 Master는 emscripten 최적화/LTO에 영향을 주지 않음(no-op)")]
         public int il2cppConfiguration = -1;
+
+        [Tooltip("-1 = 자동 (Disk Size with LTO 적용 — Coatsink/Meta 로드타임 스택의 실제 LTO 레버). 0 = 미적용(Unity 설정 유지), 1 = 적용")]
+        public int webGLCodeOptimization = -1;
+        [Tooltip("-1 = 자동 (OptimizeSize). 0 = OptimizeSpeed, 1 = OptimizeSize — 제네릭 인스턴스 공유로 wasm 코드 크기 축소")]
+        public int il2cppCodeGeneration = -1;
 
         [Header("Unity 6 전용 설정")]
         [Tooltip("-1 = 자동 (HighPerformance)")]
         public int powerPreference = -1;
 
         public bool wasmStreaming = true;
+
+        [Tooltip("-1 = 자동 (활성화, Unity 6+). WebAssembly 2023 기능셋(native exception/SIMD/BigInt/Table). 미지원 브라우저에서는 로드 실패")]
+        public int wasm2023 = -1;
 
         [Header("고급 설정 (주의: 변경 시 호환성 문제 발생 가능)")]
         [Tooltip("-1 = 자동 (FullWithStacktrace, Sentry 경고 방지)")]
@@ -291,7 +388,7 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
         public int showUnityLogo = -1;
 
-        [Tooltip("-1 = 자동 (true)")]
+        [Tooltip("-1 = 자동 (false). 끄면 JS Brotli 디컴프레서가 번들에서 제거됨 — 플랫폼 CDN의 Content-Encoding: br 의존")]
         public int decompressionFallback = -1;
 
         [Tooltip("-1 = 자동 (false)")]
@@ -300,6 +397,12 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false, Unity 6+)")]
         public int webAssemblyArithmeticExceptions = -1;
 
+        [Header("콘텐츠 축소 (빌드 산출물 .data/.wasm 실감축, 빌드 후 원복)")]
+        [Tooltip("-1 = 자동 (true). 사용하지 않는 텍스처 밉맵 레벨을 빌드 산출물에서 제거 — .data 축소. 설정된 품질의 출력은 불변(미사용 밉만 제거).")]
+        public int mipStripping = -1;
+        [Tooltip("-1 = 자동 (true). 어떤 머티리얼도 쓰지 않는 메시 정점 채널(노멀/탄젠트/UV 등)을 제거 — .data 축소. 주의: 런타임에 머티리얼을 교체해 제거된 채널을 요구하면 시각 오류 가능.")]
+        public int stripUnusedMeshComponents = -1;
+
         [Header("빌드 전 검사 설정")]
         [Tooltip("빌드 전 에셋 최적화 검사를 활성화합니다")]
         public bool enableBuildOptimizationCheck = true;
@@ -307,10 +410,369 @@ namespace AppsInToss
         [Header("계측 설정")]
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int firstInteractiveLog = -1;
+        [Header("콘텐츠 최적화 — WebGL 텍스처 서브타겟")]
+        [Tooltip("-1 = 자동 (ASTC), 0 = 프로젝트 설정 유지. " +
+                 "iOS WebView 는 S3TC(DXT)를 지원하지 않아 DXT 텍스처를 RGBA8 로 풀어 메모리가 4~8배 커집니다. " +
+                 "자동이면 프로젝트 서브타겟이 Generic/DXT(기본값)일 때만 빌드 중 ASTC 로 바꾸고 빌드 후 원래 값으로 복원합니다. " +
+                 "ETC2/ASTC 를 직접 고른 프로젝트는 그대로 둡니다. Unity 2022.3 이상 전용.")]
+        public int webglTextureSubtargetAuto = -1;
+
+        [Header("콘텐츠 최적화 — ASTC 블록 에스컬레이션")]
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "ASTC 서브타겟 WebGL 빌드에서 텍스처를 더 큰 ASTC 블록(기본 12x12)으로 reimport 하여 " +
+                 ".data on-wire 크기를 줄입니다. lossy(화질 저하 있음). 빌드 후 원본 임포트 설정으로 자동 복원. " +
+                 "ASTC 서브타겟 전용 — DXT(기본) 서브타겟 프로젝트에서는 빌드 시 자동 skip됩니다.")]
+        public int astcBlockEscalation = -1;
+
+        [Tooltip("ASTC 블록 크기(4/5/6/8/10/12). 클수록 파일이 작아지고 화질이 낮아집니다. 기본값 12.")]
+        public int astcBlockSize = 12;
+
+        [Tooltip("WebGL 플랫폼 오버라이드 maxTextureSize 캡. 0=캡 안 함(원본 크기 유지).")]
+        public int astcBlockMaxSize = 0;
+
+        [Tooltip("SpriteAtlas 도 포함하여 WebGL 플랫폼 설정을 오버라이드하고 repack합니다.")]
+        public bool astcBlockAtlas = true;
+
+        [Tooltip("ASTC 블록 에스컬레이션을 적용할 폴더(쉼표 구분). 비우면 Assets 전체가 대상입니다.")]
+        public string astcBlockDirs = "";
+
+        [Tooltip("ASTC 블록 에스컬레이션에서 제외할 폴더(쉼표 구분). " +
+                 "폰트/SDF/TextMeshPro 경로는 이 필드와 무관하게 항상 내장 휴리스틱으로 추가 제외됩니다.")]
+        public string astcBlockExcludeDirs = "";
+
+        [Header("콘텐츠 최적화 — 오디오 스트리밍")]
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "대용량 오디오를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 런타임에 비동기 스트리밍으로 복원합니다. " +
+                 "초기 다운로드/TTI 를 크게 줄입니다. 빌드 시 오디오 에셋을 일시적으로 무음 스텁으로 치환했다가 빌드 후 원상 복원합니다.")]
+        public int audioStreaming = -1;
+
+        [Tooltip("이 바이트 수보다 큰 AudioClip 만 외부화 대상입니다 (기본 256KB).")]
+        public int audioStreamingMinBytes = 262144;
+
+        [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 오디오가 대상입니다. 예) Assets/Sounds/BGM,Assets/Music")]
+        public string audioStreamingDirs = "";
+
+        [Tooltip("-1 = 자동(활성), 0 = 비활성. " +
+                 "외부화된 오디오 중 10초 이상인 클립을 런타임에 압축 상태로 두고 브라우저 미디어 요소로 재생합니다. " +
+                 "Unity WebGL 기본 경로는 클립 전체를 float32 PCM 으로 풀어 두므로 3분 스테레오 BGM 하나가 약 63MB 를 차지하는데, " +
+                 "압축 재생은 그 메모리를 압축 크기 수준으로 줄입니다(구형 기기 WebView 메모리 한도 대응). " +
+                 "대신 그 클립은 AudioClip.GetData 를 쓸 수 없고, 루프 이음새나 재생 시작 지연이 브라우저에 따라 조금 생길 수 있습니다. 문제가 되면 0 으로 끄세요.")]
+        public int audioStreamingCompressedPlayback = -1;
+
+        [Tooltip("-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성(루프 클립 게이트 없이 전부). " +
+                 "외부화된 스트리밍 오디오 '사본'(MP3)을 저비트레이트 MP3 로 재인코딩해 .ait 번들 크기를 줄입니다(실측 320→160kbps 기준 ~50% 절감). " +
+                 "프로젝트 원본은 건드리지 않으며(외부화 사본만 교체) 런타임 복원 경로도 그대로입니다. " +
+                 "자동 모드는 빌드 씬·프리팹의 AudioSource 가 loop=true 로 참조하는 클립과 20초 초과 클립(BGM 가능성, 인코더가 gapless 태그를 쓰지 않음)을 건너뜁니다. " +
+                 "⚠ 소스가 이미 lossy(MP3)라 세대손실이 누적됩니다. 스크립트에서 런타임에 loop 를 켜는 클립은 탐지되지 않으니 그런 경우 0 으로 끄세요.")]
+        public int audioStreamTranscode = -1;
+
+        [Tooltip("재인코딩 목표 비트레이트(kbps, CBR). 기본 160 — BGM 기준 지각 손실이 작은 하한대. 96~320 범위로 클램프됩니다.")]
+        public int audioStreamTranscodeBitrateKbps = 160;
+
+        [Tooltip("이 평균 비트레이트(kbps) 이상인 소스만 재인코딩 대상입니다(기본 256). " +
+                 "목표 비트레이트 근처의 소스를 재인코딩하면 크기 이득 없이 세대손실만 남는 것을 방지합니다.")]
+        public int audioStreamTranscodeMinSourceKbps = 256;
+
+        [Header("콘텐츠 최적화 — 오디오 재인코딩 (lossy, 기본 ON)")]
+        [Tooltip("-1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "대상 AudioClip 의 임포터 base 설정(defaultSampleSettings — WebGL 빌드가 ship 하는 값)을 빌드 시 " +
+                 "일시적으로 compressionFormat=Vorbis + quality 로 변경·reimport 하여 .data/CDN 오디오 용량을 줄입니다(빌드 후 원본 복원). " +
+                 "자동 모드는 '이미 Vorbis 인 클립은 건드리지 않고' 비압축(PCM)/ADPCM 만 Vorbis 로 변환하므로 세대손실 없이 near-transparent 합니다. " +
+                 "SDK 가 이미 lossy 텍스처 최적화(crunch/ASTC)를 기본 ON 으로 두는 것과 동일 posture 로 기본 활성입니다. " +
+                 "audioStreaming 으로 외부화된 클립은 대상에서 제외됩니다(무음 스텁 재인코딩 방지).")]
+        public int audioReencode = -1;
+
+        [Tooltip("Vorbis quality(0.0~1.0). 기본 0.7 = near-transparent 헤드룸. 낮출수록 더 작지만 아티팩트 위험이 커집니다. " +
+                 "explicit 활성(1)에서는 이미 Vorbis 인 클립도 이 값을 초과하면 이 값으로 낮춥니다(자동 모드는 비압축만 변환).")]
+        [Range(0f, 1f)]
+        public float audioReencodeQuality = 0.7f;
+
+        [Tooltip("소스 파일 크기 필터(바이트). 이 크기 미만 오디오는 제외(짧은 SFX 보호). 0 = 필터 없음")]
+        public long audioReencodeMinBytes = 0;
+
+        [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 오디오가 대상입니다. 예) Assets/Audio,Assets/Sounds")]
+        public string audioReencodeDirs = "";
+
+        [Tooltip("제외 폴더(쉼표 구분, Assets/ 기준). 특정 폴더를 재인코딩에서 제외(원본 품질 보존 escape hatch).")]
+        public string audioReencodeExcludeDirs = "";
+
+        [Header("콘텐츠 최적화 — 텍스처 crunch")]
+        [Tooltip("-1 = 자동 (true), 0 = 비활성, 1 = 활성. " +
+                 "대상 텍스처/SpriteAtlas 를 빌드 시 일시적으로 crunch(DXT 위 4~8x) 압축 + maxTextureSize 캡으로 reimport 하여 " +
+                 "다운로드/.data 를 줄입니다. 빌드 후 원본 임포트 설정으로 복원합니다. " +
+                 "crunch reimport 는 무겁습니다(에셋 수에 비례).")]
+        public int textureCrunch = -1;
+
+        [Tooltip("텍스처 maxTextureSize 상한(0=캡 안 함). 이 값보다 큰 텍스처만 축소합니다. 예) 512, 1024")]
+        public int textureCrunchMaxSize = 0;
+
+        [Range(0, 100)]
+        [Tooltip("crunch 압축 품질(0~100). 낮을수록 작고 화질↓. 기본 50.")]
+        public int textureCrunchQuality = 50;
+
+        [Tooltip("SpriteAtlas 도 함께 crunch + WebGL repack 합니다(기본 true).")]
+        public bool textureCrunchAtlas = true;
+
+        [Tooltip("SpriteAtlas maxTextureSize 상한(0=캡 안 함). 예) 1024, 2048")]
+        public int textureCrunchAtlasMaxSize = 0;
+
+        [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 텍스처가 대상입니다. 예) Assets/Art/Textures")]
+        public string textureCrunchDirs = "";
+        [Header("콘텐츠 최적화 — 텍스처 크기 클램프 (lossy, 기본 ON)")]
+        [Tooltip("-1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "대상 텍스처의 maxTextureSize 만 빌드 시 일시적으로 캡(상한)으로 낮춰 reimport 하여 텍셀 수를 줄입니다 " +
+                 "(format/compression/crunch 불변). 예) 4096→2048 은 텍셀 1/4 → 압축 payload/on-wire 도 ~1/4. " +
+                 "SDK 가 이미 lossy 텍스처 최적화(crunch/ASTC)를 기본 ON 으로 두는 것과 동일 posture 로 기본 활성이며, " +
+                 "안전한 기본 캡 2048 초과분(사실상 4096)만 축소합니다. 의도적 고해상도는 값 0(비활성)·캡 상향·폴더 " +
+                 "제외로 opt-out 가능하고, 빌드 후 원본 임포트 설정으로 복원합니다.")]
+        public int textureSizeClamp = -1;
+
+        [Tooltip("텍스처 maxTextureSize 상한(이 값보다 큰 텍스처만 축소). 16 미만은 무시. 예) 1536, 2048, 3072.\n\n" +
+                 "기본 2048 = HiDPI 헤드룸. 미니앱은 devicePixelRatio(모바일 웹뷰 실질 2~3)로 렌더하며 SDK 는 고사양 기기에 " +
+                 "native DPR(iPhone Pro=3, 플래그십 Android=3+)을 그대로 줍니다. 화면 일부를 점유하는 스프라이트/UI/아이콘은 " +
+                 "2048 로 충분히 선명(예: 200 CSS px @DPR3 = 600px ≪ 2048)하고, full-bleed 배경만 DPR3 최대폰에서 세로가 " +
+                 "약간 소프트해집니다. 1024 로 낮추면 DPR2 풀스크린에서도 뭉개질 수 있어 HiDPI 에 과합니다.")]
+        public int textureClampMaxSize = 2048;
+
+        [Tooltip("소스 파일 크기 필터(바이트). 이 크기 미만 텍스처는 제외(작은 아이콘 보호). 0 = 필터 없음")]
+        public long textureClampMinBytes = 0;
+
+        [Tooltip("대상 폴더(쉼표 구분, Assets/ 기준). 비우면 프로젝트 전체 텍스처가 대상입니다. 예) Assets/Art/Backgrounds")]
+        public string textureClampDirs = "";
+
+        [Tooltip("제외할 폴더(쉼표 구분, Assets/ 기준). 사용자 escape hatch.")]
+        public string textureClampExcludeDirs = "";
+        [Header("콘텐츠 최적화 — Mesh 압축 (lossy, 기본 ON — Low)")]
+        [Tooltip("-1 = 자동(활성 — Low 레벨), 0 = 비활성(끄려면 0), 1 = 활성(Medium 레벨). " +
+                 "대상 Mesh(모델 임포트 자산 및 직렬화 Mesh .asset)의 압축 설정을 빌드 시 일시적으로 올려 " +
+                 "정점 데이터(position/normal/uv/tangent)를 양자화하여 .data 크기를 줄입니다. 자동은 Low, 1 은 Medium 입니다. " +
+                 "모델 임포트 자산은 meshCompression 이 Off 인 것만 상향하고(이미 설정된 값은 존중), " +
+                 "직렬화 Mesh .asset 은 MeshUtility.SetMeshCompression 으로 직접 적용합니다. " +
+                 "⚠ 손실 — 정점 데이터 양자화(대형 지형/정밀 지오메트리는 아티팩트 위험)라 문제가 보이면 0 으로 끄세요. " +
+                 "빌드 후 원본 압축 설정/바이트로 복원합니다.")]
+        public int meshCompression = -1;
+        [Header("콘텐츠 최적화 — 폰트 CJK subset")]
+        [Tooltip("크고(≥1MB) 빌드에 포함될 가능성이 있는 .ttf/.otf 를 자동 탐지해, 프로젝트에 실제 등장하는 " +
+                 "문자체계의 유니코드 블록 전체를 보존하도록 subset 합니다(.data 폰트 데이터 급감, CJK 풀 폰트 5~15MB → ~0.1MB). " +
+                 "빌드 후 원본 폰트로 복원합니다. zero-config: -1=자동(권장, 기본 ON), 0=비활성(끄려면 0), 1=자동(명시). " +
+                 "수동 제어가 필요하면 fontSubsetTargetPaths/fontSubsetUnicodeRanges 로 override 합니다.\n\n" +
+                 "⚠ 동적 텍스트 리스크: subset 은 보존 범위 밖 글자를 제거합니다(lossy). 스캐너가 프로젝트에 " +
+                 "'실제 등장하는' 문자체계는 블록 전체를 보존하지만, 서버/외부에서 '전혀 다른 언어'의 텍스트를 " +
+                 "동적으로 받아 표시하는데 그 문자체계가 프로젝트 어디에도 없으면 □(tofu)가 될 수 있습니다. " +
+                 "그런 경우 fontSubsetExtraRanges 에 해당 문자체계 범위를 추가하거나, 해당 폰트를 " +
+                 "fontSubsetExcludeTargetPaths 로 제외하세요(TMP fallback/Dynamic atlas 폰트는 자동 제외/경고).")]
+        public int fontSubset = -1; // -1=자동, 0=비활성, 1=자동(명시적 ON)
+
+        [Tooltip("(override) 보존할 유니코드 범위를 직접 지정(쉼표 구분, fontTools 표기). 비우면 Auto 스캔이 범위를 결정합니다. " +
+                 "값을 넣으면 그 범위만 보존하는 수동 모드가 됩니다(스캔 생략).")]
+        public string fontSubsetUnicodeRanges = "";
+
+        [Tooltip("(override) subset 대상 폰트 에셋 경로(쉼표 구분, Assets/ 기준의 .ttf/.otf). 비우면 Auto 탐지가 대상을 정합니다. " +
+                 "값을 넣으면 그 폰트만 대상이 되는 수동 모드가 됩니다. 예) Assets/Fonts/NotoSansKR.ttf")]
+        public string fontSubsetTargetPaths = "";
+
+        [Tooltip("(additive) Auto 스캔 결과에 '추가로' 항상 보존할 유니코드 범위(쉼표 구분, fontTools 표기). " +
+                 "fontSubsetUnicodeRanges 와 달리 override 가 아니라 합집합(union)입니다. 스캔이 놓칠 수 있는 " +
+                 "'외부에서 동적 로드하는 다른 언어'를 보강하는 안전 필드입니다. 예) 일본어 UGC 지원 → U+3040-30FF,U+FF66-FF9F. " +
+                 "수동 범위(fontSubsetUnicodeRanges) 사용 시에도 함께 union 됩니다.")]
+        public string fontSubsetExtraRanges = "";
+
+        [Tooltip("(escape hatch) Auto 탐지 대상에서 '제외'할 폰트 경로(쉼표 구분, Assets/ 기준의 .ttf/.otf). " +
+                 "임의 언어 UGC 를 렌더하는 폰트 등 subset 하면 안 되는 폰트를 명시 보호합니다. " +
+                 "TMP fallback 소스/Dynamic atlas 소스 폰트는 이 목록과 무관하게 자동 제외/경고됩니다. 예) Assets/Fonts/UGC_Universal.ttf")]
+        public string fontSubsetExcludeTargetPaths = "";
+
+        [Tooltip("(additive) 서버발 동적 텍스트(닉네임·채팅 등)에 등장할 수 있는 언어를 선택(쉼표 구분 태그, AITFontSubsetLanguages 참조). " +
+                 "선택한 언어의 유니코드 범위가 보존 범위에 합집합(union)됩니다. 예) \"ja,zh-Hans\". " +
+                 "자동 모드(fontSubset=-1)에서 이 필드·fontSubsetUnicodeRanges·fontSubsetExtraRanges·fontSubsetTargetPaths·" +
+                 "fontSubsetExcludeTargetPaths 가 모두 비어 있으면 기본 세트(한국어 + 기본 라틴 + 프로젝트 텍스트 스캔 결과)로 subset 합니다. " +
+                 "다른 언어가 필요하면 여기에 추가하고, subset 을 끄려면 fontSubset=0 으로 설정하세요.")]
+        public string fontSubsetLanguages = "";
+
+        [Tooltip("-1 = 자동(비활성 — 품질 게이트 미통과 opt-in 패턴, audioStreamTranscode 와 동일 posture), " +
+                 "0 = 비활성, 1 = 활성(명시 활성일 때만 동작). " +
+                 "fontSubsetLanguages 로 선택한 언어 중 LazyEligible(ko/la 제외 전부) 태그를 부트 union 대신 " +
+                 "lazy 확장으로 분리합니다: 빌드 시 언어별 확장 서브셋 TTF → Dynamic TMP_FontAsset → " +
+                 "AssetBundle 로 외부화하고, 런타임에 해당 문자체계 텍스트가 실제로 등장할 때만 다운로드해 " +
+                 "TMP 전역 fallback 에 주입합니다. 어떤 단계든 실패한 언어는 안전하게 부트 union 으로 되돌아갑니다 " +
+                 "(fallback-to-boot — 1단계 대비 tofu 리스크 증가 없음).")]
+        public int fontSubsetLazyLanguages = -1; // -1=자동(비활성), 0=비활성, 1=명시 활성
+        [Header("콘텐츠 최적화 — 대형 텍스처 스트리밍")]
+        [Tooltip("비-부팅 대형 Texture2D 를 초기 .data 에서 분리해 StreamingAssets 로 외부화하고, 소스를 '동일 차원 단색 스텁'으로 치환합니다. " +
+                 "런타임(AITStreamingTexture)이 first-frame 이후 실 텍스처를 비동기 스트리밍 로드하여 동일 Texture2D 객체에 픽셀을 제자리 복원하므로 " +
+                 "이를 참조하는 Sprite/Material 이 참조 재할당 없이 갱신됩니다. 초기 다운로드/TTFF 를 크게 줄입니다. " +
+                 "빌드 후 원본/임포터 설정을 원상 복원합니다. -1 = 자동 (활성화), 0 = 비활성화, 1 = 활성화.")]
+        public int textureStreaming = -1;
+
+        [Tooltip("이 바이트 수보다 큰 텍스처 소스만 외부화 대상입니다 (기본 512KB). 소형 아이콘은 동적 Resources.Load 로 부팅에 끌려올 수 있어 보호합니다.")]
+        public int textureStreamingMinBytes = 524288;
+
+        [Tooltip("외부화 대상 폴더(쉼표 구분, Assets/ 기준 경로). 비우면 프로젝트 전체의 큰 텍스처가 대상입니다. 예) Assets/Art/BG,Assets/Textures")]
+        public string textureStreamingDirs = "";
+
+        [Tooltip("외부화에서 제외할 폴더(쉼표 구분, Assets/ 기준). 부팅에 필요한 텍스처를 사용자가 명시 보호하는 escape hatch. 예) Assets/UI/Always")]
+        public string textureStreamingExcludeDirs = "";
+
+        [Range(1, 8)]
+        [Tooltip("런타임 동시 스트리밍 다운로드/디코드 상한(기본 1). LoadImage 가 RGBA32 로 강제하므로 VRAM/메인스레드 hitch 를 이 값으로 제한합니다. 저사양 티어(lowMemoryTier)에서는 이 값과 무관하게 1 로 고정됩니다.")]
+        public int textureStreamingMaxConcurrent = 1;
+
+        [Tooltip("(lossy, 기본 ON) 외부화된 스트림 사본(StreamingAssets, CDN 배포본)을 max-size 캡보다 크면 축소해 CDN 무압축 총량을 실감축합니다. " +
+                 "프로젝트 원본은 빌드 후 그대로 복원되고, 축소는 '배포/런타임에 보이는 텍스처'에만 적용됩니다(스텁은 원본 차원 유지 → Sprite rect 정합). " +
+                 "균일 배율(캡÷최대변)로 축소해 스프라이트시트 서브-rect UV 도 비율 보존됩니다. 스트림은 비-부팅이라 로딩속도엔 무영향, CDN 캡만 감소. " +
+                 "클램프와 동일 posture 로 기본 활성이며 오히려 더 안전합니다(CDN 전용·원본 불변). -1 = 자동(활성), 0 = 비활성, 1 = 활성.")]
+        public int textureStreamDownscale = -1;
+
+        [Tooltip("스트림 사본 다운스케일 max-size 캡(이 값보다 큰 스트림 텍스처만 축소). 16 미만은 무시. 기본 2048 = HiDPI(DPR2~3) 헤드룸. " +
+                 "예) 1536, 2048, 3072. textureClampMaxSize 와 같은 HiDPI 캡 개념(스트림 대상).")]
+        public int textureStreamDownscaleMaxSize = 2048;
+
+        [Tooltip("(무손실, 기본 ON) 외부화된 스트림 PNG 사본을 oxipng(WASM)로 무손실 재압축해 CDN 무압축 총량을 실감축합니다. " +
+                 "픽셀 데이터 불변(필터/deflate 재탐색만) — 런타임 LoadImage 결과 동일, 품질 트레이드오프 없음. " +
+                 "다운스케일이 다시 쓴 PNG(실측 −32%)와 원본 소스 PNG(실측 −7~16%)를 함께 누릅니다. -1 = 자동(활성), 0 = 비활성, 1 = 활성.")]
+        public int textureStreamRecompress = -1;
+
+        [Tooltip("(lossy, 기본 ON) 알파 없는(불투명 RGB) 스트림 PNG 사본을 JPEG 로 전환해 CDN 무압축 총량을 실감축합니다(실측 −77%). " +
+                 "프로젝트 원본은 건드리지 않으며(스트림 사본만 교체) 런타임 LoadImage 는 PNG/JPG 를 매직 바이트로 자동 감지합니다. " +
+                 "알파가 있는 텍스처는 자동에서도 변환하지 않습니다. " +
+                 "자동(-1)은 추가로 Sprite/UI 등 Default 가 아닌 텍스처 타입·Point 필터·sRGB 끔·데이터맵 이름(_n/_mask/_rough 등)을 제외하고, 변환 후 PSNR<32dB 인 텍스처도 원본을 유지합니다(명시 1 은 이 게이트 없음). " +
+                 "⚠ DCT 아티팩트(플랫 아트 ringing 등) 위험이 있는 lossy 전환입니다. 문제가 보이면 0 으로 끄세요. " +
+                 "-1 = 자동(활성), 0 = 비활성(끄려면 0), 1 = 활성.")]
+        public int textureStreamJpeg = -1;
+
+        [Tooltip("JPEG 전환 품질(50~100 클램프, 기본 90). 실측상 q85 의 추가 이득은 q90 대비 ~1.5%p 에 불과해 품질 보수적인 90 이 기본입니다.")]
+        public int textureStreamJpegQuality = 90;
+
+        [Header("콘텐츠 최적화 — 대형 폰트 deferral")]
+        [Tooltip("-1 = 자동(1MB 이상·부팅 씬 미포함 TMP_FontAsset 자동 스캔 후 외부화), " +
+                 "0 = 비활성화, 1 = 수동(fontStreamingTargetPaths 에 명시한 경로만 외부화). " +
+                 "자동 모드: 비-부팅 대형 폰트를 초기 .data 에서 분리해 WebGL AssetBundle 로 StreamingAssets 에 외부화하고, " +
+                 "소스 폰트를 최소 스텁 .ttf 로 치환해 .data 에서 .ttf 바이트를 제외합니다. " +
+                 "런타임(AITStreamingFont)이 first-frame 이후 번들을 로드하여 그 안의 TMP_FontAsset 을 TMP fallback 체인에 주입해 재수화합니다. " +
+                 "⚠ 동적 텍스트 리스크: 재수화 전(또는 TMP 부재 시) 대상 폰트의 글자는 □ 로 렌더됩니다.")]
+        public int fontStreaming = -1;
+
+        [Tooltip("수동 모드(fontStreaming=1)일 때 외부화 대상 TMP_FontAsset 경로(쉼표 구분, Assets/ 기준의 .asset). " +
+                 "각 대상의 소스 .ttf/.otf 는 의존성에서 자동 해석됩니다. 예) Assets/Fonts/NotoSansSC SDF.asset,Assets/Fonts/NotoSansJP SDF.asset")]
+        public string fontStreamingTargetPaths = "";
+
+        [Range(1, 4)]
+        [Tooltip("런타임 동시 번들 다운로드/로드 상한(기본 2). 재수화는 post-first-frame 배경 작업이라 TTFF 무관하나, 메인스레드 hitch 를 이 값으로 제한합니다.")]
+        public int fontStreamingMaxConcurrent = 2;
 
         [Header("스토리지 설정")]
         [Tooltip("PlayerPrefs 영속화 (앱인토스 Storage): -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
         public int playerPrefsPersistence = -1;
+
+        // ── 모바일 런타임 최적화 (구형 기기 메모리·전력 대응) ──
+        // 전부 tri-state: -1 = 자동, 0 = 비활성, 1 = 활성. 자동의 실효값은 AITDefaultSettings.GetDefault* 가 정하고,
+        // 빌드 시 WebGLBuildCopier 가 실효값을 JSON 으로 풀어 index.html 의 window.__AIT_PERF 로 주입한다(AITPerfFlags).
+        [Header("모바일 런타임 최적화 (구형 기기)")]
+        [Tooltip("WebGL 컨텍스트 antialias 처리: -1 = 자동(요청/실제 속성을 기록하고 probe 컨텍스트만 해제, antialias 는 끄지 않음), " +
+                 "0 = 비활성(훅 자체를 설치하지 않음), 1 = 활성(모바일에서 DPR 1.5 이상이거나 메모리 6GB 미만이면 antialias 를 끔). " +
+                 "⚠ QualitySettings.antiAliasing 이 0 보다 큰 프로젝트에서 antialias 를 끄면 Unity 가 자체 MSAA 렌더 타깃을 만들어 " +
+                 "오히려 메모리가 늘 수 있습니다. 실기기 검증 전까지 자동은 antialias 를 끄지 않습니다.")]
+        public int webglAntialiasOpt = -1;
+
+        [Tooltip("WebGL 컨텍스트 손실 복구: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "webglcontextlost 가 오면 페이지를 다시 불러옵니다(120초 안에 반복되면 reload 루프를 막고 안내 화면을 띄웁니다). " +
+                 "게임 상태는 사라지지만 영구 검은 화면보다 낫습니다. 컨텍스트가 연속 손실된 기기는 다음 부팅부터 렌더 해상도 상한(DPR)을 낮춥니다.")]
+        public int webglContextRecovery = -1;
+
+        [Tooltip("프레임레이트 상한: -1 = 자동(활성: 100Hz 이상 디스플레이에서 60fps 로 제한), 0 = 비활성(주사율 그대로), 1 = 활성(자동과 동일). " +
+                 "60Hz 기기에서는 효과가 없습니다. 120fps 를 의도한 게임은 0 으로 끄세요.")]
+        public int frameRateCap = -1;
+
+        [Tooltip("적응형 프레임레이트: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "wasm heap 이 memCriticalMB(기본 384MB)를 넘거나 호스트가 AITPacing.setHint 로 battery/thermal 힌트를 주면 30fps 로 낮추며, 한 번 낮아지면 세션 동안 유지됩니다. " +
+                 "브라우저 자체의 배터리·발열 신호는 없습니다. 오탐 시 30fps 에 갇힐 수 있어 자동은 꺼 둡니다.")]
+        public int adaptiveFrameRate = -1;
+
+        [Tooltip("모바일 라이프사이클 게이트: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "페이지가 hidden/pagehide/freeze 가 되면 메인 루프를 멈추고, 실행 중이던 AudioContext 와 미디어 요소만 일시정지했다가 " +
+                 "visible 이 되면 재개합니다. 숨겨진 동안 게임 타이머가 멈추므로 백그라운드 진행이 필요한 게임은 0 으로 끄세요.")]
+        public int mobileLifecycle = -1;
+
+        [Tooltip("메모리 텔레메트리: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "WebAssembly.Memory.grow 횟수·소요 시간·크기와 OOM 을 기록하고, 이전 세션이 비정상 종료됐는지(crashCount)를 추적해 " +
+                 "연속 크래시 시 렌더 해상도 상한을 낮추는 근거로 씁니다. 게임 동작은 바꾸지 않습니다.")]
+        public int memoryTelemetry = -1;
+
+        [Tooltip("data 응답 정확한 크기 재포장: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "빌드 때 .data 의 압축 해제 크기를 재서 Content-Length 로 박아, 로더가 버퍼를 한 번만 할당하게 합니다(로드 시점 일시 피크 감소). " +
+                 "측정에 실패하거나 Decompression Fallback(.unityweb) 이면 아무것도 하지 않습니다.")]
+        public int exactDataBody = -1;
+
+        [Tooltip("소비한 data 버퍼 해제: -1 = 자동(Chromium 만 활성), 0 = 비활성, 1 = 활성(WebKit 포함). " +
+                 "global-metadata.dat 처럼 한 번 읽고 다시 안 쓰는 data 구간을 읽은 뒤 해제해 정상 상태 메모리를 줄입니다. " +
+                 "자동은 Chromium 계열에서만 켜고 WebKit 전용 엔진(iOS/Safari)에서는 끕니다. 1 이면 WebKit 에서도 강제로 켭니다. " +
+                 "Chrome 111 / iOS 16.4 미만이면 아무것도 하지 않습니다.")]
+        public int releaseConsumedData = -1;
+
+        [Tooltip("긴 오디오 강제 압축 재생(framework 패치): -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "외부화되지 않은 긴 클립(DecompressOnLoad)도 PCM 으로 풀지 않고 압축 상태로 미디어 요소로 재생하도록 framework 를 빌드 후 패치합니다. " +
+                 "3분 스테레오 BGM 하나가 약 63MB 를 차지하는 문제를 줄입니다. iOS 실기기 검증 전이라 자동은 꺼 둡니다. " +
+                 "Unity 가 알 수 없는 형태로 바뀌면 패치를 건너뜁니다. Decompression Fallback(.unityweb) 이면 적용하지 않습니다. " +
+                 "0 은 clip.length/AudioSource.time 정확성 패치까지 빼는 stock 대조군입니다.")]
+        public int audioForceCompressedPlayback = -1;
+
+        /// <summary>
+        /// (숨김) framework 스택 트레이스 정규식 지연 계산 패치(stacktrace-lazy). Unity 의 prejs/Error.js 는 framework 함수 최상위에서
+        /// jsStackTrace() 를 불러 Module.stackTraceRegExp 를 만드는데, 이때 V8 이 바깥 framework 함수 전체를 다시 파싱해(소스 위치 수집)
+        /// 부팅 CPU 를 쓴다. 이 패치는 정규식을 첫 접근(오류 처리) 때 계산하게 바꾼다. 소비자는 로더 errorHandler 뿐이라 동작은 같다.
+        /// -1 = 자동 (켜짐), 0 = 끔(stock), 1 = 켬(자동과 같으나 명시). 오디오 패치(audioForceCompressedPlayback)와 독립이다.
+        /// AIT_FW_LAZY_STACKTRACE 환경 변수(1/true, 0/false)가 최우선. 앵커가 정확히 1회 맞지 않으면 건너뛰어 stock 그대로 동작한다.
+        /// UI 에는 노출하지 않는 숨김 설정이며 기존 에셋에는 필드가 없어 -1 로 역직렬화된다.
+        /// </summary>
+        [Tooltip("-1 = 자동 (켜짐), 0 = 끔, 1 = 켬. framework 의 스택 트레이스 정규식을 오류가 날 때까지 계산하지 않습니다.")]
+        public int frameworkLazyStackTraceMode = -1;
+
+        [Tooltip("audioForceCompressedPlayback 이 압축 재생으로 강제하는 최소 클립 길이(초). 기본 10. 0 이하이면 10 으로 취급합니다. " +
+                 "이보다 짧은 클립은 기존대로 PCM 으로 풀립니다(짧은 효과음 지연 방지).")]
+        public float audioForceCompressedMinSeconds = 10f;
+
+        [Tooltip("저사양(저메모리) 기기 티어: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "직전 부팅 사망 이력으로 저사양 티어(0~2)를 정하고 24시간 유지합니다. " +
+                 "티어 1 이상이면 DPR 상한(1.5/1), 스트리밍 텍스처 축소, data 선요청 보류, 페이지 캐시 저장 생략이 적용됩니다. 0 이면 판별 자체를 끕니다.")]
+        public int lowMemoryTier = -1;
+
+        [Tooltip("페이지 캐시 put 지연: -1 = 자동(WebKit 계열만 활성), 0 = 비활성, 1 = 활성(모든 엔진). " +
+                 "legacy early-fetch 가 받은 data/wasm 을 Cache API 에 넣는 put 을 첫 프레임 이후로 미뤄 로드 중 메모리 피크와 직렬화 경합을 줄입니다. " +
+                 "WebKit(iOS) 은 put 중 본문 사본이 상주해 RSS 가 커지므로 자동에서도 켭니다. 캐시 히트는 다음 방문부터 적용됩니다.")]
+        public int pageCacheDeferredPut = -1;
+
+        [Tooltip("IDBFS 프리워밍: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "콜드 첫 실행에서 Unity 가 부팅 critical path 에서 만드는 IndexedDB(\"/idbfs\", v21, FILE_DATA 스토어)를 index.html head 에서 미리 열어 생성합니다. " +
+                 "이미 있거나 버전이 달라도 조용히 무시하며 연결은 즉시 닫습니다. 런타임에서는 ?aitidbprewarm=0 으로도 끌 수 있습니다.")]
+        public int idbPrewarm = -1;
+
+        [Tooltip("텍스처 스트리밍 동시 메모리 예산(MB, 기본 16). auto(-1) textureStreaming 은 (스텁 RGBA32 − 원본 GPU 바이트) 합계가 이 예산 안에 들어오는 텍스처만 외부화합니다. " +
+                 "0 이하이면 제한 없음, textureStreaming=1 이면 이 값을 무시합니다.")]
+        public int textureStreamingMemoryBudgetMB = 16;
+
+        [Tooltip("루프 오디오 재인코딩: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "audioStreamTranscode 가 loop=true 로 참조되는 클립을 건너뛰는 게이트를 풀어, 루프 클립도 저비트레이트로 재인코딩하되 " +
+                 "gapless 이음새 손실 위험을 줄이는 경로(루프 전용 인코딩)를 씁니다. 루프 이음새 청취 검증 전이라 자동은 꺼 둡니다.")]
+        public int audioStreamLoopTranscode = -1;
+
+        [Tooltip("텍스처 스트리밍 GPU 포맷 보존: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
+                 "런타임이 WEBGL_compressed_texture_astc 를 확인하면 ASTC 블록을 그대로 GPU 에 올리고, 미지원이거나 항목별 raw 업로드가 실패하면 " +
+                 "브라우저 디코드 PNG/JPG 사본으로 폴백합니다. iPhone 15 Pro raw-swap draw-check 4/4, ASTC 없는 AVD 는 browser-swap 폴백 4/4 입니다. 0 이면 항상 PNG/JPG 경로만 씁니다.")]
+        public int textureStreamKeepGpuFormat = -1;
+
+        [Tooltip("폰트 번들 언로드: -1 = 자동(비활성), 0 = 비활성, 1 = 활성. " +
+                 "폰트 번들 로드 후 Unload(false) 로 번들 메모리를 해제합니다. TMP 동적 폴백에서 tofu 위험이 있어 기본 끔입니다.")]
+        public int fontStreamingUnloadBundle = -1;
+
+        [Tooltip("텍스처 스트리밍 브라우저 디코드: -1 = 자동(WebGL 2 에서 활성), 0 = 비활성, 1 = 활성. " +
+                 "PNG/JPG 를 브라우저(fetch + createImageBitmap)에서 풀어 GL 텍스처에 직접 올립니다. 압축 바이트와 디코드 버퍼가 wasm 힙에 들어오지 않아 힙이 자라지 않습니다. " +
+                 "원본이 non-readable 인 텍스처에만 적용되며, 실패하면 항목별로 LoadImage 경로로 폴백합니다.")]
+        public int textureStreamBrowserDecode = -1;
+
+        [Tooltip("텍스처 스트리밍 저사양 티어 다운스케일: -1 = 자동(활성), 0 = 비활성, 1 = 강제 활성. " +
+                 "lowMemoryTier 1 이상인 기기에서 브라우저 디코드가 이미지를 줄여(tier 1: 512 초과 시 절반, tier 2: 256 초과 절반/1024 초과 1/4) GL 텍스처를 작게 올립니다. " +
+                 "mip 이 없는 스프라이트/UI 텍스처는 전역 mip 제한이 먹지 않아 이 경로로만 줄일 수 있습니다. raw(GPU 포맷 보존)는 위쪽 mip 레벨을 건너뜁니다.")]
+        public int textureStreamLowTierDownscale = -1;
 
         [Header("키보드 설정")]
         [Tooltip("소프트 키보드 대응: Pan(기본) = 탭한 입력창이 가리면 화면만 위로 이동, Resize = 캔버스 리사이즈, None = 상단 위치 보정만")]
@@ -501,6 +963,45 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// 기본 페이지 캐시 활성화 여부 (재방문 CacheStorage 서빙)
+        /// 모든 Unity 버전에서 기본 활성화: 미지원 환경에서 무해 통과가 보장됨.
+        /// </summary>
+        public static bool GetDefaultPageCache()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 warm manifest 산출 여부.
+        /// pageCache 와 쌍으로 기본 ON: 호스트 warm 연동 zero-config 제공.
+        /// pageCache 실효값이 OFF 이면 게이팅으로 no-op 처리되므로 독립적으로 ON 해도 안전.
+        /// </summary>
+        public static bool GetDefaultWarmManifest()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 warm 페이지(ait-warm.html) 산출 여부.
+        /// pageCache·warmManifest 실효값이 모두 ON 일 때만 실제 산출되는 AND 게이트이며,
+        /// 산출물은 정적 파일 1개 추가일 뿐 게임 런타임 동작에 영향이 없어 기본 ON.
+        /// </summary>
+        public static bool GetDefaultWarmPage()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 네이티브 에셋 소스 우선 사용 여부.
+        /// pageCache 실효값이 ON 일 때만 인터셉터에 신호가 주입되는 AND 게이트이며,
+        /// 호스트가 리졸버를 주입하지 않으면 신호만 노출되고 캐시-퍼스트로 자동 폴백되어 기본 ON.
+        /// </summary>
+        public static bool GetDefaultNativeAssetSource()
+        {
+            return true;
+        }
+
+        /// <summary>
         /// 기본 데이터 캐싱 여부
         /// 베타 기능 미공개 상태라 전 버전 비활성화 — 플랫폼(WebView) 캐시 정책 검증 완료 후
         /// 공개 시 Unity 6+ 기본 활성화(UnityVersion.md:401) 재검토
@@ -512,7 +1013,7 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 압축 포맷: Brotli
-        /// decompressionFallback이 활성화되어 있으므로 모든 Unity 버전에서 Brotli 사용 가능
+        /// decompressionFallback=false이므로 브라우저/CDN이 Content-Encoding: br로 네이티브 해제 (모든 Unity 버전 Brotli)
         /// </summary>
         public static WebGLCompressionFormat GetDefaultCompressionFormat()
         {
@@ -529,12 +1030,55 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 기본 IL2CPP 컴파일러 설정
-        /// 출처: StartupOptimization.md:85
+        /// 기본 IL2CPP 컴파일러 설정: Release
+        /// 주의: 과거 이 값을 Master로 두고 Coatsink "Disk Size with LTO"의 LTO 파트라 가정했으나,
+        /// 실측 결과 WebGL에서 컴파일러 config(Master)는 emscripten 최적화/LTO에 영향을 주지 않아
+        /// Release와 바이트 단위로 동일한 산출물을 냈다(no-op). 실제 LTO 레버는
+        /// emscripten code optimization = "Disk Size with LTO"이며 GetDefaultWebGLCodeOptimization()이 담당한다.
         /// </summary>
         public static Il2CppCompilerConfiguration GetDefaultIl2CppConfiguration()
         {
             return Il2CppCompilerConfiguration.Release;
+        }
+
+        /// <summary>
+        /// 기본 WebGL Code Optimization: "Disk Size with LTO"(DiskSizeLTO)
+        /// Meta+Unity 로드타임 스택의 실제 LTO 레버. emscripten Link Time Optimization으로
+        /// cross-module dead-code를 제거해 wasm 코드 크기를 추가로 축소한다(실측 기준 압축전 ~-21%).
+        /// trade-off: 빌드 시간 증가(LTO 링크). API가 버전마다 다르고(2022.3/6: UserBuildSettings,
+        /// 구버전: PlayerSettings.WebGL) 모듈 어셈블리 참조 보장이 없어 AITWebGLCodeOptimization이
+        /// reflection으로 적용한다. 멤버가 없는 버전(예: 2021.3)에서는 fail-safe로 건너뛴다.
+        /// 출처: Unity Manual web-optimization-c-sharp, Coatsink "Ready, Set, Cook!" 케이스 스터디
+        /// </summary>
+        public static string GetDefaultWebGLCodeOptimization()
+        {
+            return AppsInToss.Editor.AITWebGLCodeOptimization.DiskSizeLTO;
+        }
+        /// <summary>
+        /// 기본 IL2CPP 코드 생성 방식: OptimizeSize
+        /// Meta+Unity 로드타임 스택의 "Faster (smaller) builds" — 제네릭 인스턴스화를
+        /// 공유해 제네릭 폭발(측정상 ~130k 함수)을 붕괴시켜 wasm 코드 크기를 축소한다.
+        /// trade-off: 공유 제네릭의 미세한 런타임 디스패치 비용(정확성 변화 아님).
+        /// 출처: Unity Manual web-optimization-player (IL2CPP Code Generation = Optimize for code size)
+        /// </summary>
+        public static UnityEditor.Build.Il2CppCodeGeneration GetDefaultIl2CppCodeGeneration()
+        {
+            return UnityEditor.Build.Il2CppCodeGeneration.OptimizeSize;
+        }
+        /// 기본 WebAssembly 2023 타겟 여부 (Unity 6+): 활성화
+        /// Meta+Unity 로드타임 최적화: native exception/SIMD/BigInt/WebAssembly.Table 등
+        /// 2023 기능셋을 번들해 코드 크기·다운로드·시작 시간을 단축한다.
+        /// 주의: 미지원 브라우저(대략 Chrome&lt;91 / Safari&lt;16.4)에서는 graceful
+        /// degradation이 아니라 로드 자체가 실패한다. Apps in Toss는 Toss 앱 WebView
+        /// 전용이라 플랫폼 min-spec이 이를 충족하는 전제에서만 기본 활성.
+        /// </summary>
+        public static bool GetDefaultWasm2023()
+        {
+#if UNITY_6000_0_OR_NEWER
+            return true;
+#else
+            return false;
+#endif
         }
 
 #if UNITY_2023_3_OR_NEWER
@@ -551,12 +1095,46 @@ namespace AppsInToss
         /// <summary>
         /// 기본 예외 처리 모드
         /// 출처: UnityVersion.md:393, 431
+        /// - Sentry(io.sentry.unity)를 쓰거나 Development 빌드: FullWithStacktrace
+        ///   (Sentry가 stack trace를 캡처하려면 필요. 낮추면 Sentry SDK-8A 런타임 경고 재발)
+        /// - 그 외: FullWithoutStacktrace. null 체크·예외 catch 동작은 그대로이고 stack trace만 빠진다.
+        ///   perf.yml 9회 paired 실측(heavy, gzip, 4× CPU): TTFF 2021.3 −668ms, 6000.0 −222ms,
+        ///   6000.3 −256ms, 세 버전 모두 9/9 음수. stack trace 계측 코드가 빠져 wasm이 1~2.5MB 줄어든다.
         /// </summary>
-        public static WebGLExceptionSupport GetDefaultExceptionSupport()
+        public static WebGLExceptionSupport GetDefaultExceptionSupport(bool developmentBuild = false)
         {
-            // Sentry/에러 추적 SDK가 stack trace를 캡처하려면 FullWithStacktrace 필요.
-            // Unity 기본값(ExplicitlyThrownExceptionsOnly)을 올려서 Sentry의 런타임 경고 제거.
-            return WebGLExceptionSupport.FullWithStacktrace;
+            if (developmentBuild || IsSentryConfigured())
+            {
+                return WebGLExceptionSupport.FullWithStacktrace;
+            }
+            return WebGLExceptionSupport.FullWithoutStacktrace;
+        }
+
+        // ScriptableSentryUnityOptions.GetConfigPath() 기본값. 메인 Editor asmdef는 Sentry를 참조하지 않아 상수로 둔다.
+        private const string SentryOptionsAssetPath = "Assets/Resources/Sentry/SentryOptions.asset";
+
+        /// <summary>
+        /// 이 빌드가 Sentry로 에러를 수집하는지 판별한다.
+        /// 패키지(Sentry.Unity 어셈블리)가 있고, 옵션 asset이 있거나 빌드 시 SENTRY_DSN 주입
+        /// (AITSentryDsnInjector)이 예정된 경우. 패키지만 깔리고 설정이 없으면 수집하지 않으므로 제외한다.
+        /// </summary>
+        internal static bool IsSentryConfigured()
+        {
+            bool installed = false;
+            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly.GetName().Name == "Sentry.Unity")
+                {
+                    installed = true;
+                    break;
+                }
+            }
+            if (!installed)
+            {
+                return false;
+            }
+            return System.IO.File.Exists(SentryOptionsAssetPath)
+                || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("SENTRY_DSN"));
         }
 
         /// <summary>
@@ -570,12 +1148,14 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 기본 Decompression Fallback
-        /// 출처: StartupOptimization.md:93
+        /// 기본 Decompression Fallback: 비활성화(false)
+        /// 끄면 Unity가 JS Brotli 디컴프레서를 프레임워크 번들에서 제외 → 다운로드/파싱 바이트 감소.
+        /// 대신 브라우저/CDN이 Content-Encoding: br로 .unityweb를 네이티브 해제하도록 의존한다.
+        /// Apps in Toss 플랫폼 CDN이 br 인코딩을 서빙하는 전제에서만 안전(자체 호스팅 시 헤더 필수).
         /// </summary>
         public static bool GetDefaultDecompressionFallback()
         {
-            return true;
+            return false;
         }
 
         /// <summary>
@@ -585,6 +1165,55 @@ namespace AppsInToss
         public static bool GetDefaultRunInBackground()
         {
             return false;
+        }
+
+        /// <summary>
+        /// 기본 Mip Stripping: 활성화(true)
+        /// 빌드 산출물에서 실제로 참조되지 않는 텍스처 밉맵 레벨을 제거해 .data 크기를 줄인다.
+        /// 설정된 품질의 출력은 불변(쓰이지 않는 밉만 제거되므로 시각적 변화 없음).
+        /// </summary>
+        public static bool GetDefaultMipStripping()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 Optimize Mesh Data(Strip Unused Mesh Components): 활성화(true)
+        /// 어떤 머티리얼도 참조하지 않는 메시 정점 채널(노멀/탄젠트/UV 등)을 빌드 산출물에서 제거해 .data를 줄인다.
+        /// 주의: 런타임에 머티리얼을 교체해 제거된 채널을 요구하면 시각 오류가 발생할 수 있다.
+        /// </summary>
+        public static bool GetDefaultStripUnusedMeshComponents()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 폰트 CJK subset 활성화 여부.
+        /// zero-config 철학: 기본 ON + 자동 안전장치(스캔/블록 완성/보수적 베이스라인/빌드 리포트/opt-out).
+        /// 스캔이 등장 문자체계의 블록 전체를 보존하므로 동적 텍스트(닉네임/채팅)도 정확성이 보존된다.
+        /// </summary>
+        public static bool GetDefaultFontSubset()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 폰트 subset lazy 언어 확장 활성화 여부.
+        /// audioStreamTranscode 와 동일 posture(품질 게이트 미통과 opt-in 패턴)로, 자동(-1)은 항상 비활성 —
+        /// fontSubsetLazyLanguages == 1(명시 활성)에서만 동작한다.
+        /// </summary>
+        public static bool GetDefaultFontSubsetLazyLanguages()
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// 폰트 스트리밍 기본값: 자동 모드(-1 → true)
+        /// 1MB 이상·부팅 씬 미포함 TMP_FontAsset 을 자동 스캔하여 외부화합니다.
+        /// </summary>
+        public static bool GetDefaultFontStreaming()
+        {
+            return true;
         }
 
 #if UNITY_2023_3_OR_NEWER && !UNITY_6000_0_OR_NEWER
@@ -614,6 +1243,266 @@ namespace AppsInToss
         /// PlayerPrefs 데이터를 보호하기 위해 기본 ON.
         /// </summary>
         public static bool GetDefaultPlayerPrefsPersistence()
+        {
+            return true;
+        }
+
+        // ── 모바일 런타임 최적화: 자동(-1)의 실효값 ──
+        // 실효값은 여기가 단일 출처다. AITPerfFlags(빌드 시 __AIT_PERF 주입)와 설정 창 UI·변경 배지가 모두 이 값을 쓴다.
+
+        /// <summary>
+        /// WebGL 컨텍스트 antialias 끄기(DPR/메모리 조건부) 자동 실효값: false.
+        /// 컨텍스트 antialias 를 끄면 Unity 가 자체 MSAA 렌더 타깃을 만들어 메모리가 오히려 늘 수 있어
+        /// 실기기·AA 변형 빌드 검증 전까지 자동은 요청/실제 속성 기록과 probe 컨텍스트 해제만 한다.
+        /// (webglAntialiasOpt 가 0 이면 훅 자체를 설치하지 않는다 — 자동과 0 은 다르다.)
+        /// </summary>
+        public static bool GetDefaultWebglAntialiasOpt()
+        {
+            return false;
+        }
+
+        /// <summary>WebGL 컨텍스트 손실 복구(reload + 루프 가드) 자동 실효값: true.</summary>
+        public static bool GetDefaultWebglContextRecovery()
+        {
+            return true;
+        }
+
+        /// <summary>프레임레이트 상한(100Hz 이상 패널에서 60) 자동 실효값: true. 60Hz 기기에서는 효과가 없다.</summary>
+        public static bool GetDefaultFrameRateCap()
+        {
+            return true;
+        }
+
+        /// <summary>적응형 프레임레이트(30fps 하향) 자동 실효값: false. 오탐 시 30fps 에 갇히므로 실기기 데이터 전까지 opt-in.</summary>
+        public static bool GetDefaultAdaptiveFrameRate()
+        {
+            return false;
+        }
+
+        /// <summary>모바일 라이프사이클 게이트(hidden 시 루프·오디오 정지) 자동 실효값: true.</summary>
+        public static bool GetDefaultMobileLifecycle()
+        {
+            return true;
+        }
+
+        /// <summary>메모리 텔레메트리(grow 기록·crash-loop 감지) 자동 실효값: true. 게임 동작을 바꾸지 않는다.</summary>
+        public static bool GetDefaultMemoryTelemetry()
+        {
+            return true;
+        }
+
+        /// <summary>data 응답 정확한 크기 재포장 자동 실효값: true. 값이 낡거나 측정 실패면 종전 동작으로 돌아갈 뿐 실패하지 않는다.</summary>
+        public static bool GetDefaultExactDataBody()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 소비한 data 버퍼 해제(metadata 등) 자동 실효값: true. Chromium(6000.0/6000.3/2021.3 쌍 측정)과 Android WebView 에서
+        /// 해제·생존을 확인했다. 자동일 때 WebKit 전용 엔진(iOS)에서는 런타임이 끈다(AITPerfFlags.EffectiveReleaseConsumedDataWebKit).
+        /// 미지원 엔진(resizable ArrayBuffer 없음)·재읽기·mmap 은 런타임이 알아서 stock 으로 남는다.
+        /// </summary>
+        public static bool GetDefaultReleaseConsumedData()
+        {
+            return true;
+        }
+
+        /// <summary>저사양 기기 티어 판별 자동 실효값: true. 판별·진단만 켜며 게임 동작은 바꾸지 않는다.</summary>
+        public static bool GetDefaultLowMemoryTier()
+        {
+            return true;
+        }
+
+        /// <summary>페이지 캐시 put 지연 자동 실효값: false(= 런타임이 WebKit 계열에서만 자동으로 켠다). 빌드타임 실효값은 false 이고 JSON 에는 tri-state 를 그대로 싣는다.</summary>
+        public static bool GetDefaultPageCacheDeferredPut()
+        {
+            return false;
+        }
+
+        /// <summary>IDBFS 프리워밍 자동 실효값: true. 콜드 부팅에서 IDBFS DB 생성을 head 로 앞당기고, 실패해도 조용히 무시한다.</summary>
+        public static bool GetDefaultIdbPrewarm()
+        {
+            return true;
+        }
+
+        /// <summary>루프 오디오 재인코딩 자동 실효값: false. 루프 이음새 청취 검증 전까지 opt-in.</summary>
+        public static bool GetDefaultAudioStreamLoopTranscode()
+        {
+            return false;
+        }
+
+        /// <summary>텍스처 스트리밍 GPU 포맷 보존 자동 실효값: true. 런타임이 WEBGL_compressed_texture_astc 를 확인해 ASTC 블록을 그대로 올리고, 미지원이거나 항목별 raw 업로드가 실패하면 브라우저 디코드 PNG/JPG 사본으로 폴백한다. iPhone 15 Pro raw-swap draw-check 4/4, ASTC 없는 AVD 는 browser-swap 폴백 4/4.</summary>
+        public static bool GetDefaultTextureStreamKeepGpuFormat()
+        {
+            return true;
+        }
+
+        /// <summary>텍스처 스트리밍 브라우저 디코드 자동 실효값: true. 런타임이 WebGL 2 + createImageBitmap 을 확인하고, 아니면 LoadImage 로 폴백한다.</summary>
+        public static bool GetDefaultTextureStreamBrowserDecode()
+        {
+            return true;
+        }
+
+        /// <summary>텍스처 스트리밍 저사양 티어 다운스케일 자동 실효값: true. 티어 0(정상 기기)에서는 어차피 아무 일도 하지 않는다.</summary>
+        public static bool GetDefaultTextureStreamLowTierDownscale()
+        {
+            return true;
+        }
+
+        /// <summary>폰트 번들 언로드 자동 실효값: false. TMP 동적 폴백 tofu 위험이 있어 opt-in.</summary>
+        public static bool GetDefaultFontStreamingUnloadBundle()
+        {
+            return false;
+        }
+
+        /// <summary>textureStreamingMemoryBudgetMB 기본값(MB).</summary>
+        public const int DefaultTextureStreamingMemoryBudgetMB = 16;
+
+        /// <summary>긴 오디오 강제 압축 재생(framework 패치) 자동 실효값: false. iOS 실기기 검증 전까지 opt-in.</summary>
+        public static bool GetDefaultAudioForceCompressedPlayback()
+        {
+            return false;
+        }
+
+        /// <summary>audioForceCompressedMinSeconds 가 0 이하일 때 쓰는 기본 최소 길이(초).</summary>
+        public const float DefaultAudioForceCompressedMinSeconds = 10f;
+
+        /// <summary>
+        /// 기본 오디오 스트리밍 활성화 여부.
+        /// 256KB 초과 AudioClip 을 초기 .data 에서 분리해 StreamingAssets 로 외부화하고
+        /// 런타임에 비동기로 복원 — TTI 단축 효과가 크므로 기본 ON.
+        /// </summary>
+        public static bool GetDefaultAudioStreaming()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 오디오 재인코딩 활성화 여부.
+        /// 표시/청취 품질을 낮추는 lossy 변경이지만, 자동 모드는 비압축(PCM)/ADPCM 만 Vorbis(q≈0.7)로 변환하고
+        /// 이미 압축된(Vorbis) 클립은 건드리지 않아 세대손실이 없고 near-transparent 하다. WebGL 에서 PCM 오디오는
+        /// 사실상 오설정이므로 이를 Vorbis 로 정규화하는 것은 crunch/ASTC 를 기본 ON 으로 두는 것과 동일 posture.
+        /// 미니앱 플랫폼(다운로드/.data 민감)에서 기본 ON(opt-out)이 효익을 실현한다. 빌드 후 임포터 설정은 항상 원상 복원.
+        /// </summary>
+        public static bool GetDefaultAudioReencode()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 스트리밍 오디오 트랜스코딩(외부화 MP3 사본 → 저비트레이트 MP3) 활성화 여부.
+        /// 소스가 이미 lossy 인 MP3 에 대한 cascaded lossy 이고 루핑 BGM 은 LAME delay/padding 으로
+        /// 루프 이음새 갭 위험이 있어, 자동(-1)은 ON 이되 루프 재생(AudioSource.loop)에 쓰이는
+        /// 클립은 AITAudioStreamTranscoder 가 건너뛴다. audioStreamTranscode=0 으로 끈다.
+        /// </summary>
+        public static bool GetDefaultAudioStreamTranscode()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 텍스처 crunch 활성화 여부.
+        /// crunch(DXT 위 4~8x)는 q=50 기준 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
+        /// ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// </summary>
+        public static bool GetDefaultTextureCrunch()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 텍스처 크기 클램프(maxTextureSize 캡) 기본 활성 여부.
+        /// 표시 해상도를 낮추는 lossy 변경이지만, SDK 는 이미 lossy 텍스처 최적화를 기본 ON 으로 둔다
+        /// (crunch=DXT 압축, ASTC 블록 에스컬레이션). 미니앱 플랫폼(200MB 캡·모바일 다운로드 민감)에서
+        /// 그게 SDK 의 존재 이유이므로, 클램프도 동일 posture 로 기본 ON(opt-out)이 일관적이다.
+        /// 기본 캡 2048 은 안전한 HiDPI 헤드룸 — 2048 초과(사실상 4096) 텍스처만 축소되고, 이는 DPR3
+        /// 모바일에서 대개 과하다. 의도적 4096 은 캡 상향/폴더 제외/값 0 으로 opt-out 가능하고,
+        /// 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// </summary>
+        public static bool GetDefaultTextureSizeClamp()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 자동(-1) 모드에서 사용하는 텍스처 클램프 캡(px).
+        /// ⚠ 자동 모드는 직렬화된 textureClampMaxSize 를 사용하지 않는다: 클램프가 opt-in(기본 OFF)이던
+        /// 구버전에서 저장된 AITConfig.asset 에는 당시 기본값(1024)이 박제되어 있는데, 그 시절 auto 는
+        /// 비활성이라 캡 값은 사용자의 의도가 아닌 직렬화 잔재다. posture 플립(auto=ON) 후 그 잔재가
+        /// 그대로 적용되면 의도(2048 안전 헤드룸)보다 훨씬 공격적인 축소가 조용히 발생한다.
+        /// 사용자 튜닝 캡은 명시 활성(textureSizeClamp==1)에서만 존중한다.
+        /// </summary>
+        public static int GetDefaultTextureClampMaxSize()
+        {
+            return 2048;
+        }
+
+        /// <summary>
+        /// 기본 ASTC 블록 에스컬레이션 활성화 여부.
+        /// 블록 확대(예: 12x12)는 시각 저하가 통상 미미한 반면 다운로드/.data 절감이 커 기본 ON.
+        /// 비-ASTC 서브타겟에서는 빌드 시 자동으로 건너뛰고(no-op), 빌드 후 임포터 설정은 항상 원상 복원된다.
+        /// </summary>
+        public static bool GetDefaultAstcBlockEscalation()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 텍스처 스트리밍 활성 여부.
+        /// 비-부팅 대형 텍스처를 자동으로 외부화해 초기 다운로드/TTFF 를 줄인다(zero-config).
+        /// </summary>
+        public static bool GetDefaultTextureStreaming()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 스트림 사본 다운스케일 활성 여부.
+        /// 외부화된 스트림 사본을 HiDPI 캡으로 축소해 CDN 무압축 총량을 줄인다. 클램프와 동일 posture 로
+        /// 기본 ON(opt-out)이며, 클램프보다 오히려 안전하다 — 스트림 사본은 비-부팅(CDN 전용)이라 로딩
+        /// 속도엔 영향이 없고, 프로젝트 원본은 항상 불변이며, 기본 캡 2048 초과분만 축소된다.
+        /// </summary>
+        public static bool GetDefaultTextureStreamDownscale()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 자동(-1) 모드에서 사용하는 스트림 사본 다운스케일 캡(px).
+        /// 클램프 캡과 동일한 이유로(GetDefaultTextureClampMaxSize 참조) 자동 모드는 직렬화 값을
+        /// 사용하지 않는다 — 미래에 기본값을 튜닝해도 구버전 자산의 박제 값이 아닌 새 안전값이 적용된다.
+        /// 사용자 튜닝 캡은 명시 활성(textureStreamDownscale==1)에서만 존중한다.
+        /// </summary>
+        public static int GetDefaultTextureStreamDownscaleMaxSize()
+        {
+            return 2048;
+        }
+
+        /// <summary>
+        /// 기본 스트림 PNG 사본 무손실 재압축 활성 여부.
+        /// oxipng 는 픽셀 데이터를 바꾸지 않으므로(필터/deflate 재탐색만) 품질 트레이드오프가 없다 —
+        /// 청취/시각 검증 게이트가 필요한 lossy 레버(GetDefaultAudioStreamTranscode)와 달리 기본 ON.
+        /// </summary>
+        public static bool GetDefaultTextureStreamRecompress()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 스트림 PNG → JPEG 전환 활성 여부.
+        /// 불투명(RGB) 스트림 사본 한정으로 자동 ON(알파 있는 텍스처는 변환기에서 계속 제외).
+        /// DCT 아티팩트가 보이면 textureStreamJpeg=0 으로 끈다.
+        /// </summary>
+        public static bool GetDefaultTextureStreamJpeg()
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// 기본 Mesh 압축(정점 데이터 양자화) 활성 여부. 자동(-1)은 ON 이며 Low 레벨로만 동작한다
+        /// (명시 활성 1 은 Medium). Off 인 모델만 올리고 0 으로 끌 수 있다.
+        /// </summary>
+        public static bool GetDefaultMeshCompression()
         {
             return true;
         }

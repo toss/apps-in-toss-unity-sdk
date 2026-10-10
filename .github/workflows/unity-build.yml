@@ -73,12 +73,32 @@ on:
         required: false
         default: 'SampleUnityProject'
       build-method:
-        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild)'
+        description: 'Unity -executeMethod entry point (E2EBuildRunner.CommandLineBuild | HeavyBuildRunner.CommandLineHeavyBuild | DeployProbeBuildRunner.CommandLineDeployProbeBuild)'
         type: string
         required: false
         default: 'E2EBuildRunner.CommandLineBuild'
       compression-format:
         description: 'AIT_COMPRESSION_FORMAT override: 0=disabled 1=gzip 2=brotli -1=auto. 빈 값이면 fast-build 파생(E2E=0). perf=1(gzip).'
+        type: string
+        required: false
+        default: ''
+      perf-posture:
+        description: 'perf 벤치 posture. ''full''이면 빌드 시 AIT_PERF_POSTURE=full 주입 (HeavyBuildRunner가 opt-in 레버 활성화)'
+        type: string
+        required: false
+        default: ''
+      perf-variant:
+        description: 'perf heavy 픽스처 변형(쉼표 구분). 빌드 시 AIT_PERF_VARIANT 로 주입 (HeavyBuildRunner 변형 레지스트리가 읽음). 빈 값이면 변형 없음'
+        type: string
+        required: false
+        default: ''
+      concurrency-key:
+        description: '잡 concurrency 그룹에만 붙는 추가 키(아티팩트·표시명에는 영향 없음). perf 처럼 같은 SHA 를 여러 run 이 동시에 빌드하는 호출자가 run id 를 넘겨, 대기 중인 잡이 서로를 밀어내 취소되지 않게 한다. 기본 빈 값 = 기존 그룹 그대로.'
+        type: string
+        required: false
+        default: ''
+      leg-suffix:
+        description: '같은 (os, unity-version) 조합의 병행 레그 구분자 (예: "-brotli"). 잡 표시명·concurrency 그룹·모든 아티팩트 이름에 붙어 이름 충돌을 막는다. 기본 빈 값 = 기존 이름 그대로.'
         type: string
         required: false
         default: ''
@@ -128,7 +148,7 @@ on:
 
 jobs:
   build:
-    name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
+    name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }}${{ inputs.leg-suffix }})
     # Unity 버전별 머신 핀: 매트릭스 잡을 unity-<version> 라벨이 붙은 러너로만
     # 라우팅해 같은 러너 슬롯이 여러 버전의 Unity를 번갈아 띄우는 것을 막는다
     # (run #683의 Code 10 등). 다만 macOS·Windows 모두 라벨 5개가 실제로는
@@ -147,13 +167,14 @@ jobs:
     # 라벨이 누락된 머신/버전이 있으면 해당 매트릭스 잡은 영원히 큐에 남으므로
     # 즉시 발견된다(silent fallback 없음).
     runs-on: ${{ inputs.os == 'macos' && fromJSON(format('["self-hosted", "macOS", "ARM64", "enabled", "unity-{0}"]', inputs.unity-version)) || fromJSON(format('["self-hosted", "Windows", "X64", "enabled", "unity-{0}"]', inputs.unity-version)) }}
-    timeout-minutes: 90
+    # macOS 는 Mac 호스트 잠금(아래) 대기가 최대 45분 더해질 수 있어 그만큼 늘린다.
+    timeout-minutes: ${{ inputs.os == 'macos' && 135 || 90 }}
     # 동시성 정책: 호출자(test-e2e / preview / release)의 잡 concurrency가 ref
     # 기반 cancel을 담당하므로 reusable workflow는 (os, unity-version) 단위로만
     # 이중방어 락을 둔다. 같은 매트릭스 잡이 동시에 두 번 dispatch되는 케이스만
     # 차단하고, 다른 unity-version 잡끼리는 머신 핀(위)으로 분리된다.
     concurrency:
-      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}
+      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}-${{ inputs.sdk-version-override || 'default' }}${{ inputs.concurrency-key != '' && format('-{0}', inputs.concurrency-key) || '' }}
       cancel-in-progress: false
 
     outputs:
@@ -161,6 +182,71 @@ jobs:
       unity-version-full: ${{ inputs.os == 'macos' && steps.unity-macos.outputs.UNITY_VERSION || steps.unity-windows.outputs.UNITY_VERSION }}
 
     steps:
+      - name: Acquire Mac host lock (shared)
+        # Mac 러너 5개(macos-1-1..5)는 물리 Mac 한 대를 나눠 쓴다. 빌드는 공유(shared), GPU 측정은 독점(exclusive) 잠금을
+        # 잡아 측정 중에는 그 Mac 에서 Unity 빌드가 돌지 않게 한다. gate 파일로 측정이 기다리는 동안 새 빌드가 끼어들지 못하게 한다.
+        # 잠금을 쥔 프로세스가 죽으면 커널이 잠금을 푼다(job 종료 시 러너가 고아 프로세스를 정리하고, 홀더도 Runner.Worker 가
+        # 사라지면 스스로 끝난다). 이 스텝은 unity-build.yml 과 perf.yml 에 같은 내용으로 있다 — 체크아웃 전에 돌아야 해서
+        # 저장소 파일을 쓰지 못한다. 한쪽을 고치면 다른 쪽도 같이 고친다.
+        if: inputs.os == 'macos'
+        shell: bash
+        env:
+          LOCK_MODE: shared
+          LOCK_WAIT_MIN: '45'
+          LOCK_ON_TIMEOUT: warn
+        run: |
+          set -euo pipefail
+          dir="$HOME/.ait-ci-lock"; mkdir -p "$dir"
+          holder="$RUNNER_TEMP/ait-host-lock.pl"
+          cat > "$holder" <<'PERL'
+          use strict; use warnings; use Fcntl qw(:flock); use Time::HiRes qw(sleep time);
+          my ($mode, $dir, $wait_s, $ready, $worker, $tag) = @ARGV;
+          open(my $gate, '>>', "$dir/gate.lock") or die "gate: $!";
+          open(my $main, '>>', "$dir/main.lock") or die "main: $!";
+          my $deadline = time + $wait_s;
+          sub alive { return !$worker || kill(0, $worker); }
+          sub take { my ($fh, $op) = @_; while (1) { return 1 if flock($fh, $op | LOCK_NB); return 0 if time > $deadline || !alive(); sleep 2; } }
+          my $ok = $mode eq 'exclusive' ? (take($gate, LOCK_EX) && take($main, LOCK_EX)) : (take($gate, LOCK_SH) && take($main, LOCK_SH));
+          flock($gate, LOCK_UN) if $ok && $mode ne 'exclusive';
+          my $me = "$dir/holder.$$";
+          if ($ok) { open(my $h, '>', $me); print $h "$mode $tag\n"; close $h; $SIG{TERM} = $SIG{INT} = sub { unlink $me; exit 0 }; }
+          open(my $r, '>', "$ready.tmp"); print $r ($ok ? "ok\n" : "timeout\n"); close $r; rename("$ready.tmp", $ready);
+          exit 3 unless $ok;
+          while (alive()) { sleep 5; }
+          unlink $me;
+          PERL
+          # Runner.Worker(=이 job) 프로세스를 찾아 홀더가 job 과 함께 끝나게 한다.
+          worker=0; p=$PPID
+          for _ in $(seq 1 20); do
+            [ -z "$p" ] || [ "$p" -le 1 ] && break
+            if ps -o command= -p "$p" 2>/dev/null | grep -q 'Runner.Worker'; then worker=$p; break; fi
+            p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)
+          done
+          ready="$RUNNER_TEMP/ait-host-lock.ready"; rm -f "$ready"
+          for f in "$dir"/holder.*; do
+            [ -e "$f" ] || continue
+            if kill -0 "${f##*.}" 2>/dev/null; then echo "현재 잠금 보유: $(cat "$f")"; else rm -f "$f"; fi
+          done
+          start=$(date +%s)
+          nohup perl "$holder" "$LOCK_MODE" "$dir" "$((LOCK_WAIT_MIN * 60))" "$ready" "$worker" "${GITHUB_WORKFLOW}/${GITHUB_JOB}#${GITHUB_RUN_ID} ${RUNNER_NAME}" \
+            > "$RUNNER_TEMP/ait-host-lock.log" 2>&1 &
+          pid=$!; echo "$pid" > "$RUNNER_TEMP/ait-host-lock.pid"
+          while [ ! -s "$ready" ] && kill -0 "$pid" 2>/dev/null; do sleep 1; done
+          waited=$(( $(date +%s) - start ))
+          if [ "$(cat "$ready" 2>/dev/null)" = "ok" ]; then
+            echo "Mac 호스트 잠금 획득: $LOCK_MODE (대기 ${waited}s, worker=$worker)"
+            echo "uptime: $(uptime)"
+            if [ "$LOCK_MODE" = exclusive ]; then
+              echo "Unity 프로세스: $( (pgrep -f 'Unity.app/Contents/MacOS/Unity' || true) | wc -l | tr -d ' ')"
+              nohup caffeinate -dims -w "$pid" >/dev/null 2>&1 &
+            fi
+          else
+            cat "$RUNNER_TEMP/ait-host-lock.log" || true
+            msg="Mac 호스트 잠금($LOCK_MODE)을 ${LOCK_WAIT_MIN}분 안에 얻지 못했다"
+            if [ "$LOCK_ON_TIMEOUT" = fail ]; then echo "::error::$msg"; exit 1; fi
+            echo "::warning::$msg — 잠금 없이 진행한다(이 시간대의 Mac GPU 측정은 오염됐을 수 있다)"
+          fi
+
       # =====================================================
       # Windows 전용 설정
       # =====================================================
@@ -697,7 +783,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/editmode-results.xml
           if-no-files-found: ignore
           retention-days: 7
@@ -710,7 +796,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: /tmp/unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -721,7 +807,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: ${{ runner.temp }}\unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -837,11 +923,16 @@ jobs:
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0'
         uses: nick-invision/retry@v4
         env:
-          AIT_DEBUG_CONSOLE: "true"
+          # perf(HeavyBuildRunner)는 배포 산출물과 같아야 하므로 디버그 콘솔(vConsole)을 넣지 않는다.
+          # 넣으면 vConsole 스크립트 ~340KB 전송과 부팅 전 실행이 TTFF 에 섞인다.
+          AIT_DEBUG_CONSOLE: ${{ inputs.build-method == 'HeavyBuildRunner.CommandLineHeavyBuild' && 'false' || 'true' }}
           # 압축 포맷: compression-format 입력이 명시되면 우선(perf=1/gzip), 빈 값이면 fast-build 파생.
           #   E2E 기본 fast-build(true)→0(Disabled, vite preview 전용·압축 불필요·wallclock 절감).
           #   preview/perf 의 fast-build=false 경로에서 빈 값이면 ''(SDK 기본 압축). perf 는 '1' 명시.
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          # perf 벤치 posture: 'full'이면 HeavyBuildRunner가 opt-in 레버(폰트 subset/오디오·텍스처 스트리밍) 활성화.
+          AIT_PERF_POSTURE: ${{ inputs.perf-posture }}
+          AIT_PERF_VARIANT: ${{ inputs.perf-variant }}
           # Development Build / IL2CPP 프로필: fast-build 단일 스위치가 담당(main PR #551).
           #   fast-build=true(E2E) → dev build + Debug(Link_WebGL_wasm -O3 단축, wallclock 절감).
           #   fast-build=false(preview·perf) → ''(SDK 기본 release 프로필 = 배포와 동일한 wasm).
@@ -881,9 +972,11 @@ jobs:
         if: inputs.os == 'windows' && inputs.run-build && (inputs.test-level || '2') != '0'
         uses: nick-invision/retry@v4
         env:
-          AIT_DEBUG_CONSOLE: "true"
+          AIT_DEBUG_CONSOLE: ${{ inputs.build-method == 'HeavyBuildRunner.CommandLineHeavyBuild' && 'false' || 'true' }}
           # macOS step의 동일 주석 참조 (compression-format 명시 우선, dev/il2cpp 는 fast-build 단일 스위치).
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          AIT_PERF_POSTURE: ${{ inputs.perf-posture }}
+          AIT_PERF_VARIANT: ${{ inputs.perf-variant }}
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -896,8 +989,11 @@ jobs:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
           # 30분 한도에 아슬아슬하고, cold 캐시에서는 timeout으로 실패가 재발한다 →
-          # 45분으로 상향 (job 한도 90분 내 여유 충분. macOS는 30분 내 안정 통과라 유지).
-          timeout_minutes: 45
+          # 45분으로 상향. 이후 2022.3 cold 캐시(SDK 재생성 직후)에서는 wasm 링크만
+          # ~36분이라 Brotli 포함 총 소요가 45분을 2~3분 초과하는 실측이 재발
+          # (2026-08 베타 릴리즈 run 30802896662, 3회 연속 동일 시그니처) → 65분으로
+          # 재상향 (job 한도 90분 내 여유 유지. macOS는 30분 내 안정 통과라 유지).
+          timeout_minutes: 65
           max_attempts: 3
           retry_wait_seconds: 0
           retry_on_exit_code: 42
@@ -999,14 +1095,16 @@ jobs:
           UNITY_VERSION: ${{ inputs.unity-version }}
           SDK_VERSION: ${{ inputs.sdk-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          LEG_SUFFIX: ${{ inputs.leg-suffix }}
         run: |
           const fs = require('fs');
-          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX } = process.env;
+          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX, LEG_SUFFIX } = process.env;
           const suffix = SDK_VERSION ? `-v${SDK_VERSION}` : '';
           // perf 하네스(HeavySampleUnityProject)는 'heavy-' 변형 이름으로 E2E 아티팩트와 충돌 회피.
           // 기본(SampleUnityProject)이면 variant='' → 기존 이름 'ait-build-${OS}-${VERSION}' 그대로.
+          // leg-suffix(예: '-brotli')는 같은 (os, version)의 병행 레그 구분 — 빈 값이면 기존 이름 유지.
           const variant = (PROJECT_DIR_PREFIX || '').startsWith('Heavy') ? 'heavy-' : '';
-          const name = `ait-build-${variant}${OS}-${UNITY_VERSION}${suffix}`;
+          const name = `ait-build-${variant}${OS}-${UNITY_VERSION}${suffix}${LEG_SUFFIX || ''}`;
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${name}\n`);
           console.log(`Artifact name: ${name}`);
 
@@ -1023,6 +1121,10 @@ jobs:
       # (SDK 템플릿 파일이 리포에 항상 존재 — WebGLTemplates/AITTemplate/BuildConfig~/ 참조)
       # if-no-files-found: error 하에서도 안전하다. devtools mock 격리(E2E Test 2) 검증에
       # vite.config.ts가 필요하다.
+      #
+      # vite.config.ts는 unityWebContentEncodingPlugin(.br/.gz/.unityweb에 Content-Encoding
+      # 부여)을 configurePreviewServer 훅으로 등록한다 — 누락하면 다운스트림 E2E의
+      # `vite preview`가 설정 없이 떠서 CE 압축 빌드(brotli 레그)의 로더가 부팅에 실패한다.
       - name: Upload AIT Build
         if: inputs.run-build && (inputs.test-level || '2') != '0'
         uses: actions/upload-artifact@v7
@@ -1054,7 +1156,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: /tmp/unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1065,7 +1167,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.leg-suffix }}
           path: ${{ runner.temp }}\unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1093,3 +1195,10 @@ jobs:
               Format-Table -AutoSize -Wrap | Out-String | Write-Host
           } catch { Write-Host "Get-WinEvent failed: $_" }
 
+      - name: Release Mac host lock
+        if: always() && inputs.os == 'macos'
+        shell: bash
+        run: |
+          pid=$(cat "$RUNNER_TEMP/ait-host-lock.pid" 2>/dev/null || true)
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill "$pid"; echo "Mac 호스트 잠금 해제(pid $pid)"; fi
+          echo "uptime: $(uptime)"

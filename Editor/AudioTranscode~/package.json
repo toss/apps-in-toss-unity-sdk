@@ -1,0 +1,11 @@
+{
+  "name": "ait-audio-transcode-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Apps in Toss Unity SDK - build-time streaming-audio transcoder (MP3 re-encode via pure-WASM codecs). Invoked by AITAudioStreamTranscoder through the SDK's embedded Node.js. NOTE: npm license fields are MIT, but the compiled WASM cores embed LGPL-2.1 code (mpg123, LAME) - build-time tool only, never shipped in the .ait bundle.",
+  "type": "module",
+  "dependencies": {
+    "mpg123-decoder": "1.0.3",
+    "wasm-media-encoders": "0.7.0"
+  }
+}

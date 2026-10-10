@@ -38,3 +38,58 @@ jobs:
       - name: Run Unit Tests (C#/jslib invariants)
         working-directory: sdk-runtime-generator~
         run: pnpm run test:invariants
+
+  # WebKit 전용 저메모리 tier / 지연 put(page cache) 케이스를 실제 WebKit 엔진으로 돌린다.
+  # 엔진을 못 띄우면 테스트가 skip 으로 빠지므로(perf-lowmem-tier.test.js), skipped>0 이나 expected==0 이면
+  # 실패시켜 "엔진 부재가 green 으로 통과"하는 일을 막는다. WebKit 다운로드가 러너에서 멈춘 전례가 있어
+  # 캐시·타임아웃·1회 재시도를 두고, 필수 체크로 지정하지 않는다(branch protection 에 추가 금지).
+  perf-unit-webkit:
+    name: Perf Unit (WebKit low-mem / page cache)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Dependencies
+        working-directory: Tests~/E2E/tests
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ hashFiles('Tests~/E2E/tests/pnpm-lock.yaml') }}
+
+      - name: Install Playwright WebKit
+        working-directory: Tests~/E2E/tests
+        run: |
+          timeout 600 pnpm exec playwright install --with-deps webkit \
+            || { echo "::warning::playwright install 실패 — 1회 재시도"; timeout 600 pnpm exec playwright install --with-deps webkit; }
+
+      - name: Run WebKit Cases
+        working-directory: Tests~/E2E/tests
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: webkit.json
+        run: pnpm exec playwright test perf-lowmem-tier.test.js --grep '\[webkit\]' --reporter=list,json
+
+      - name: Assert No Skipped Cases
+        working-directory: Tests~/E2E/tests
+        run: |
+          node -e "
+            const s = JSON.parse(require('fs').readFileSync('webkit.json', 'utf8')).stats;
+            console.log('webkit stats:', JSON.stringify(s));
+            if (s.skipped > 0 || s.expected === 0) {
+              console.error('::error::WebKit 케이스가 실행되지 않았습니다 (skipped=' + s.skipped + ', expected=' + s.expected + ')');
+              process.exit(1);
+            }
+          "

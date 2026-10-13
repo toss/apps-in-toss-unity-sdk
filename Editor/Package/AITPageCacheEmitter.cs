@@ -259,7 +259,7 @@ namespace AppsInToss.Editor.Package
         /// 페이지 캐시 스니펫과 레거시 early-fetch 스니펫이 공유하는 부트 헬퍼(둘 다 ait-mem.js 보다 먼저 실행되므로 인라인으로 들고 간다).
         /// 먼저 실행된 쪽이 window 에 한 번 설치하고 뒤따르는 쪽은 건너뛴다.
         ///  · window.__aitPeekLowTier(): 0|1|2 — ait-mem.js 의 저사양 tier 규칙(부팅 마커 '__ait_boot_v1' 의 사망 횟수·lvl·post + 24시간 저장값
-        ///    '__ait_lowmem_v1' + sessionStorage '__ait_mem_v1' 의 phase)과 같은 계산을 스토리지 읽기만으로 한다(부작용 없음). ait-mem.js 가 이미 로드됐으면 그 값을 그대로 쓴다.
+        ///    '__ait_lowmem_v1' + sessionStorage '__ait_mem_v1' 의 phase + RAM 부족 기기 하한 tier 1)과 같은 계산을 스토리지 읽기만으로 한다(부작용 없음). ait-mem.js 가 이미 로드됐으면 그 값을 그대로 쓴다.
         ///    규칙을 바꾸면 ait-mem.js 의 bootStageMarker 와 함께 고쳐야 한다(perf-lowmem-tier.test.js 가 둘의 일치를 단언한다).
         ///  · window.__aitAfterFirstFrame(cb, delayMs): 첫 프레임이 지난 시점부터 delayMs 뒤에 cb 를 1회 부른다. 첫 프레임 신호는
         ///    'ait:firstframe' 이벤트(ait-mem.js markFirstFrame) 또는 500ms 폴링(AITMemory.bootStage != boot-start, window.unityInstance 존재)이다.
@@ -277,6 +277,27 @@ namespace AppsInToss.Editor.Package
                             var v = raw ? JSON.parse(raw) : null;
                             return v && typeof v === 'object' ? v : null;
                         } catch (e) { return null; }
+                    }
+                    // ait-mem.js detectLowRamDevice 와 같은 규칙(바꾸면 함께 고친다).
+                    function detectLowRam() {
+                        try {
+                            var ua = String(navigator.userAgent || '');
+                            if (/iPhone|iPod/.test(ua)) {
+                                var vm = /OS (\d+)_/.exec(ua);
+                                if (!vm) { return false; }
+                                var iosMajor = parseInt(vm[1], 10);
+                                var sw = Number(window.screen && screen.width) || 0;
+                                var sh = Number(window.screen && screen.height) || 0;
+                                var w = Math.min(sw, sh);
+                                var h = Math.max(sw, sh);
+                                if (w === 320 && h === 568) { return true; }
+                                if (w === 375 && h === 667 && iosMajor <= 16) { return true; }
+                                if (w === 414 && h === 736 && iosMajor <= 15) { return true; }
+                                return false;
+                            }
+                            var dm = navigator.deviceMemory;
+                            return typeof dm === 'number' && dm <= 2;
+                        } catch (e) { return false; }
                     }
                     function compute() {
                         var pf = window.__AIT_PERF;
@@ -320,7 +341,10 @@ namespace AppsInToss.Editor.Package
                         var corroborated = prevSessionFg || (prev ? (Number(prev.lvl) | 0) : 0) >= 1 || fails >= 2;
                         var failTier = fails >= 3 ? 2 : (fails >= 2 ? 1 : 0);
                         var escalate = (prevDied && corroborated) || lateDeath;
-                        return Math.max(failTier, escalate ? Math.min(2, storedTier + 1) : storedTier);
+                        var tier = Math.max(failTier, escalate ? Math.min(2, storedTier + 1) : storedTier);
+                        // RAM 부족 기기는 최소 tier 1(ait-mem.js 의 'low-ram' 하한). 저장 tier 에는 쓰지 않는다.
+                        if (tier < 1 && detectLowRam()) { tier = 1; }
+                        return tier;
                     }
                     return function () {
                         try {

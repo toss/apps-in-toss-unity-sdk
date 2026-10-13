@@ -4,6 +4,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { emitPageCacheScript, emitEarlyFetchModern, emitEarlyFetchLegacy, readRuntimeScript } from './lib/emitted-scripts.js';
 
 /**
@@ -26,6 +27,40 @@ import { emitPageCacheScript, emitEarlyFetchModern, emitEarlyFetchLegacy, readRu
  *  - tier >= 1: 엔진과 무관하게 put 생략, data 선시작 생략.
  *  - 페이지 캐시 스니펫이 계산하는 tier(__aitPeekLowTier)와 ait-mem.js 의 AITMemory.lowMemTier 가 같은 시드에서 같다.
  */
+
+const INDEX_HTML = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../WebGLTemplates/AITTemplate/index.html'), 'utf8');
+
+/**
+ * index.html 의 자동 DPR 코드(aitGlTierCap ~ AIT-AUTO-DPR:END: AIT_AUTO_DPR_CAP, getOptimalDevicePixelRatio, computeAutoDevicePixelRatio)를 그대로 잘라 쓴다.
+ * 이 구간 앞에 aitDevicePixelRatioSetting 만 있으면 단독으로 실행된다.
+ */
+const DPR_CODE = (() => {
+  const b = INDEX_HTML.indexOf('function aitGlTierCap()');
+  const endMarker = '/* AIT-AUTO-DPR:END */';
+  const e = INDEX_HTML.indexOf(endMarker);
+  if (b < 0 || e < b) throw new Error('index.html 에서 자동 DPR 코드 구간을 찾지 못했다');
+  return INDEX_HTML.slice(b, e + endMarker.length);
+})();
+
+/**
+ * 기기 환경을 흉내 내는 init script(엔진 독립: navigator/screen/window 의 getter 를 덮는다).
+ * @param {{ ua: string, screen: [number, number], dpr: number, memory?: number, cores?: number }} d
+ */
+function deviceSpoof(d) {
+  return `(() => {
+    const def = (o, k, v) => { try { Object.defineProperty(o, k, { get: () => v, configurable: true }); } catch (e) {} };
+    def(navigator, 'userAgent', ${JSON.stringify(d.ua)});
+    def(navigator, 'deviceMemory', ${JSON.stringify(d.memory)});
+    def(navigator, 'hardwareConcurrency', ${d.cores === undefined ? 6 : d.cores});
+    def(screen, 'width', ${d.screen[0]});
+    def(screen, 'height', ${d.screen[1]});
+    def(window, 'devicePixelRatio', ${d.dpr});
+  })();`;
+}
+
+const IOS_UA = (/** @type {string} */ ver, /** @type {string} */ device = 'iPhone') =>
+  `Mozilla/5.0 (${device}; CPU ${device} OS ${ver} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${ver.split('_')[0]}.0 Mobile/15E148 Safari/604.1`;
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 13; SM-G991N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 
 // ============================================================================
 // 서버: localhost HTTP(secure context) + 요청 기록
@@ -670,8 +705,167 @@ for (const engine of ENGINES) {
       }
     });
 
+
     // ------------------------------------------------------------------
-    test('ait-gl.js: tierCap 이 lowMemTier 를 반영(tier1 → 1.5, tier2 → 1, 0 → 0)하고 crash/저장값과는 낮은 쪽을 쓴다', async () => {
+    // RAM 부족 기기 판별 + 자동 DPR + 부팅 tier 하한: 실제 ait-mem.js / ait-gl.js / index.html DPR 코드를 기기 환경만 바꿔 돌린다.
+    /** @type {{ name: string, d: { ua: string, screen: [number, number], dpr: number, memory?: number }, low: boolean, tier: number, reason: string, dpr: number }[]} */
+    const DEVICE_MATRIX = [
+      { name: 'iPhone 8 iOS 16 375x667@2', d: { ua: IOS_UA('16_7'), screen: [375, 667], dpr: 2 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'iPhone 8 가로 화면(667x375)도 세로 기준으로 정규화', d: { ua: IOS_UA('16_7'), screen: [667, 375], dpr: 2 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'iPhone SE2 iOS 17 375x667@2', d: { ua: IOS_UA('17_4'), screen: [375, 667], dpr: 2 }, low: false, tier: 0, reason: '', dpr: 2 },
+      { name: 'iPhone 7 Plus iOS 15 414x736@3', d: { ua: IOS_UA('15_8'), screen: [414, 736], dpr: 3 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'iPhone 8 Plus iOS 16 414x736@3', d: { ua: IOS_UA('16_7'), screen: [414, 736], dpr: 3 }, low: false, tier: 0, reason: '', dpr: 3 },
+      { name: 'iPhone 15 iOS 18 393x852@3', d: { ua: IOS_UA('18_0'), screen: [393, 852], dpr: 3 }, low: false, tier: 0, reason: '', dpr: 3 },
+      { name: 'iPhone SE 1세대 320x568@2 (iOS 15)', d: { ua: IOS_UA('15_8'), screen: [320, 568], dpr: 2 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'iPhone 320x568 은 iOS 버전과 무관하게 low-RAM', d: { ua: IOS_UA('18_0'), screen: [320, 568], dpr: 2 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'iOS 버전을 못 읽으면 low-RAM 아님', d: { ua: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Mobile/15E148', screen: [375, 667], dpr: 2 }, low: false, tier: 0, reason: '', dpr: 2 },
+      { name: 'iPad(UA)는 iPhone 규칙 대상이 아님', d: { ua: IOS_UA('15_8', 'iPad'), screen: [768, 1024], dpr: 2 }, low: false, tier: 0, reason: '', dpr: 2 },
+      { name: 'Android deviceMemory 2 @2.625', d: { ua: ANDROID_UA, screen: [412, 915], dpr: 2.625, memory: 2 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'Android deviceMemory 0.5 @2.625', d: { ua: ANDROID_UA, screen: [412, 915], dpr: 2.625, memory: 0.5 }, low: true, tier: 1, reason: 'low-ram', dpr: 2 },
+      { name: 'Android deviceMemory 4 @2.625', d: { ua: ANDROID_UA, screen: [412, 915], dpr: 2.625, memory: 4 }, low: false, tier: 0, reason: '', dpr: 2.625 },
+      { name: 'Android deviceMemory 8 @3.5 (WQHD+) → 상한 3', d: { ua: ANDROID_UA, screen: [412, 915], dpr: 3.5, memory: 8 }, low: false, tier: 0, reason: '', dpr: 3 },
+      { name: 'Android deviceMemory 미노출', d: { ua: ANDROID_UA, screen: [412, 915], dpr: 2.625 }, low: false, tier: 0, reason: '', dpr: 2.625 },
+    ];
+
+    /**
+     * @param {{ ua: string, screen: [number, number], dpr: number, memory?: number }} d
+     * @param {{ seed?: Record<string, string>, perf?: object, setting?: number }} [o]
+     */
+    async function runDevice(d, o = {}) {
+      const token = newToken();
+      server.pages.set(`/${token}.html`, `<!doctype html><html><head><meta charset="utf-8">
+<script>window.__AIT_PERF = ${JSON.stringify(o.perf || {})};</script>
+<script>${readRuntimeScript('ait-mem.js')}</script>
+<script>${readRuntimeScript('ait-gl.js')}</script>
+</head><body><canvas id="unity-canvas" width="320" height="480"></canvas><script>
+var aitDevicePixelRatioSetting = ${o.setting === undefined ? -1 : o.setting};
+${DPR_CODE}
+window.__result = {
+  low: window.AITMemory.lowRamDevice, tier: window.AITMemory.lowMemTier, reason: window.AITMemory.lowMemReason,
+  dpr: getOptimalDevicePixelRatio(), stored: localStorage.getItem('__ait_lowmem_v1')
+};
+</script></body></html>`);
+      const { context, page } = await newPage({ seed: o.seed });
+      try {
+        await context.addInitScript(deviceSpoof(d));
+        await page.goto(`${server.origin}/${token}.html`);
+        return await page.evaluate(() => window['__result']);
+      } finally {
+        await context.close();
+      }
+    }
+
+    for (const c of DEVICE_MATRIX) {
+      test(`기기 매트릭스: ${c.name}`, async () => {
+        const r = await runDevice(c.d);
+        expect(r.low, 'AITMemory.lowRamDevice').toBe(c.low);
+        expect(r.tier, 'AITMemory.lowMemTier').toBe(c.tier);
+        expect(r.reason, 'AITMemory.lowMemReason').toBe(c.reason);
+        expect(r.dpr, '최종 DPR').toBe(c.dpr);
+        expect(r.stored, 'low-ram 하한은 저장하지 않는다').toBeNull();
+      });
+    }
+
+    test('low-RAM + 사망으로 저장된 tier 1 → 사유는 low-ram 이 아니고 DPR 상한 1.5', async () => {
+      const d = { ua: IOS_UA('16_7'), screen: /** @type {[number, number]} */ ([375, 667]), dpr: 2 };
+      const r = await runDevice(d, { seed: tierSeed(1) });
+      expect(r.low).toBe(true);
+      expect(r.tier).toBe(1);
+      expect(r.reason).toBe('stored');
+      expect(r.dpr).toBe(1.5);
+    });
+
+    test('low-RAM + 저장 tier 2 → tier 2 가 이기고 DPR 1', async () => {
+      const d = { ua: IOS_UA('16_7'), screen: /** @type {[number, number]} */ ([375, 667]), dpr: 2 };
+      const r = await runDevice(d, { seed: tierSeed(2) });
+      expect(r.tier).toBe(2);
+      expect(r.dpr).toBe(1);
+    });
+
+    test('low-RAM 이어도 lowMemoryTier=false 면 tier 0, forceLowMemTier=0 은 하한을 덮고, 판별 값 자체는 유지', async () => {
+      const d = { ua: ANDROID_UA, screen: /** @type {[number, number]} */ ([412, 915]), dpr: 2.625, memory: 2 };
+      const off = await runDevice(d, { perf: { lowMemoryTier: false } });
+      expect(off.low).toBe(true);
+      expect(off.tier).toBe(0);
+      expect(off.dpr, 'tier 하한이 없어도 auto DPR 의 low-RAM 분기는 적용').toBe(2);
+      const forced = await runDevice(d, { perf: { forceLowMemTier: 0 } });
+      expect(forced.tier).toBe(0);
+      expect(forced.reason).toBe('');
+    });
+
+    test('명시 DPR 설정은 low-RAM 이어도 그대로(기기 DPR 이하)', async () => {
+      const d = { ua: IOS_UA('15_8'), screen: /** @type {[number, number]} */ ([414, 736]), dpr: 3 };
+      const r = await runDevice(d, { setting: 3 });
+      expect(r.low).toBe(true);
+      expect(r.dpr).toBe(3);
+    });
+
+    for (const c of [
+      { name: 'low-RAM iPhone 8 iOS 16', d: { ua: IOS_UA('16_7'), screen: /** @type {[number, number]} */ ([375, 667]), dpr: 2 }, expected: 1 },
+      { name: 'low-RAM Android deviceMemory 2', d: { ua: ANDROID_UA, screen: /** @type {[number, number]} */ ([412, 915]), dpr: 2.625, memory: 2 }, expected: 1 },
+      { name: '일반 iPhone 15', d: { ua: IOS_UA('18_0'), screen: /** @type {[number, number]} */ ([393, 852]), dpr: 3 }, expected: 0 },
+    ]) {
+      test(`tier 일치(페이지 캐시 peek == ait-mem.js, low-RAM 하한 포함): ${c.name}`, async () => {
+        const token = newToken();
+        const url = registerPage(server, token, {
+          head: [
+            emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` }),
+            'window.__pre = window.__aitPeekLowTier();',
+            readRuntimeScript('ait-mem.js'),
+            'window.__post = window.AITMemory && window.AITMemory.lowMemTier;',
+          ],
+        });
+        const { context, page } = await newPage();
+        try {
+          await context.addInitScript(deviceSpoof(c.d));
+          await page.goto(url);
+          const r = await page.evaluate(() => ({ pre: window['__pre'], post: window['__post'], after: window['__aitPeekLowTier']() }));
+          expect(r.pre, 'ait-mem.js 이전 peek').toBe(c.expected);
+          expect(r.post, 'AITMemory.lowMemTier').toBe(c.expected);
+          expect(r.after, 'ait-mem.js 이후 peek').toBe(c.expected);
+        } finally {
+          await context.close();
+        }
+      });
+    }
+
+    test('peek: low-RAM 이어도 lowMemoryTier=false 면 0, 저장 tier 2 는 하한보다 우선', async () => {
+      const d = { ua: ANDROID_UA, screen: /** @type {[number, number]} */ ([412, 915]), dpr: 2.625, memory: 2 };
+      for (const [perf, seed, expected] of /** @type {[object, Record<string, string>, number][]} */ ([[{ lowMemoryTier: false }, {}, 0], [{}, tierSeed(2), 2]])) {
+        const token = newToken();
+        const url = registerPage(server, token, {
+          perf,
+          head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` }), 'window.__pre = window.__aitPeekLowTier();', readRuntimeScript('ait-mem.js'), 'window.__post = window.AITMemory.lowMemTier;'],
+        });
+        const { context, page } = await newPage({ seed });
+        try {
+          await context.addInitScript(deviceSpoof(d));
+          await page.goto(url);
+          expect(await page.evaluate(() => [window['__pre'], window['__post']])).toEqual([expected, expected]);
+        } finally {
+          await context.close();
+        }
+      }
+    });
+
+    test('modern early-fetch: low-RAM 기기는 사망 이력이 없어도 data 선시작을 생략(wasm 은 선시작)', async () => {
+      const token = newToken();
+      const kick = [`Build/${token}.data`, `Build/${token}.wasm`];
+      const url = registerPage(server, token, { head: [emitEarlyFetchModern(kick, `Build/${token}.data`)] });
+      const { context, page } = await newPage();
+      try {
+        await context.addInitScript(deviceSpoof({ ua: ANDROID_UA, screen: [412, 915], dpr: 2.625, memory: 2 }));
+        await page.goto(url);
+        await page.waitForTimeout(700);
+        expect(server.count(`${token}.wasm`)).toBe(1);
+        expect(server.count(`${token}.data`)).toBe(0);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    test('ait-gl.js: tierCap 이 lowMemTier 를 반영(사망 tier1 → 1.5, tier2 → 1, 0 → 0)하고 crash/저장값과는 낮은 쪽을 쓴다', async () => {
       const token = newToken();
       server.pages.set(`/${token}.html`, `<!doctype html><html><head><meta charset="utf-8">
 <script>window.__AIT_PERF = {};</script>

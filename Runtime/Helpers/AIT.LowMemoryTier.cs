@@ -7,8 +7,9 @@
 //
 // 부팅이 메모리로 죽은 기기를 다음 부팅에서 저메모리 모드로 올리는 정책의 C# 쪽 소비자.
 // 티어는 템플릿의 ait-mem.js 가 부팅 사망 횟수(localStorage 부팅 마커, 10분 창)와 24시간 만료 저장값으로 정한다.
+// RAM 이 부족한 기기(iOS 2GB급, Android deviceMemory 2GB 이하)는 사망 이력이 없어도 tier 1 로 시작한다(저장하지 않는 하한).
 //   tier 0: 정상 기기. 이 파일은 아무것도 하지 않는다.
-//   tier 1: 부팅 사망 1회. 스트리밍 동시성을 1 로 제한하고, QualitySettings 전역 텍스처 mip 제한을 1 로 올린다
+//   tier 1: 부팅 사망 1회 또는 RAM 부족 기기. 스트리밍 동시성을 1 로 제한하고, QualitySettings 전역 텍스처 mip 제한을 1 로 올린다
 //           (2022.2+ globalTextureMipmapLimit, 2021.3 masterTextureLimit). mip 이 있는 텍스처의 GPU·업로드 일시 메모리가 약 75% 줄고,
 //           mip 이 없는 UI 텍스처는 영향이 없다. 동시성 제한만으로는 첫 씬 텍스처 업로드 사망을 못 막아 tier 1 에도 건다.
 //   tier 2: 같은 티어로 또 죽음. mip 제한을 2 로 더 올린다(약 94% 감소).

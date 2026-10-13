@@ -180,11 +180,11 @@ async function newDprPage(browser, o) {
 }
 
 test.describe('computeAutoDevicePixelRatio', () => {
-  test('iOS UA 는 WebGL 프로브를 건너뛰고 결과는 그대로(min(dpr,2))', async ({ browser }) => {
-    // iOS 는 deviceMemory 미지원 + 코어 4 → 구형 추정 분기 min(baseRatio, 2)
+  test('iOS UA 는 WebGL 프로브를 건너뛰고 RAM 이 충분하면 기기 DPR 그대로', async ({ browser }) => {
+    // iOS 는 deviceMemory 미지원 + 코어 4 → 저사양 판정 없음(RAM 부족 판별은 ait-mem.js 몫이고 이 페이지엔 없다) → native DPR 3
     const { context, page } = await newDprPage(browser, { userAgent: IPHONE_UA, memory: undefined, cores: 4 });
     expect(await page.evaluate(() => window.__getContextCalls)).toBe(0);
-    expect(await page.evaluate(() => window.__dpr)).toBe(2);
+    expect(await page.evaluate(() => window.__dpr)).toBe(3);
     expect(await page.evaluate(() => window.__probeMs)).toBe(0);
     await context.close();
   });

@@ -550,7 +550,7 @@ test.describe('빌드 산출물', () => {
     return { userAgent: IPHONE_UA, deviceScaleFactor: 3, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
   }
 
-  test('모바일(DPR 3): requested/actual 기록, DPR 상한 2, [AIT-GL] 로그', async ({ browser }) => {
+  test('모바일(DPR 3): requested/actual 기록, 일반 기기는 native DPR 3(상한 3), [AIT-GL] 로그', async ({ browser }) => {
     const context = await browser.newContext(mobileContextOptions());
     try {
       const page = await context.newPage();
@@ -576,9 +576,9 @@ test.describe('빌드 산출물', () => {
       expect(s.requested).toBeTruthy();
       expect(s.actual).toBeTruthy();
       expect(lines.some((l) => l.startsWith('[AIT-GL] context '))).toBe(true);
-      // 자동 DPR 은 2 가 상한이다(tier 가 더 낮으면 그 값).
-      expect(s.cfgDpr).toBeLessThanOrEqual(2);
-      expect(s.effDpr).toBeLessThanOrEqual(2);
+      // 자동 DPR 은 3 이 상한이다(iPhone 390x844 는 RAM 부족 기기가 아니므로 native 3. tier 가 더 낮으면 그 값).
+      expect(s.cfgDpr).toBeLessThanOrEqual(3);
+      expect(s.effDpr).toBeLessThanOrEqual(3);
 
       if (process.env.PERF_GL_EXPECT_AA_DROP === '1') {
         expect(s.aaDecision).toBe('dropped');

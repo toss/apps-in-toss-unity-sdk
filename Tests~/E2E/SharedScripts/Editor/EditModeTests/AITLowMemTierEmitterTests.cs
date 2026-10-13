@@ -85,6 +85,19 @@ public class AITLowMemTierEmitterTests
     }
 
     [Test]
+    public void PageCache_LowTier1_DefersPutWithSizeAndPressureGuards()
+    {
+        string js = Emit();
+        StringAssert.Contains("function lowTierDeferOk", js, "tier 1 은 지연 put 으로 저장한다");
+        StringAssert.Contains("pageCacheLowTierPut", js, "tier 1 지연 put 을 끄는 실험 키");
+        StringAssert.Contains("pageCacheLowTierMaxBytes", js, "tier 1 크기 상한 실험 키");
+        StringAssert.Contains("lowTierSizeVerdict", js, "tier 1 크기 가드");
+        StringAssert.Contains("'pressure:' + url", js, "메모리 압력이 high 이상이면 건너뛴다");
+        StringAssert.Contains("function idleGap", js, "파일 사이에 idle 을 기다린다");
+        StringAssert.Contains("skipPutForLowMem(url, true)", js, "완결 버퍼 즉시 put 은 tier 1 에서도 막는다");
+    }
+
+    [Test]
     public void PageCache_LowTier_UsesSharedPeek()
     {
         string js = Emit();
@@ -124,6 +137,7 @@ public class AITLowMemTierEmitterTests
         StringAssert.Contains("data 선시작 생략", js);
         StringAssert.Contains("only-if-cached", js);
         StringAssert.Contains("지연 put", js);
+        StringAssert.Contains("lowQueued", js, "tier 1 은 페이지 캐시 지연 put 큐로만 저장한다");
         StringAssert.DoesNotContain("{{", js, "보간 문자열의 중괄호 이스케이프가 새어 나오면 안 된다");
     }
 }

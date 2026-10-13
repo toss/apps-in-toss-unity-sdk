@@ -24,7 +24,8 @@ import { emitPageCacheScript, emitEarlyFetchModern, emitEarlyFetchLegacy, readRu
  * 핵심 단언:
  *  - WebKit(자동): 부팅 중 Response.clone 0회, Cache.put 0회. 첫 프레임 + 지연 뒤 only-if-cached 로 다시 읽어 put. wasm 은 put 대상이 아니다.
  *  - HTTP 캐시 미스(no-store): put 을 생략하고 네트워크 요청이 늘지 않는다(재다운로드 0).
- *  - tier >= 1: 엔진과 무관하게 put 생략, data 선시작 생략.
+ *  - tier 1: 엔진과 무관하게 부팅 중 clone/put 0, 첫 프레임 + 지연 뒤 한 파일씩 only-if-cached 재읽기 put(크기 상한·메모리 압력 가드, 네트워크 추가 0, wasm 제외), 재방문은 캐시 서빙. data 선시작은 생략.
+ *  - tier 2: put 생략, data 선시작 생략.
  *  - 페이지 캐시 스니펫이 계산하는 tier(__aitPeekLowTier)와 ait-mem.js 의 AITMemory.lowMemTier 가 같은 시드에서 같다.
  */
 
@@ -138,14 +139,25 @@ function initScript(opt) {
   const seed = opt.seed || {};
   const session = opt.session || {};
   return `(() => {
-    window.__spy = { clones: 0, puts: [] };
+    window.__spy = { clones: 0, puts: [], putTimes: [], inflight: 0, maxInflight: 0 };
     try {
       const c = Response.prototype.clone;
       Response.prototype.clone = function () { window.__spy.clones++; return c.apply(this, arguments); };
     } catch (e) {}
     try {
       const p = Cache.prototype.put;
-      Cache.prototype.put = function (req) { window.__spy.puts.push(String((req && req.url) || req)); return p.apply(this, arguments); };
+      // 동시에 진행 중인 put 수(maxInflight)와 시작 시각(putTimes, performance.now 기준)을 기록한다. 반환값은 원래 Promise 그대로다.
+      Cache.prototype.put = function (req) {
+        const spy = window.__spy;
+        spy.puts.push(String((req && req.url) || req));
+        spy.putTimes.push(performance.now());
+        spy.inflight++;
+        if (spy.inflight > spy.maxInflight) spy.maxInflight = spy.inflight;
+        const r = p.apply(this, arguments);
+        const done = () => { spy.inflight--; };
+        try { Promise.resolve(r).then(done, done); } catch (e) { done(); }
+        return r;
+      };
     } catch (e) {}
     try {
       // 네트워크 저장(networkPut)은 cache.add 를 쓴다. 저장 횟수로 put 과 함께 센다(네이티브 add 는 JS put 을 거치지 않는다).
@@ -193,7 +205,7 @@ ${heads}
 
 /** @param {import('@playwright/test').Page} page */
 async function fireFirstFrame(page) {
-  await page.evaluate(() => { window.dispatchEvent(new Event('ait:firstframe')); });
+  await page.evaluate(() => { window['__ffAt'] = performance.now(); window.dispatchEvent(new Event('ait:firstframe')); });
 }
 
 /**
@@ -436,7 +448,7 @@ for (const engine of ENGINES) {
     });
 
     // ------------------------------------------------------------------
-    test('tier>=1: 지연/즉시 어느 쪽이든 put 을 만들지 않는다(clone 0, put 0)', async () => {
+    test('tier 2: 지연/즉시 어느 쪽이든 put 을 만들지 않는다(clone 0, put 0, 큐 없음)', async () => {
       for (const deferFlag of [-1, 1, 0]) {
         server.hits.length = 0;
         const token = newToken();
@@ -444,10 +456,10 @@ for (const engine of ENGINES) {
           perf: { pageCacheDeferDelayMs: 100, pageCacheDeferredPut: deferFlag },
           head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
         });
-        const { context, page } = await newPage({ seed: tierSeed(1) });
+        const { context, page } = await newPage({ seed: tierSeed(2) });
         try {
           await page.goto(url);
-          expect(await page.evaluate(() => window['__aitPeekLowTier']())).toBe(1);
+          expect(await page.evaluate(() => window['__aitPeekLowTier']())).toBe(2);
           await page.evaluate(() => window['__boot']());
           await fireFirstFrame(page);
           await page.waitForTimeout(800);
@@ -461,11 +473,231 @@ for (const engine of ENGINES) {
           expect(r.clones, `clone (deferFlag=${deferFlag})`).toBe(0);
           expect(r.puts, `put (deferFlag=${deferFlag})`).toBe(0);
           expect(r.statPuts).toBe(0);
-          expect(r.queued, '저메모리 tier 는 큐에도 넣지 않는다').toBe(0);
+          expect(r.queued, 'tier 2 는 큐에도 넣지 않는다').toBe(0);
           expect(r.skipped).toBeGreaterThan(0);
         } finally {
           await context.close();
         }
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // tier 1 지연 put: 부팅 중 본문 이중 보관 없음(clone 0, put 0) → 첫 프레임 + 지연 뒤 한 파일씩 only-if-cached 재읽기 → 재방문은 캐시 서빙.
+    /** @type {{ name: string, seed: Record<string, string>, spoof?: { ua: string, screen: [number, number], dpr: number, memory?: number } }[]} */
+    const TIER1_VARIANTS = [
+      { name: '사망 이력으로 저장된 tier 1', seed: tierSeed(1) },
+      { name: 'RAM 부족 기기 하한 tier 1 (Android deviceMemory 2, 저장값 없음)', seed: {}, spoof: { ua: ANDROID_UA, screen: [412, 915], dpr: 2.625, memory: 2 } },
+    ];
+    for (const v of TIER1_VARIANTS) {
+      test(`tier 1 지연 put (${v.name}): 부팅 중 clone/put 0, 첫 프레임+지연 뒤 한 파일씩 put, 재다운로드 0, 재방문은 캐시 서빙`, async () => {
+        const token = newToken();
+        const url = registerPage(server, token, {
+          perf: { pageCacheLowTierDeferDelayMs: 400 },
+          head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
+        });
+        const { context, page } = await newPage({ seed: v.seed });
+        if (v.spoof) await context.addInitScript(deviceSpoof(v.spoof));
+        try {
+          await page.goto(url);
+          expect(await page.evaluate(() => window['__aitPeekLowTier']()), 'tier').toBe(1);
+          const info0 = await page.evaluate(() => JSON.parse(JSON.stringify(window['__aitCacheDeferred'])));
+          expect(info0.lowTierPut).toBe(true);
+          expect(info0.lowDelayMs).toBe(400);
+
+          await page.evaluate(() => window['__boot']());
+          // 첫 프레임 신호 전: 본문을 clone/put 으로 한 번 더 들고 있지 않는다(피크 중복 보관 없음). 큐에는 URL 만 있다.
+          await page.waitForTimeout(700);
+          const before = await page.evaluate(() => ({
+            clones: window['__spy'].clones,
+            puts: window['__spy'].puts.length,
+            info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])),
+          }));
+          expect(before.clones, '부팅 중 Response.clone 0회').toBe(0);
+          expect(before.puts, '부팅 중 Cache.put 0회').toBe(0);
+          expect(before.info.state, '첫 프레임 전에는 무장만 한다').toBe('armed');
+          expect(before.info.queued.map((/** @type {string} */ u) => u.replace(server.origin, '')).sort()).toEqual([
+            `/Build/${token}.data`,
+            `/Build/${token}.framework.js`,
+          ]);
+          expect(before.info.skipped.some((/** @type {string} */ s) => s.startsWith('lowmem:')), 'tier 1 은 lowmem 건너뜀이 아니라 지연 put 이다').toBe(false);
+          expect(server.count(`${token}.data`)).toBe(1);
+          expect(server.count(`${token}.framework.js`)).toBe(1);
+          expect(server.count(`${token}.wasm`)).toBe(1);
+
+          await fireFirstFrame(page);
+          await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
+          const after = await page.evaluate(() => ({
+            clones: window['__spy'].clones,
+            puts: window['__spy'].puts.slice(),
+            putTimes: window['__spy'].putTimes.slice(),
+            maxInflight: window['__spy'].maxInflight,
+            ffAt: window['__ffAt'],
+            info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])),
+          }));
+          expect(after.info.errors).toEqual([]);
+          expect(after.info.net, '네트워크로 다시 받아 저장하지 않는다').toEqual([]);
+          expect(after.info.put.length, `HTTP 캐시 히트 put 수(miss=${after.info.miss.length})`).toBe(2);
+          expect(after.puts.length).toBe(2);
+          expect(after.puts.some((/** @type {string} */ u) => u.endsWith('.wasm')), 'wasm 은 put 되지 않는다').toBe(false);
+          expect(after.clones, '지연 put 도 clone 을 만들지 않는다').toBe(0);
+          expect(after.maxInflight, 'put 은 한 번에 하나씩').toBe(1);
+          for (const t of after.putTimes) expect(t - after.ffAt, 'put 은 첫 프레임 + 지연(400ms) 뒤').toBeGreaterThanOrEqual(350);
+          expect(server.count(`${token}.data`), '지연 put 이 data 를 다시 받지 않는다').toBe(1);
+          expect(server.count(`${token}.framework.js`)).toBe(1);
+          expect(server.count(`${token}.wasm`)).toBe(1);
+
+          // 재방문: 같은 컨텍스트에서 다시 탐색하면 data/framework 는 CacheStorage 에서 서빙된다.
+          await page.goto(url);
+          await page.evaluate(() => window['__boot']());
+          const revisit = await page.evaluate(() => ({
+            hits: window['__aitCacheStats'].hits.map((/** @type {string} */ u) => u.split('/').pop()),
+            misses: window['__aitCacheStats'].misses.map((/** @type {string} */ u) => u.split('/').pop()),
+            puts: window['__spy'].puts.length,
+          }));
+          expect(revisit.hits.sort()).toEqual([`${token}.data`, `${token}.framework.js`].sort());
+          expect(revisit.misses.filter((/** @type {string} */ f) => !f.endsWith('.wasm')), 'data/framework 는 캐시 미스가 없다(wasm 은 tier 1 에서 저장하지 않는다)').toEqual([]);
+          expect(server.count(`${token}.data`), '재방문 data 네트워크 0').toBe(1);
+          expect(server.count(`${token}.framework.js`), '재방문 framework 네트워크 0').toBe(1);
+        } finally {
+          await context.close();
+        }
+      });
+    }
+
+    // ------------------------------------------------------------------
+    test('tier 1 지연 put: pageCacheLowTierPut=false 면 종전처럼 put 을 만들지 않는다(큐 없음)', async () => {
+      const token = newToken();
+      const url = registerPage(server, token, {
+        perf: { pageCacheLowTierDeferDelayMs: 100, pageCacheLowTierPut: false },
+        head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
+      });
+      const { context, page } = await newPage({ seed: tierSeed(1) });
+      try {
+        await page.goto(url);
+        await page.evaluate(() => window['__boot']());
+        await fireFirstFrame(page);
+        await page.waitForTimeout(600);
+        const r = await page.evaluate(() => ({ clones: window['__spy'].clones, puts: window['__spy'].puts.length, info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])) }));
+        expect(r.clones).toBe(0);
+        expect(r.puts).toBe(0);
+        expect(r.info.queued).toEqual([]);
+        expect(r.info.skipped.filter((/** @type {string} */ s) => s.startsWith('lowmem:')).length).toBeGreaterThan(0);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    test('tier 1 지연 put: 메모리 압력이 high 이상이면 저장하지 않는다(재다운로드 0)', async () => {
+      const token = newToken();
+      const url = registerPage(server, token, {
+        perf: { pageCacheLowTierDeferDelayMs: 100 },
+        head: [
+          `window.AITMemory = { lowMemTier: 1, bootStage: 'boot-start', getLevel: function () { return 'high'; } };`,
+          emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` }),
+        ],
+      });
+      const { context, page } = await newPage();
+      try {
+        await page.goto(url);
+        await page.evaluate(() => window['__boot']());
+        await fireFirstFrame(page);
+        await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
+        const r = await page.evaluate(() => ({ puts: window['__spy'].puts.length, info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])) }));
+        expect(r.puts).toBe(0);
+        expect(r.info.put).toEqual([]);
+        expect(r.info.skipped.filter((/** @type {string} */ s) => s.startsWith('pressure:')).length, '큐의 두 파일 모두 압력으로 건너뜀').toBe(2);
+        expect(server.hits.length, '추가 요청 없음').toBe(3);
+      } finally {
+        await context.close();
+      }
+    });
+
+    test('tier 1 지연 put: 첫 파일을 저장한 뒤 압력이 high 로 오르면 남은 파일은 포기한다', async () => {
+      const token = newToken();
+      const url = registerPage(server, token, {
+        perf: { pageCacheLowTierDeferDelayMs: 100 },
+        head: [
+          `window.AITMemory = { lowMemTier: 1, bootStage: 'boot-start', getLevel: function () { return (window.__spy && window.__spy.puts.length >= 1) ? 'high' : 'ok'; } };`,
+          emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` }),
+        ],
+      });
+      const { context, page } = await newPage();
+      try {
+        await page.goto(url);
+        await page.evaluate(() => window['__boot']());
+        await fireFirstFrame(page);
+        await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
+        const r = await page.evaluate(() => ({ puts: window['__spy'].puts.length, info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])) }));
+        expect(r.puts, '압력이 오르기 전 첫 파일만 저장').toBe(1);
+        expect(r.info.skipped.filter((/** @type {string} */ s) => s.startsWith('pressure:')).length).toBe(1);
+        expect(server.hits.length, '추가 요청 없음').toBe(3);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    test('tier 1 지연 put: 크기 상한(pageCacheLowTierMaxBytes)을 넘는 파일은 읽지도 저장하지도 않는다', async () => {
+      const token = newToken();
+      const url = registerPage(server, token, {
+        // data 300KB 는 넘고 framework(약 30KB)는 안 넘는 상한.
+        perf: { pageCacheLowTierDeferDelayMs: 100, pageCacheLowTierMaxBytes: 100 * 1024 },
+        head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
+      });
+      const { context, page } = await newPage({ seed: tierSeed(1) });
+      try {
+        await page.goto(url);
+        await page.evaluate(() => window['__boot']());
+        await fireFirstFrame(page);
+        await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
+        const r = await page.evaluate(() => ({ puts: window['__spy'].puts.slice(), info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])) }));
+        expect(r.info.skipped.filter((/** @type {string} */ s) => s.startsWith('size:')).map((/** @type {string} */ s) => s.replace(server.origin, ''))).toEqual([`size:/Build/${token}.data`]);
+        expect(r.puts.map((/** @type {string} */ u) => u.replace(server.origin, ''))).toEqual([`/Build/${token}.framework.js`]);
+        expect(server.hits.length, '추가 요청 없음').toBe(3);
+        const keys = await page.evaluate(async () => {
+          const out = [];
+          for (const n of await caches.keys()) { for (const r2 of await (await caches.open(n)).keys()) out.push(r2.url); }
+          return out;
+        });
+        expect(keys.map((u) => u.replace(server.origin, ''))).toEqual([`/Build/${token}.framework.js`]);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    test('tier 1 + 레거시 early-fetch: 완결 버퍼 즉시 put 대신 페이지 캐시 지연 put 큐로만 저장한다(wasm 제외, data 선시작 없음)', async () => {
+      const token = newToken();
+      const urls = [`Build/${token}.data`, `Build/${token}.wasm`, `Build/${token}.framework.js`];
+      const url = registerPage(server, token, {
+        perf: { pageCacheLowTierDeferDelayMs: 300 },
+        head: [
+          emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` }),
+          emitEarlyFetchLegacy({ urls, kickUrls: urls.slice(0, 2), cacheName: `ait-unity-${token}`, wasmUrl: `Build/${token}.wasm`, dataUrl: `Build/${token}.data` }),
+        ],
+      });
+      const { context, page } = await newPage({ seed: tierSeed(1) });
+      try {
+        await page.goto(url);
+        await page.waitForTimeout(500);
+        expect(server.count(`${token}.data`), 'tier 1: data 선시작 없음').toBe(0);
+        await page.evaluate(() => window['__boot']());
+        await page.waitForTimeout(500);
+        const before = await page.evaluate(() => ({ clones: window['__spy'].clones, puts: window['__spy'].puts.length }));
+        expect(before, '부팅 중 clone/put 없음').toEqual({ clones: 0, puts: 0 });
+        await fireFirstFrame(page);
+        await waitFor(page, `window.__spy.puts.length >= 1`);
+        await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
+        const r = await page.evaluate(() => ({ puts: window['__spy'].puts.slice(), maxInflight: window['__spy'].maxInflight, info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])) }));
+        expect(r.puts.some((/** @type {string} */ u) => u.endsWith('.wasm')), 'wasm 은 저장하지 않는다').toBe(false);
+        expect(r.puts.some((/** @type {string} */ u) => u.endsWith('.data')), 'data 는 지연 put 으로 저장').toBe(true);
+        expect(r.maxInflight).toBe(1);
+        expect(r.info.net).toEqual([]);
+        expect(server.count(`${token}.data`), '재다운로드 0').toBe(1);
+        expect(server.count(`${token}.wasm`)).toBe(1);
+      } finally {
+        await context.close();
       }
     });
 

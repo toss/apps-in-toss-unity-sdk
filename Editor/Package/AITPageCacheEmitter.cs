@@ -60,8 +60,13 @@ namespace AppsInToss.Editor.Package
     ///    put 한다. 미스면 tier 0·화면 보임일 때만 cache.add 로 네트워크에서 받아 저장한다(networkPut, net=N 으로 집계).
     ///  · WebKit 에서는 wasm 을 put 대상(ALLOW_ABS)에서 뺀다. JSC 에는 V8 같은 code cache 이득이 없고, CDN 이 ETag 와 max-age=0 을
     ///    주므로 재방문은 HTTP 캐시 재검증(304)으로 받는다.
-    ///  · Chromium 경로는 그대로다. 단 저메모리 tier(window.AITMemory.lowMemTier &gt;= 1, ait-mem.js 가 부팅 사망 횟수로 정함)에서는
-    ///    엔진과 무관하게 put 을 건너뛴다.
+    ///  · Chromium 경로는 그대로다. 단 저메모리 tier(window.AITMemory.lowMemTier, ait-mem.js 가 부팅 사망 횟수·RAM 부족 기기 판별로 정함)에서는
+    ///    엔진과 무관하게 부팅 중 clone/put 을 하지 않는다(본문 이중 보관 방지).
+    ///    - tier 1: 위 지연 put 과 같은 경로로 첫 프레임 + 20초(기본, pageCacheLowTierDeferDelayMs) 뒤 파일 하나씩 only-if-cached 로 다시 읽어 put 한다.
+    ///      파일 사이에 idle 을 기다리고, 메모리 압력이 high 이상이면 남은 파일을 포기하며, 본문이 크기 상한(WebKit 64MB / 그 밖 256MB,
+    ///      pageCacheLowTierMaxBytes)을 넘거나 크기를 알 수 없으면 저장하지 않는다. HTTP 캐시 미스일 때 네트워크로 다시 받는 폴백(networkPut)은 하지 않는다.
+    ///      wasm 은 큐에 넣지 않는다. IndexedDB 백엔드와 pageCacheLowTierPut=false 는 tier 1 에서도 put 을 하지 않는다.
+    ///    - tier 2: put 을 하지 않는다.
     ///  · ait-mem.js 는 이 스니펫 '뒤'에 로드되므로 tier 는 같은 규칙의 동기 조회(window.__aitPeekLowTier)로 읽는다.
     ///
     /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
@@ -487,8 +492,23 @@ namespace AppsInToss.Editor.Package
                 var _dd = window.__AIT_PERF && window.__AIT_PERF.pageCacheDeferDelayMs;
                 if (typeof _dd === 'number' && _dd >= 0) { DEFER_DELAY_MS = _dd; }
             } catch (e) {}
-            // 진단 훅(perf CI/검증용, 운영 무영향): 큐에 넣은 URL, put 성공, HTTP 캐시 미스(put 생략), 건너뜀(wasm/저메모리 tier), 오류.
-            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
+            // 저메모리 tier 1 지연 put: tier 1 은 부팅 중 clone/put 없이 URL 만 큐에 넣고, 첫 프레임 + LOW_DEFER_DELAY_MS 뒤 파일 하나씩
+            // HTTP 캐시에서 다시 읽어(only-if-cached: 네트워크 재다운로드 없음) put 한다. 크기 상한(LOW_MAX_BYTES)과 메모리 압력 가드를 통과한 파일만 저장한다.
+            // tier 2 는 put 을 하지 않는다. __AIT_PERF.pageCacheLowTierPut=false 면 tier>=1 전체 put 생략(종전 동작).
+            // 기본 지연/상한은 실기기 검증 전 추정치다(pageCacheLowTierDeferDelayMs / pageCacheLowTierMaxBytes 로 조정).
+            // 상한은 디코드된 본문 기준이다. WebKit 은 Cache.put 이 본문을 WebContent 에서 다 모으므로 더 낮게 잡는다.
+            var LOWTIER_PUT = true;
+            var LOW_DEFER_DELAY_MS = 20000;
+            var LOW_MAX_BYTES = IS_WEBKIT ? 67108864 : 268435456;
+            try {
+                var _lp = window.__AIT_PERF;
+                if (_lp && _lp.pageCacheLowTierPut === false) { LOWTIER_PUT = false; }
+                if (_lp && typeof _lp.pageCacheLowTierDeferDelayMs === 'number' && _lp.pageCacheLowTierDeferDelayMs >= 0) { LOW_DEFER_DELAY_MS = _lp.pageCacheLowTierDeferDelayMs; }
+                else if (typeof _dd === 'number' && _dd >= 0) { LOW_DEFER_DELAY_MS = _dd; }
+                if (_lp && typeof _lp.pageCacheLowTierMaxBytes === 'number' && _lp.pageCacheLowTierMaxBytes >= 0) { LOW_MAX_BYTES = _lp.pageCacheLowTierMaxBytes; }
+            } catch (e) {}
+            // 진단 훅(perf CI/검증용, 운영 무영향): 큐에 넣은 URL, put 성공, HTTP 캐시 미스(put 생략), 건너뜀(wasm/저메모리 tier/크기/압력), 오류.
+            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, lowTierPut: LOWTIER_PUT, lowDelayMs: LOW_DEFER_DELAY_MS, lowMaxBytes: LOW_MAX_BYTES, state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
             var WASM_ABS = {};
             for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
                 try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
@@ -722,7 +742,7 @@ namespace AppsInToss.Editor.Package
             var putChain = Promise.resolve();
             window.__aitPageCachePutBuffer = function (url, buf, ct) {
                 window.__aitCacheStats.misses.push(url);
-                if (skipPutForLowMem(url)) { return; } // 저메모리 tier: 호출자가 놓친 경우의 방어(레거시 early-fetch 도 먼저 거른다).
+                if (skipPutForLowMem(url, true)) { return; } // 저메모리 tier: 호출자가 놓친 경우의 방어(레거시 early-fetch 도 먼저 거른다). 완결 버퍼 즉시 put 은 tier 1 도 안 한다.
                 var prev = putChain;
                 var gateTimer = null;
                 var gate = Promise.race([
@@ -797,18 +817,73 @@ namespace AppsInToss.Editor.Package
             };
 
             // ===== 저메모리 tier 와 지연 put =====
-            // tier(ait-mem.js 가 부팅 사망 횟수로 정함) 1 이상이면 엔진과 무관하게 put 을 건너뛴다(부팅이 메모리로 죽은 기기).
+            // tier(ait-mem.js 가 부팅 사망 횟수·RAM 부족 기기 판별로 정함)별 put 정책:
+            //  · tier 0: 종전과 같다(엔진별 즉시 put 또는 WebKit 지연 put).
+            //  · tier 1: 부팅 중에는 clone 도 put 도 하지 않는다(본문 이중 보관 없음). URL 만 큐에 넣고 첫 프레임 + LOW_DEFER_DELAY_MS 뒤 파일 하나씩
+            //    HTTP 캐시에서 다시 읽어 put 한다(deferredPutOne 의 크기·압력 가드). wasm 은 큐에 넣지 않는다. 네트워크 재다운로드(networkPut)는 하지 않는다.
+            //  · tier 2: put 을 하지 않는다. CacheStorage 가 아닌 백엔드(IndexedDB)는 put 이 본문을 ArrayBuffer 로 모으므로 tier 1 에서도 하지 않는다.
             var lowTierLogged = false;
-            function skipPutForLowMem(url) {
+            function currentTier() {
                 var t = 0;
                 try { t = window.__aitPeekLowTier() | 0; } catch (e) {}
+                return t;
+            }
+            // tier 1 지연 put 을 쓸 수 있는가(true 면 skipPutForLowMem 이 false 를 돌려주고 deferPutIfEnabled 가 큐에 넣는다).
+            function lowTierDeferOk(t) {
+                return t === 1 && LOWTIER_PUT && BACKEND_KIND === 'caches';
+            }
+            // immediate=true: 호출자가 즉시 put 하려는 경우(완결 버퍼 put). tier>=1 이면 무조건 막는다.
+            function skipPutForLowMem(url, immediate) {
+                var t = currentTier();
                 if (t < 1) { return false; }
+                if (!immediate && lowTierDeferOk(t)) { return false; }
                 window.__aitCacheDeferred.skipped.push('lowmem:' + url);
                 if (!lowTierLogged) {
                     lowTierLogged = true;
                     try { console.log('[AIT-PageCache] lowMemTier=' + t + ': 페이지 캐시 put 생략'); } catch (e) {}
                 }
                 return true;
+            }
+            // 메모리 압력(ait-mem.js getLevel): 0 ok / 1 high / 2 critical. ait-mem.js 가 없으면 0.
+            function memPressure() {
+                try {
+                    var m = window.AITMemory;
+                    if (m && typeof m.getLevel === 'function') {
+                        var l = m.getLevel();
+                        return l === 'critical' ? 2 : (l === 'high' ? 1 : 0);
+                    }
+                } catch (e) {}
+                return 0;
+            }
+            // 이 URL 을 내려받을 때 기록된 본문 크기(Resource Timing, 동일 오리진이라 노출된다). 디코드/인코드 중 큰 값. 모르면 0.
+            function knownBodySize(url) {
+                var size = 0;
+                try {
+                    var es = performance.getEntriesByName(url);
+                    for (var i = es.length - 1; i >= 0; i--) {
+                        size = Math.max(size, Number(es[i].decodedBodySize) || 0, Number(es[i].encodedBodySize) || 0);
+                        if (size > 0) { break; }
+                    }
+                } catch (e) {}
+                return size;
+            }
+            function headerSize(r) {
+                try { return parseInt(r.headers.get('Content-Length') || '0', 10) || 0; } catch (e) { return 0; }
+            }
+            // 크기 가드 판정: 상한 초과면 'size', 크기를 알 수 없으면 'size-unknown', 통과면 ''.
+            function lowTierSizeVerdict(size) {
+                if (!(size > 0)) { return 'size-unknown'; }
+                if (size > LOW_MAX_BYTES) { return 'size'; }
+                return '';
+            }
+            // 파일 사이에 메인 스레드가 한가해질 때까지 기다린다(requestIdleCallback 이 없으면 짧은 지연). 게임 루프를 굶기지 않으려는 것이다.
+            function idleGap() {
+                return new Promise(function (resolve) {
+                    try {
+                        if (typeof window.requestIdleCallback === 'function') { window.requestIdleCallback(function () { resolve(); }, { timeout: 3000 }); return; }
+                    } catch (e) {}
+                    setTimeout(resolve, 100);
+                });
             }
 
             // 지연 put(WebKit 기본): 부팅 중에는 clone 도 put 도 하지 않고 URL 만 큐에 넣는다. 첫 프레임 + DEFER_DELAY_MS 뒤 파일 하나씩
@@ -825,12 +900,14 @@ namespace AppsInToss.Editor.Package
                 if (deferScheduled) { return; }
                 deferScheduled = true;
                 info.state = 'armed';
-                try { console.log('[AIT-PageCache] 지연 put: 부팅 중 clone/put 없음, 첫 프레임+' + DEFER_DELAY_MS + 'ms 뒤 HTTP 캐시에서 다시 읽어 put'); } catch (e) {}
-                if (typeof window.__aitAfterFirstFrame === 'function') { window.__aitAfterFirstFrame(drainDeferred, DEFER_DELAY_MS); }
+                var delay = currentTier() >= 1 ? LOW_DEFER_DELAY_MS : DEFER_DELAY_MS;
+                try { console.log('[AIT-PageCache] 지연 put: 부팅 중 clone/put 없음, 첫 프레임+' + delay + 'ms 뒤 HTTP 캐시에서 다시 읽어 put'); } catch (e) {}
+                if (typeof window.__aitAfterFirstFrame === 'function') { window.__aitAfterFirstFrame(drainDeferred, delay); }
                 else { info.state = 'unavailable'; }
             }
+            // 지연 put 으로 처리할지: 지연 put 이 켜진 엔진(WebKit 기본)이거나 tier 1(skipPutForLowMem 을 통과한 경우)이다.
             function deferPutIfEnabled(url) {
-                if (!DEFERRED_PUT) { return false; }
+                if (!DEFERRED_PUT && !lowTierDeferOk(currentTier())) { return false; }
                 deferPut(url);
                 return true;
             }
@@ -876,6 +953,13 @@ namespace AppsInToss.Editor.Package
             function deferredPutOne(url) {
                 var info = window.__aitCacheDeferred;
                 if (skipPutForLowMem(url)) { return Promise.resolve(); }
+                var tier = currentTier();
+                // tier 1 가드: 메모리 압력이 high 이상이면 저장하지 않고, 다운로드 때 기록된 크기가 상한을 넘으면 읽지도 않는다.
+                // 크기를 모르면(Resource Timing 에 없음) 응답 헤더로 한 번 더 보고, 그래도 모르면 저장하지 않는다.
+                if (tier >= 1) {
+                    if (memPressure() >= 1) { info.skipped.push('pressure:' + url); return Promise.resolve(); }
+                    if (lowTierSizeVerdict(knownBodySize(url)) === 'size') { info.skipped.push('size:' + url); return Promise.resolve(); }
+                }
                 var timer = null;
                 var giveUp = new Promise(function (resolve) {
                     timer = setTimeout(function () { info.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); resolve(); }, PUT_TIMEOUT_MS);
@@ -885,6 +969,14 @@ namespace AppsInToss.Editor.Package
                 }).then(function (r) {
                     // 미스는 네트워크 오류(reject)이거나 비정상 상태(504 등)로 온다. 어느 쪽이든 put 하지 않는다.
                     if (!r || !r.ok || r.status !== 200 || r.body === undefined) { return networkPut(url); }
+                    if (tier >= 1) {
+                        var why = lowTierSizeVerdict(Math.max(knownBodySize(url), headerSize(r)));
+                        if (why) {
+                            info.skipped.push(why + ':' + url);
+                            try { if (r.body && typeof r.body.cancel === 'function') { r.body.cancel(); } } catch (e) {}
+                            return;
+                        }
+                    }
                     return getCache().then(function (c) { return putResponse(c, url, r); }).then(function () {
                         info.put.push(url);
                         window.__aitCacheStats.puts.push(url);
@@ -900,12 +992,27 @@ namespace AppsInToss.Editor.Package
             function drainDeferred() {
                 var info = window.__aitCacheDeferred;
                 info.state = 'draining';
+                var first = true;
+                function finish() {
+                    info.state = 'done';
+                    try { console.log('[AIT-PageCache] 지연 put 완료: put=' + info.put.length + ' net=' + info.net.length + ' miss=' + info.miss.length + ' skip=' + info.skipped.length + ' error=' + info.errors.length); } catch (e) {}
+                    return Promise.resolve();
+                }
                 function next() {
                     var url = deferQueue.shift();
-                    if (!url) {
-                        info.state = 'done';
-                        try { console.log('[AIT-PageCache] 지연 put 완료: put=' + info.put.length + ' net=' + info.net.length + ' miss=' + info.miss.length + ' skip=' + info.skipped.length + ' error=' + info.errors.length); } catch (e) {}
-                        return Promise.resolve();
+                    if (!url) { return finish(); }
+                    // 저메모리 tier: 파일 사이마다 한가해질 때까지 기다리고, 압력이 high 이상이면 남은 파일은 모두 포기한다(다음 방문에 다시 시도).
+                    if (currentTier() >= 1) {
+                        var wait = first ? Promise.resolve() : idleGap();
+                        first = false;
+                        return wait.then(function () {
+                            if (memPressure() >= 1) {
+                                info.skipped.push('pressure:' + url);
+                                while (deferQueue.length) { info.skipped.push('pressure:' + deferQueue.shift()); }
+                                return finish();
+                            }
+                            return deferredPutOne(url).then(next, next);
+                        });
                     }
                     return deferredPutOne(url).then(next, next);
                 }
@@ -914,9 +1021,9 @@ namespace AppsInToss.Editor.Package
             // 레거시 early-fetch 가 부팅 중 완결 버퍼 put 대신 호출하는 훅: 이 스니펫이 담당하는 URL 만 true(큐 등록).
             window.__aitPageCacheDeferPut = function (url) {
                 try {
-                    if (!DEFERRED_PUT || !isCacheable(url)) { return false; }
-                    deferPut(url);
-                    return true;
+                    if (!isCacheable(url)) { return false; }
+                    if (skipPutForLowMem(url)) { return false; } // tier 2 등: 저장하지 않는다(호출자도 저장하지 않는다).
+                    return deferPutIfEnabled(url);
                 } catch (e) { return false; }
             };
 

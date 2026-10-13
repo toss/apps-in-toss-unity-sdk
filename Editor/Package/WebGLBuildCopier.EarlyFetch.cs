@@ -477,8 +477,17 @@ namespace AppsInToss.Editor.Package
                         // 메모리 기반 저장소 상한에서 QuotaExceeded). tee 된 clone 으로 put 하는 cacheFirst 경로는 CI 에서 wasm put 이
                         // 끝나지 않고 멈추는 경우가 있어(오류도 기록 없음) 이 경로에서는 쓰지 않는다.
                         if (LOW_TIER >= 1) {{
-                            // 저메모리 tier: 저장하지 않는다(부팅이 메모리로 죽은 기기 — put 임시 버퍼가 피크를 올린다).
-                            try {{ console.log('[AIT] cache: lowMemTier=' + LOW_TIER + ' — put 생략 ' + url); }} catch (e) {{}}
+                            // 저메모리 tier: 완결 버퍼를 지금 저장하지 않는다(부팅이 메모리로 죽은 기기 — put 임시 버퍼가 피크를 올린다).
+                            // tier 1 이고 페이지 캐시가 담당하는 URL 이면 그쪽 지연 put 큐에만 올린다(첫 프레임 뒤 HTTP 캐시에서 한 파일씩 다시 읽음,
+                            // 크기·메모리 압력 가드). 페이지 캐시가 없거나 tier 2 이면 저장하지 않는다. wasm 은 어느 쪽도 저장하지 않는다.
+                            var lowQueued = false;
+                            try {{
+                                lowQueued = LOW_TIER === 1 && !(WASM_ABS && url === WASM_ABS)
+                                    && typeof window.__aitPageCacheDeferPut === 'function' && window.__aitPageCacheDeferPut(url) === true;
+                            }} catch (e) {{}}
+                            if (!lowQueued) {{
+                                try {{ console.log('[AIT] cache: lowMemTier=' + LOW_TIER + ' — put 생략 ' + url); }} catch (e) {{}}
+                            }}
                         }} else if (DEFERRED_PUT) {{
                             deferStore(url);
                         }} else if (viaPc) {{

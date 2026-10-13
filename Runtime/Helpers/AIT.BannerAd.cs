@@ -94,7 +94,7 @@ namespace AppsInToss
         NoFill,
 
         /// <summary>
-        /// 렌더된 배너 크기 변경 (소재 로드/리사이즈 시).
+        /// 렌더된 배너 크기 변경 (소재 로드/리사이즈, 화면 크기 변경 시).
         /// <see cref="AITBannerAdEvent.Width"/>/<see cref="AITBannerAdEvent.Height"/>(CSS px)와
         /// <see cref="AITBannerAdEvent.HeightFraction"/>(캔버스 대비 비율)이 채워집니다.
         /// </summary>
@@ -293,6 +293,16 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// 표시 중인 모든 슬롯에 현재 크기로 Resized를 다시 보내도록 요청
+        /// </summary>
+        internal static void RefreshSizes()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (_handlers.Count > 0) __AITBannerAd_RefreshSizes();
+#endif
+        }
+
+        /// <summary>
         /// 슬롯 제거 (배너 destroy + 컨테이너 제거)
         /// </summary>
         internal static void Hide(int instanceId)
@@ -429,6 +439,9 @@ namespace AppsInToss
         private static extern void __AITBannerAd_SetRect(int instanceId, float x, float y, float width, float height);
 
         [DllImport("__Internal")]
+        private static extern void __AITBannerAd_RefreshSizes();
+
+        [DllImport("__Internal")]
         private static extern void __AITBannerAd_Hide(int instanceId);
 #endif
     }
@@ -439,6 +452,27 @@ namespace AppsInToss
     [Preserve]
     internal class AITBannerAdBridge : MonoBehaviour
     {
+        private int _screenWidth;
+        private int _screenHeight;
+        private int _refreshFrames;
+
+        // 창 크기가 바뀌어도 배너 높이(CSS px)는 그대로라 jslib가 스스로 다시 보고하지 않는다.
+        // 캔버스 대비 비율(heightFraction)은 달라지므로 새 화면 크기가 반영된 프레임에서 재보고를 요청한다.
+        // 레이아웃 그룹 재계산은 LateUpdate보다 늦게 끝날 수 있어 다음 프레임에 한 번 더 요청한다.
+        private void LateUpdate()
+        {
+            if (Screen.width != _screenWidth || Screen.height != _screenHeight)
+            {
+                _screenWidth = Screen.width;
+                _screenHeight = Screen.height;
+                _refreshFrames = 2;
+            }
+
+            if (_refreshFrames == 0) return;
+            _refreshFrames--;
+            AITBannerAdEngine.RefreshSizes();
+        }
+
         /// <summary>
         /// jslib가 SendMessage('AITBannerAdBridge', 'OnBannerAdEvent', json)으로 호출
         /// </summary>

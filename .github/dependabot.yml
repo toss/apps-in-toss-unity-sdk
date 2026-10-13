@@ -20,14 +20,19 @@ updates:
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
       - dependency-name: "@apps-in-toss/framework"
+      - dependency-name: "@apps-in-toss/web-analytics"
 
   # WebGL 빌드 설정
+  # @apps-in-toss/* 버전은 SDK 업데이트 워크플로(update.yml)가 web-framework에 맞춰 함께 올린다.
   - package-ecosystem: "npm"
     directory: "/WebGLTemplates/AITTemplate/BuildConfig~"
     schedule:
       interval: "weekly"
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
+      - dependency-name: "@apps-in-toss/web-analytics"
+      - dependency-name: "@apps-in-toss/bridge-core"
+      - dependency-name: "@apps-in-toss/devtools"
 
   # E2E 테스트
   - package-ecosystem: "npm"

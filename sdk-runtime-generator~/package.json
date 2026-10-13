@@ -28,7 +28,7 @@
     "@apps-in-toss/web-analytics": "2.10.9",
     "@apps-in-toss/web-framework": "3.5.0",
     "commander": "15.0.0",
-    "handlebars": "4.7.9",
+    "handlebars": "4.7.10",
     "picocolors": "1.1.1",
     "ts-morph": "28.0.0"
   },
@@ -39,7 +39,7 @@
     "glob": "13.0.6",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
+    "vitest": "5.0.4",
     "web-framework-1.10.0": "npm:@apps-in-toss/web-framework@1.10.0",
     "web-framework-1.10.1": "npm:@apps-in-toss/web-framework@1.10.1",
     "web-framework-1.11.0": "npm:@apps-in-toss/web-framework@1.11.0",

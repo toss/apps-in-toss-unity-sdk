@@ -13,7 +13,7 @@
  *  2. webglcontextlost 복구(bindContextLoss): preventDefault 없이 페이지를 reload 한다. 120초 안에 2번째 손실이면 루프 가드로
  *     reload 대신 안내 overlay 를 띄운다. 문서가 hidden 이면 visible 이 될 때까지 reload 를 미룬다.
  *  3. DPR tier 상한(tierCap): localStorage __ait_gl_tier(24시간 만료)에 저장된 값, window.AITMemory.crashCount 에서 구한 값,
- *     window.AITMemory.lowMemTier(부팅 사망 후 저사양 tier: 1 → 1.5, 2 → 1)에서 구한 값 중 가장 낮은 것. 손실이 날 때마다 현재 DPR 한 단계 아래(2 → 1.5 → 1)로 내린다.
+ *     window.AITMemory.lowMemTier(저사양 tier: 사망 후 1 → 1.5, 2 → 1, RAM 부족 기기 하한 'low-ram' 1 → 2)에서 구한 값 중 가장 낮은 것. 손실이 날 때마다 현재 DPR 한 단계 아래(2 → 1.5 → 1)로 내린다.
  *  4. ?aitglprobe=1 일 때만 RT 인벤토리(renderbufferStorage(Multisample)/texStorage2D/texImage2D(null) 크기)를 window.__AIT_GL.rt 에 모은다.
  *     같은 모드에서 텍스처 업로드 바이트도 센다(P0-1): texImage2D(데이터 있음)/compressedTexImage2D/texSubImage2D(+compressedTexSubImage2D)/
  *     texImage3D·texSubImage3D 의 ArrayBufferView byteLength 합. 데이터 없이 할당만 하는 texImage2D(null)/texStorage2D 크기는 alloc 으로 따로.
@@ -27,7 +27,7 @@
  *      glHook=false 면 getContext 를 건드리지 않는다. glContextRecovery=false 면 bindContextLoss 는 false, tierCap 은 저장값/crashCount 를 무시하고
  *      lowMemTier 로 정한 값만 돌려준다(저사양 tier 가 없으면 0).
  *  - window.__AIT_GL.tierCap(): number
- *      부팅 시점 DPR 상한. 0 = 상한 없음, 그 외 2 / 1.5 / 1 중 하나. index.html 의 getOptimalDevicePixelRatio 가
+ *      부팅 시점 DPR 상한. 0 = 상한 없음, 그 외 2 / 1.5 / 1 중 하나(저장값·crash 기준). index.html 의 getOptimalDevicePixelRatio 가
  *      자동 DPR 과 min 을 취한다(명시적 DPR 설정이 있으면 호출하지 않음 — 그래서 이 파일은 명시 설정을 모른다).
  *      근거로 window.AITMemory.crashCount, window.AITMemory.lowMemTier(ait-mem.js)를 읽는다(없으면 0 으로 취급).
  *      lowMemTier 는 glContextRecovery 와 무관하게 반영한다(저사양 tier 는 컨텍스트 복구와 별개 레버다).
@@ -322,12 +322,12 @@
         } catch (e) {}
         return 0;
     }
-    // 부팅 사망 후 저사양 tier(ait-mem.js): 1 → DPR 상한 1.5, 2 → 1.0. 값은 부팅 때 한 번 정해진다.
+    // 저사양 tier(ait-mem.js): 사망으로 올라간 1 → DPR 상한 1.5, 2 → 1.0. RAM 부족 기기의 하한 tier 1(lowMemReason 'low-ram')은 2. 값은 부팅 때 한 번 정해진다.
     function lowMemTierCap() {
         try {
             var t = Number(window.AITMemory && window.AITMemory.lowMemTier) | 0;
             if (t >= 2) return 1;
-            if (t >= 1) return 1.5;
+            if (t >= 1) return (window.AITMemory.lowMemReason === 'low-ram') ? 2 : 1.5;
         } catch (e) {}
         return 0;
     }

@@ -961,9 +961,10 @@
         }
 
         // 기기 성능에 따른 최적 devicePixelRatio 계산
-        // auto 모드의 DPR 상한. DPR 3 렌더 타깃은 DPR 1 대비 약 3배 메모리(~34MB vs ~10MB)를 쓰고 구형 기기 GPU 부하도 크다.
+        // auto 모드의 DPR 상한. 기기 DPR 이 3 을 넘는 Android WQHD+ (3.5 등)만 걸린다. DPR 3 렌더 타깃은 DPR 1 대비 약 3배 메모리(~34MB vs ~10MB)를 쓰므로
+        // RAM 이 부족한 기기(AITMemory.lowRamDevice)는 아래 computeAutoDevicePixelRatio 에서 따로 2 로 낮춘다.
         // 고정값(1/2/3)을 명시하면 이 상한을 적용하지 않는다.
-        var AIT_AUTO_DPR_CAP = 2;
+        var AIT_AUTO_DPR_CAP = 3;
         function getOptimalDevicePixelRatio() {
             if (aitDevicePixelRatioSetting > 0) {
                 return Math.min(aitDevicePixelRatioSetting, window.devicePixelRatio || 1);
@@ -985,7 +986,6 @@
             }
 
             // auto: 기기 성능에 따라 결정
-            var deviceMemory = navigator.deviceMemory; // Android Chrome에서만 지원
             var cores = navigator.hardwareConcurrency || 2;
             var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
@@ -1017,25 +1017,15 @@
                 return 1;
             }
 
-            // Android: deviceMemory API 사용
-            if (deviceMemory !== undefined) {
-                if (deviceMemory <= 2) return 1;
-                if (deviceMemory <= 4) return Math.min(baseRatio, 2);
-                return baseRatio;
+            // RAM 이 부족한 기기(iOS 2GB급, Android 2GB 이하)만 DPR 2 로 낮춘다. 판별은 ait-mem.js 한 곳에서 한다.
+            var lowRam = false;
+            try { lowRam = !!(window.AITMemory && window.AITMemory.lowRamDevice); } catch (e) {}
+            if (lowRam) {
+                return Math.min(baseRatio, 2);
             }
 
-            // iOS: 화면 크기 + 코어 수로 세대 추정
-            if (isIOS) {
-                var screenPixels = screen.width * screen.height;
-                // 구형 iPhone (6s/7/8 등): 낮은 해상도 + 적은 코어
-                if (screenPixels < 400000 || cores <= 4) {
-                    return Math.min(baseRatio, 2);
-                }
-                return baseRatio;
-            }
-
-            // 기타: 안전하게 최대 2로 제한
-            return Math.min(baseRatio, 2);
+            // 그 밖에는 기기 DPR 그대로(상한은 AIT_AUTO_DPR_CAP)
+            return baseRatio;
         }
         /* AIT-AUTO-DPR:END */
 

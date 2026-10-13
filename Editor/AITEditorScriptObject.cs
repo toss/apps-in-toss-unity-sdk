@@ -344,7 +344,7 @@ namespace AppsInToss
         public int nativeAssetSource = -1;
 
         [Header("렌더링 품질 설정")]
-        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 성능에 따라 결정하되 최대 2로 제한), 1/2/3 = 고정값(상한 미적용, 3 지정 시 DPR 3 허용). 높을수록 고품질이지만 GPU 부하 증가")]
+        [Tooltip("devicePixelRatio 설정: -1 = auto (기기 DPR 그대로 쓰되 RAM 이 부족한 기기(iOS 2GB급·Android deviceMemory 2GB 이하)는 2, 최대 3으로 제한), 1/2/3 = 고정값(상한 미적용, 3 지정 시 DPR 3 허용). 높을수록 고품질이지만 GPU 부하 증가")]
         public int devicePixelRatio = -1;
 
         [Header("IL2CPP/Stripping 설정")]
@@ -722,7 +722,7 @@ namespace AppsInToss
 
         [Tooltip("저사양(저메모리) 기기 티어: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +
                  "직전 부팅 사망 이력으로 저사양 티어(0~2)를 정하고 24시간 유지합니다. " +
-                 "티어 1 이상이면 DPR 상한(1.5/1), 스트리밍 텍스처 축소, data 선요청 보류, 페이지 캐시 저장 생략이 적용됩니다. 0 이면 판별 자체를 끕니다.")]
+                 "티어 1 이상이면 DPR 상한(1.5/1, RAM 부족 기기의 기본 티어 1 은 2), 스트리밍 텍스처 축소, data 선요청 보류, 페이지 캐시 저장 생략이 적용됩니다. 0 이면 판별 자체를 끕니다.")]
         public int lowMemoryTier = -1;
 
         [Tooltip("페이지 캐시 put 지연: -1 = 자동(WebKit 계열만 활성), 0 = 비활성, 1 = 활성(모든 엔진). " +

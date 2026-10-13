@@ -236,7 +236,8 @@ async function scenarioBodyUsedFallback() {
 }
 
 async function scenarioLowMemory() {
-  deviceMemory = 2;
+  // 2GB 이하는 저메모리 tier 1(data 선시작 생략)이라 킥오프 검증에서 빠진다. 버퍼링 생략(<4GB)만 보려고 3 을 쓴다.
+  deviceMemory = 3;
   navType = 'navigate';
   globalThis.caches = cachesMock;
   fetchFactories.set(DATA, dataFactoryOK(1000));
@@ -309,7 +310,7 @@ async function scenarioReloadNoKick() {
 // 비고, window.fetch 오버라이드의 '!cacheOK -> bare originalFetch' 분기(850~851행)가 유일한
 // 실행 경로가 된다. 이 분기가 없으면 caches.open을 거쳐 저메모리 OOM 방어가 무력화된다.
 async function scenarioReloadLowMemory() {
-  deviceMemory = 2;
+  deviceMemory = 3;
   navType = 'reload';
   globalThis.caches = cachesMock;
   fetchFactories.set(DATA, dataFactoryOK(1000));

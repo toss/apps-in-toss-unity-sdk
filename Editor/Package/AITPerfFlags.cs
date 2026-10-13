@@ -24,7 +24,7 @@
 //   audioForceCompressedMinSeconds number  강제 대상 최소 길이(초)                                           기본 10
 //   unityweb           bool     Decompression Fallback(.unityweb) 빌드 여부 — true 면 data/framework 훅 비활성
 //   audioPatched       bool     framework 패치의 compressed-clip-meta 가 적용됐는지. false 면 런타임이 압축 재생 경로를 쓰지 않는다   기본 false
-//   lowMemoryTier      bool     저사양 기기 티어 판별 사용(ait-mem.js 가 AITMemory.lowMemTier 를 계산)          기본 true
+//   lowMemoryTier      bool     저사양 기기 티어 판별 사용(ait-mem.js 가 AITMemory.lowMemTier 를 계산, RAM 부족 기기는 tier 1 하한) 기본 true
 //   pageCacheDeferredPut number tri-state 그대로(-1 자동=WebKit 만 / 0 끔 / 1 모든 엔진). 런타임이 UA 로 자동을 푼다  기본 -1
 //   idbPrewarm         bool     index.html head 에서 IDBFS DB("/idbfs" v21)를 미리 열어 콜드 생성 비용을 부팅 앞으로 뺌     기본 true
 //   textureStreamingMemoryBudgetMB number 스트림 텍스처 동시 RGBA32 메모리 예산(MB). 0 이하면 제한 없음               기본 16

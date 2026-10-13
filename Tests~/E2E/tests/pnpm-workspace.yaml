@@ -1,0 +1,9 @@
+# pnpm 설정 파일.
+# pnpm v11은 package.json의 "pnpm" 필드를 읽지 않고 이 파일에서만 overrides를 읽는다.
+
+# transitive 의존성 보안 고정.
+overrides:
+  # GHSA(compression <1.8.2) 대응. serve@14.2.6(최신)이 compression을 1.8.1로 정확 핀해서
+  # Dependabot이 해당 취약 범위를 벗어나는 업데이트를 만들지 못한다. serve는 E2E 빌드 결과물을
+  # 로컬에서 띄우는 devDependency일 뿐 SDK 산출물에 배포되지 않는다. 상위 major 점프 차단 위해 캡.
+  compression: '>=1.8.2 <2'

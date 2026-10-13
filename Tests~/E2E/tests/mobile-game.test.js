@@ -207,15 +207,15 @@ const INIT_SCRIPT = `
       },
     });
   } catch (e) {}
-  // 인스턴스 준비 뒤 메인 스레드를 막은 롱태스크(합·최대). 준비→입력 가능 구간이 길 때 원인이 메인 스레드인지 본다.
-  window.__aitLong = { sum: 0, max: 0, n: 0 };
+  // 인스턴스 준비 뒤 메인 스레드를 막은 롱태스크 [시작, 길이]. 준비→입력 가능 구간이 길 때 원인이 메인 스레드인지 본다.
+  // 합·최대는 측정 시점에 준비 시각 이후와 겹친 부분만 계산한다. 준비 시각(unityInstance 대입)은 인스턴스를 만든 긴 태스크
+  // (wasm 컴파일·초기화, 수 초) 끝에서 불리므로, 그 태스크를 통째로 세면 준비 뒤 구간 지표가 시작 비용에 묻힌다.
+  window.__aitLongAll = [];
   try {
     new PerformanceObserver(function (list) {
       list.getEntries().forEach(function (e) {
         if (window.__aitInstanceMs == null || e.startTime + e.duration < window.__aitInstanceMs) return;
-        (window.__aitLongAll = window.__aitLongAll || []).push([e.startTime, e.duration]);
-        if (window.__aitInteractiveMs != null && e.startTime > window.__aitInteractiveMs) return;
-        var L = window.__aitLong; L.sum += e.duration; L.n++; if (e.duration > L.max) L.max = e.duration;
+        window.__aitLongAll.push([e.startTime, e.duration]);
       });
     }).observe({ type: 'longtask', buffered: true });
   } catch (e) {}
@@ -335,12 +335,21 @@ async function runSession(label, projectPath, port, round, full) {
     m.interactiveMs = await waitInteractive(page);
     if (m.interactiveMs != null) await page.evaluate((t) => { window['__aitInteractiveMs'] = t; }, m.interactiveMs);
     await sleep(200);
-    Object.assign(m, await page.evaluate(() => ({
-      instanceMs: window['__aitInstanceMs'] ?? null,
-      hideMs: window['__aitHideMs'] ?? null,
-      postReadyLongMs: window['__aitLong'] ? window['__aitLong'].sum : null,
-      postReadyLongMaxMs: window['__aitLong'] ? window['__aitLong'].max : null,
-    })));
+    // postReadyLong*: 준비 시각부터 오버레이를 걷는 시각(없으면 입력 가능으로 확인한 시각)까지 롱태스크와 겹친 시간의 합·최대.
+    Object.assign(m, await page.evaluate(() => {
+      const inst = window['__aitInstanceMs'] ?? null;
+      const hide = window['__aitHideMs'] ?? null;
+      let sum = null, max = null;
+      if (inst != null) {
+        const end = hide != null ? hide : (window['__aitInteractiveMs'] ?? inst);
+        sum = 0; max = 0;
+        for (const [st, d] of window['__aitLongAll'] || []) {
+          const ov = Math.max(0, Math.min(st + d, end) - Math.max(st, inst));
+          sum += ov; if (ov > max) max = ov;
+        }
+      }
+      return { instanceMs: inst, hideMs: hide, postReadyLongMs: sum, postReadyLongMaxMs: max };
+    }));
     check(res, '입력 가능(오버레이 해제)', m.interactiveMs != null, `interactiveMs=${m.interactiveMs && m.interactiveMs.toFixed(0)}`);
     await sleep(500);
 
@@ -373,7 +382,14 @@ async function runSession(label, projectPath, port, round, full) {
       const big = (window['__aitLongAll'] || []).filter(([st, d]) => d >= 1000 && st + d > inst && st < inst + 8000);
       const settled = big.reduce((a, [st, d]) => Math.max(a, st + d), inst);
       const afterHide = hide == null ? null : big.reduce((a, [st, d]) => a + Math.max(0, st + d - Math.max(st, hide)), 0);
-      return { settledMs: settled, freezeAfterHideMs: afterHide };
+      // 준비 뒤 5초 안 롱태스크 합(first5sLongMs)과 그중 오버레이를 걷은 뒤 몫(first5sLongAfterHideMs). 첫 게임 프레임 비용이 오버레이 앞에
+      // 오는지 뒤에 오는지(Unity 스플래시 화면이 있으면 뒤로 밀린다)와 무관하게 빌드끼리 같은 잣대로 비교한다. 5초가 아직 안 지났으면 null.
+      const win = performance.now() >= inst + 5000;
+      const ov = (st, d, from, to) => Math.max(0, Math.min(st + d, to) - Math.max(st, from));
+      const all = window['__aitLongAll'] || [];
+      const first5 = win ? all.reduce((a, [st, d]) => a + ov(st, d, inst, inst + 5000), 0) : null;
+      const first5After = win && hide != null ? all.reduce((a, [st, d]) => a + ov(st, d, hide, inst + 5000), 0) : null;
+      return { settledMs: settled, freezeAfterHideMs: afterHide, first5sLongMs: first5, first5sLongAfterHideMs: first5After };
     }));
     check(res, '효과음 재생', s.sfxCount >= 3, `sfxCount=${s.sfxCount}`);
     if (s.state === 'playing') await sendCmd(page, 'over');
@@ -480,7 +496,7 @@ async function runSession(label, projectPath, port, round, full) {
 }
 
 const METRICS = [
-  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['hideMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['postReadyLongMs', 'ms', 0], ['postReadyLongMaxMs', 'ms', 0], ['settledMs', 'ms', 0], ['freezeAfterHideMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
+  ['titleMs', 'ms', 0], ['instanceMs', 'ms', 0], ['hideMs', 'ms', 0], ['interactiveMs', 'ms', 0], ['postReadyLongMs', 'ms', 0], ['postReadyLongMaxMs', 'ms', 0], ['first5sLongMs', 'ms', 0], ['first5sLongAfterHideMs', 'ms', 0], ['settledMs', 'ms', 0], ['freezeAfterHideMs', 'ms', 0], ['startTaps', '', 0], ['stageLoadMsMax', 'ms', 0], ['avgFrameMs', 'ms', 2], ['p95FrameMs', 'ms', 2], ['p99FrameMs', 'ms', 2], ['longFrames', '', 0],
   ['fps', '', 1], ['renderPixels', '', 0], ['rendererPeakRssBytes', 'MB', 1], ['gpuPeakRssBytes', 'MB', 1], ['jsHeapUsedBytes', 'MB', 1], ['wasmHeapBytes', 'MB', 1],
 ];
 function summarize(sessions) {

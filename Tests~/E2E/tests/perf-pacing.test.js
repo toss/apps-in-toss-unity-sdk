@@ -680,8 +680,11 @@ test.describe('메모리 텔레메트리', () => {
     if (!keepTier) await page.evaluate(() => { try { localStorage.removeItem('__ait_lowmem_v1'); } catch (e) { /* 무시 */ } });
     await page.goto(`${HARNESS_ORIGIN}/index.html${bootSeed(seed)}`);
   };
+  // Mobile Chrome 프로젝트는 iPhone 8(375×667, iOS 11) 을 흉내 내 ait-mem.js 가 RAM 부족 기기로 보고 티어 하한 1 을 건다.
+  // 여기서는 사망 기반 티어만 검증하므로 화면을 RAM 부족 판정 밖(390×844)으로 고정한다. 하한 자체는 perf-lowmem-tier.test.js 가 본다.
+  const NOT_LOW_RAM_SCRIPT = "(function(){try{Object.defineProperty(screen,'width',{get:function(){return 390}});Object.defineProperty(screen,'height',{get:function(){return 844}});Object.defineProperty(navigator,'deviceMemory',{get:function(){return 8}});}catch(e){}})();";
   const openBoot = (page, flags, seed) =>
-    openHarness(page, flags, { pacing: false, virtualClock: false, preScript: BOOT_SEED_SCRIPT, query: seed ? bootSeed(seed) : '' });
+    openHarness(page, flags, { pacing: false, virtualClock: false, preScript: NOT_LOW_RAM_SCRIPT + BOOT_SEED_SCRIPT, query: seed ? bootSeed(seed) : '' });
 
   test('부팅 마커: 첫 부팅은 사망 0·티어 0, markFirstFrame 이 boot-start → first-frame 로 전이(멱등)', async ({ page }) => {
     const logs = [];
@@ -710,7 +713,7 @@ test.describe('메모리 텔레메트리', () => {
   test('부팅 마커: stable(15초 — 여기서는 타이머를 줄여 검증)에 닿으면 사망 기록과 end 를 비운다', async ({ page }) => {
     const scale = "(function(){var st=window.setTimeout;window.setTimeout=function(f,d){return st.call(window,f,d===15000?40:d)};})();";
     await openHarness(page, { memoryTelemetry: true }, { pacing: false, virtualClock: false,
-      preScript: scale + BOOT_SEED_SCRIPT, query: bootSeed({ stage: 'boot-start', fails: [60000] }) });
+      preScript: scale + NOT_LOW_RAM_SCRIPT + BOOT_SEED_SCRIPT, query: bootSeed({ stage: 'boot-start', fails: [60000] }) });
     expect((await memState(page)).fails).toBe(2);
     await page.evaluate(() => { /* @ts-ignore */ window.AITMemory.markFirstFrame(); });
     await expect.poll(async () => (await memState(page)).stage).toBe('stable');

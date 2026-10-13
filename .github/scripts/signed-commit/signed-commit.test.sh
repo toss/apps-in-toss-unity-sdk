@@ -108,6 +108,8 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 export GH_TOKEN=dummy REPO=o/r
 
 git init -q --bare "$T/remote.git"
+# 실제 저장소처럼 빈 blob이 원격에 이미 있다고 가정한다(main에 빈 파일이 추적되고 있음).
+git --git-dir="$T/remote.git" hash-object -w --stdin < /dev/null > /dev/null
 git init -q -b main "$T/work"
 cd "$T/work"
 git config commit.gpgsign false
@@ -158,7 +160,7 @@ REMOTE_TREE=$(git --git-dir="$FAKE_REMOTE" rev-parse feature/test^{tree} 2> /dev
 [ -z "$(git status --porcelain)" ] || fail "동기화 후 작업트리 dirty"
 echo "ok 1: 추가·수정·삭제·이름변경·모드·심볼릭 링크·바이너리·대용량 tree 동일"
 grep -c 'git/blobs' "$T/log" | grep -qx '[1-9][0-9]*' || fail "blob 업로드 호출 없음(바이너리/대용량)"
-[ "$(grep -c 'git/blobs' "$T/log")" -eq 5 ] || fail "blob 호출 수 불일치(바이너리·대용량·빈 파일·심볼릭 링크 5개만 기대): $(grep -c 'git/blobs' "$T/log")"
+[ "$(grep -c 'git/blobs' "$T/log")" -eq 4 ] || fail "blob 호출 수 불일치(바이너리·대용량·심볼릭 링크 4개만 기대 — 빈 파일은 빈 blob sha 참조): $(grep -c 'git/blobs' "$T/log")"
 
 # 2) 변경 없음: 아무것도 만들지 않음
 : > "$T/log"

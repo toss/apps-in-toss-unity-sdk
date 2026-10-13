@@ -75,7 +75,8 @@ api() {
       return 0
     fi
     n=$((n + 1))
-    if [ "$n" -ge 4 ] || ! grep -qiE 'HTTP (403|429|5[0-9][0-9])|rate limit|timeout|connection|EOF' "$ERR"; then
+    # 403은 rate limit일 때만 일시 오류로 본다(권한 부족 403은 즉시 실패).
+    if [ "$n" -ge 4 ] || ! grep -qiE 'HTTP (429|5[0-9][0-9])|rate limit|timeout|connection|EOF' "$ERR"; then
       cat "$ERR" >&2
       return 1
     fi
@@ -144,6 +145,14 @@ while IFS= read -r -d '' meta; do
     continue
   fi
 
+  # 빈 파일: 빈 content 업로드 대신 잘 알려진 빈 blob sha를 참조한다(저장소에 이미 존재).
+  if [ "$new_sha" = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" ] && [ "$new_mode" != "120000" ]; then
+    jq -nc --arg p "$path" --arg m "$new_mode" --arg s "$new_sha" \
+      '{path:$p, mode:$m, type:"blob", sha:$s}' >> "$WORK/entries.jsonl"
+    n_ref=$((n_ref + 1))
+    continue
+  fi
+
   git cat-file blob "$new_sha" > "$WORK/content"
   size=$(wc -c < "$WORK/content" | tr -d ' ')
 
@@ -184,7 +193,9 @@ done < "$WORK/raw"
 echo "변경 수집: 인라인 ${n_inline}, blob 업로드 ${n_blob}, sha 재사용 ${n_ref}, 삭제 ${n_delete}"
 
 # 2. tree -> commit
-jq -s --arg base "$BASE_TREE" '{base_tree:$base, tree:.}' "$WORK/entries.jsonl" > "$WORK/tree.json"
+# 삭제 항목을 앞에 둔다(디렉터리↔파일 교체 시 같은 경로가 파일·디렉터리로 동시에 보이지 않도록).
+jq -s --arg base "$BASE_TREE" '{base_tree:$base, tree:(sort_by(if (has("sha") and .sha == null) then 0 else 1 end))}' \
+  "$WORK/entries.jsonl" > "$WORK/tree.json"
 TREE_SHA=$(api -X POST "repos/${REPO}/git/trees" --input "$WORK/tree.json" --jq '.sha')
 
 # author/committer 를 넣지 않는다 — 지정하면 GitHub이 서명하지 않는다.

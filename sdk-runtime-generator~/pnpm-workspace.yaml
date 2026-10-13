@@ -42,6 +42,16 @@ overrides:
   fast-uri: '>=3.1.2 <4'
   fast-xml-parser: '>=5.7.0 <6'
   fastify: '>=5.8.3 <6'
+  # GHSA(명령 인젝션) 대응. 패치는 1.11.0부터이고, @react-native-community/cli-tools@11.3.7이
+  # 취약한 1.10.0으로 해석돼 있었다. granite 빌드 툴체인(web-framework 1.x 픽스처)의 전이 의존이며
+  # SDK 산출물에 배포되지 않는다. API가 안정적인 CJS 패키지라 1.x 안에서만 올린다(상위 major 캡).
+  shell-quote: '>=1.11.0 <2'
+  # 아래 둘은 일부러 override하지 않는다(dependabot 알림은 열어 둔 채 유지).
+  #  - image-size(<=2.0.2 취약, 패치 2.0.3): 소비자(metro@0.76.8, @granite-js/mpack)가
+  #    require('image-size')(buf) 형태로 함수를 직접 호출하는데, 2.x CJS는 {imageSize, default}
+  #    객체를 내보내 TypeError가 난다. 1.x에는 패치 버전이 없다.
+  #  - decode-uri-component(<=0.4.2 취약, 패치 0.5.0): 0.5.0은 ESM 전용(export default)이라
+  #    소비자 query-string@7.1.3의 require() 호출이 {default} 객체를 받아 깨진다.
 
 # pnpm v11은 의존성의 build script(postinstall 등)를 기본 차단하고, 승인/무시 결정이 없으면
 # 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS — 예: @sentry/cli·@swc/core·esbuild·protobufjs).

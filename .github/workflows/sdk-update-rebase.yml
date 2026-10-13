@@ -319,25 +319,21 @@ jobs:
           pnpm install --no-frozen-lockfile
           echo "BuildConfig pnpm-lock.yaml 업데이트 완료"
 
-      - name: 기존 브랜치에 force-push
+      - name: 변경 스테이징
         if: steps.author-check.outputs.skip != 'true'
-        id: push
+        id: stage
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          BRANCH="${{ steps.version.outputs.branch }}"
           GENERATE_STATUS="${{ steps.generate.outputs.generate_status }}"
 
-          # 변경사항 확인
+          # 변경사항 확인 — 없으면 스테이징하지 않는다. 아래 signed-commit 액션은
+          # 스테이징된 변경이 없으면 커밋을 만들지 않고 committed=false 로 끝난다.
           if git diff --quiet && git diff --staged --quiet; then
             echo "변경사항이 없습니다."
-            echo "pushed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # 기존 PR 브랜치 이름으로 새 브랜치 생성
-          git checkout -b "${BRANCH}"
-
-          # 모든 변경사항 커밋
+          # 모든 변경사항 스테이징 (signed-commit 액션이 스테이징된 index를 커밋한다)
           git add -A
 
           if [ "$GENERATE_STATUS" = "failed" ]; then
@@ -346,22 +342,34 @@ jobs:
             SUFFIX=""
           fi
 
-          git commit -m "기능: SDK v${VERSION} 업데이트 (리베이스)${SUFFIX}
+          {
+            echo "message<<COMMIT_MESSAGE_EOF"
+            echo "기능: SDK v${VERSION} 업데이트 (리베이스)${SUFFIX}"
+            echo ""
+            echo "- @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성"
+            echo "- main 브랜치 최신 상태 기반 리베이스"
+            echo "- package.json 버전 동기화"
+            echo "- BuildConfig package.json web-framework/web-analytics/bridge-core 버전 동기화"
+            echo ""
+            echo "자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "COMMIT_MESSAGE_EOF"
+          } >> $GITHUB_OUTPUT
 
-          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
-          - main 브랜치 최신 상태 기반 리베이스
-          - package.json 버전 동기화
-          - BuildConfig package.json web-framework/web-analytics/bridge-core 버전 동기화
-
-          자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-          # 기존 브랜치에 force-push
-          git push origin "${BRANCH}" --force
-          echo "pushed=true" >> $GITHUB_OUTPUT
-          echo "✅ force-push 완료: ${BRANCH}"
+      # 기존 PR 브랜치를 main 기준으로 다시 만든 커밋 1개로 force 갱신한다.
+      # git commit + git push --force 로 만든 bot 커밋은 서명이 없어 main Ruleset
+      # (required_signatures)에 막혀 머지되지 않았다. REST git data API 커밋은 GitHub이
+      # 자동 서명(Verified)하므로 composite action(force=true, PATCH git/refs force)으로 대체한다.
+      - name: 기존 브랜치에 서명 커밋 force 갱신
+        id: push
+        if: steps.author-check.outputs.skip != 'true'
+        uses: ./.github/actions/signed-commit
+        with:
+          branch: ${{ steps.version.outputs.branch }}
+          message: ${{ steps.stage.outputs.message }}
+          force: "true"
 
       - name: PR에 리베이스 완료 코멘트
-        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.committed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ matrix.pr.number }}
@@ -380,7 +388,7 @@ jobs:
             -X POST -f body="♻️ **자동 리베이스 완료**: main 브랜치 최신 상태 기반으로 SDK v${VERSION} 코드를 재생성했습니다.${GENERATE_NOTE}"
 
       - name: E2E 테스트 트리거
-        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.committed == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -397,12 +405,12 @@ jobs:
       # scan이 영구 pending → 머지 불가가 된다. 새 head에 scan=success를 재보고
       # (update.yml / update-changelog.yml과 같은 패턴).
       - name: 필수 scan 체크 충족 (bot PR)
-        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.pushed == 'true'
+        if: steps.author-check.outputs.skip != 'true' && steps.push.outputs.committed == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          HEAD_SHA=$(git rev-parse HEAD)
+          HEAD_SHA="${{ steps.push.outputs.commit-sha }}"
           gh api "repos/${{ github.repository }}/statuses/${HEAD_SHA}" -X POST \
             -f state=success \
             -f context=scan \
@@ -430,7 +438,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           SKIP="${{ steps.author-check.outputs.skip }}"
-          PUSHED="${{ steps.push.outputs.pushed }}"
+          PUSHED="${{ steps.push.outputs.committed }}"
 
           echo "## SDK Update Auto Rebase - v${VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

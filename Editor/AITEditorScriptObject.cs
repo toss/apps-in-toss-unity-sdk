@@ -741,7 +741,7 @@ namespace AppsInToss
 
         [Tooltip("페이지 캐시 put 지연: -1 = 자동(WebKit 계열만 활성), 0 = 비활성, 1 = 활성(모든 엔진). " +
                  "legacy early-fetch 가 받은 data/wasm 을 Cache API 에 넣는 put 을 첫 프레임 이후로 미뤄 로드 중 메모리 피크와 직렬화 경합을 줄입니다. " +
-                 "WebKit(iOS) 은 put 중 본문 사본이 상주해 RSS 가 커지므로 자동에서도 켭니다. 캐시 히트는 다음 방문부터 적용됩니다.")]
+                 "WebKit(iOS) 은 put 중 본문 사본이 상주해 RSS 가 커지므로 자동에서도 켭니다. 자동에서 Chromium 은 deviceMemory 6 이상의 버퍼 put 만 첫 프레임 뒤로 미루고(부팅 중 메인 스레드 경합 제거), 0 이면 모든 엔진에서 부팅 중 바로 put 합니다. 캐시 히트는 다음 방문부터 적용됩니다.")]
         public int pageCacheDeferredPut = -1;
 
         [Tooltip("IDBFS 프리워밍: -1 = 자동(활성), 0 = 비활성, 1 = 활성. " +

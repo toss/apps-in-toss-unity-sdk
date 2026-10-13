@@ -60,7 +60,9 @@ namespace AppsInToss.Editor.Package
     ///    put 한다. 미스면 tier 0·화면 보임일 때만 cache.add 로 네트워크에서 받아 저장한다(networkPut, net=N 으로 집계).
     ///  · WebKit 에서는 wasm 을 put 대상(ALLOW_ABS)에서 뺀다. JSC 에는 V8 같은 code cache 이득이 없고, CDN 이 ETag 와 max-age=0 을
     ///    주므로 재방문은 HTTP 캐시 재검증(304)으로 받는다.
-    ///  · Chromium 경로는 그대로다. 단 저메모리 tier(window.AITMemory.lowMemTier, ait-mem.js 가 부팅 사망 횟수·RAM 부족 기기 판별로 정함)에서는
+    ///  · Chromium 등 지연 put 이 꺼진 엔진은 부팅 중 clone 하고 put 한다. 자동(-1)에서 deviceMemory &gt;= 6 의 버퍼 put 은 본문 읽기와 put 을
+    ///    첫 프레임 뒤에 시작한다(부팅 중 메인 스레드 경합 제거). 0 을 명시하면 부팅 중 바로 put 한다.
+    ///  · 저메모리 tier(window.AITMemory.lowMemTier, ait-mem.js 가 부팅 사망 횟수·RAM 부족 기기 판별로 정함)에서는
     ///    엔진과 무관하게 부팅 중 clone/put 을 하지 않는다(본문 이중 보관 방지).
     ///    - tier 1: 위 지연 put 과 같은 경로로 첫 프레임 + 20초(기본, pageCacheLowTierDeferDelayMs) 뒤 파일 하나씩 only-if-cached 로 다시 읽어 put 한다.
     ///      파일 사이에 idle 을 기다리고, 메모리 압력이 high 이상이면 남은 파일을 포기하며, 본문이 크기 상한(WebKit 64MB / 그 밖 256MB,
@@ -507,8 +509,16 @@ namespace AppsInToss.Editor.Package
                 else if (typeof _dd === 'number' && _dd >= 0) { LOW_DEFER_DELAY_MS = _dd; }
                 if (_lp && typeof _lp.pageCacheLowTierMaxBytes === 'number' && _lp.pageCacheLowTierMaxBytes >= 0) { LOW_MAX_BYTES = _lp.pageCacheLowTierMaxBytes; }
             } catch (e) {}
+            // 버퍼 put 첫 프레임 뒤로(자동에서 켜짐, 지연 put 이 꺼진 엔진 = Chromium 등): 부팅 중 받은 응답은 clone 만 해 두고 본문 읽기와
+            // Cache.put 은 첫 프레임 뒤에 시작한다. 부팅 중 버퍼 put 이 Unity 부팅과 메인 스레드를 다퉈 cold TTFF 를 늦춘다
+            // (near-empty 6000.0, 데스크톱 Chrome CPU 9x 스로틀, 교차 11회 중앙값 -39ms, 4x 에서는 오차 범위). put 대상·재방문 히트는 그대로다.
+            // 대신 clone 본문이 첫 프레임까지 tee 버퍼에 남는다(예전에도 버퍼 put 은 본문 전체를 ArrayBuffer 로 부팅 중에 쥐었다).
+            // 그래서 deviceMemory >= 6 의 버퍼 put 경로에만 적용한다(그 미만의 스트림 put 은 미루면 tee 가 본문 전체를 쥐고 있게 된다).
+            // pageCacheDeferredPut 을 0 으로 명시하면 예전처럼 부팅 중 바로 put 하고, 1 이면 지연 put(WebKit 경로)이 대신 돈다.
+            var PUT_AFTER_FIRST_FRAME = !DEFERRED_PUT && DEFER_FLAG !== 0 && DEFER_FLAG !== 1;
             // 진단 훅(perf CI/검증용, 운영 무영향): 큐에 넣은 URL, put 성공, HTTP 캐시 미스(put 생략), 건너뜀(wasm/저메모리 tier/크기/압력), 오류.
-            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, lowTierPut: LOWTIER_PUT, lowDelayMs: LOW_DEFER_DELAY_MS, lowMaxBytes: LOW_MAX_BYTES, state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
+            // afterFirstFrame: 버퍼 put 을 첫 프레임 뒤로 미룬 URL.
+            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, lowTierPut: LOWTIER_PUT, lowDelayMs: LOW_DEFER_DELAY_MS, lowMaxBytes: LOW_MAX_BYTES, putAfterFirstFrame: PUT_AFTER_FIRST_FRAME, afterFirstFrame: [], state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
             var WASM_ABS = {};
             for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
                 try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
@@ -1064,10 +1074,9 @@ namespace AppsInToss.Editor.Package
                                     // decode-free 계약: 응답을 가공 없이 그대로 저장/반환.
                                     var clone = resp.clone();
                                     // 멈춘 put 이 조용히 남지 않도록 감시 타이머를 둔다(통계 errors 에 기록 → 진단 가능).
+                                    // 타이머는 put 을 실제로 시작할 때 건다(첫 프레임 대기 시간은 put 지연이 아니다).
                                     var putDone = false;
-                                    var putTimer = setTimeout(function () {
-                                        if (!putDone) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
-                                    }, PUT_TIMEOUT_MS);
+                                    var putTimer = null;
                                     // 본문을 clone 스트림 그대로 put 하지 않고 완결 ArrayBuffer 로 읽어 저장한다. 스트림 put 은 청크마다 메인 스레드
                                     // 태스크가 필요해, 첫 프레임 뒤 게임 루프가 메인 스레드를 채우면 CPU 4x 에서 수십 초(6000.0 실측 38~62s)
                                     // 밀린다. 버퍼 읽기는 태스크 수가 적어 같은 조건에서 수 초 안에 끝난다(호출자가 받는 resp 는 영향 없음).
@@ -1079,12 +1088,22 @@ namespace AppsInToss.Editor.Package
                                     // 그 미만이거나 API 가 없는 환경(iOS WebKit 등)은 clone 스트림을 그대로 put 한다(원래 동작, 감시/통계 동일).
                                     var bufferedPut = false;
                                     try { bufferedPut = typeof navigator !== 'undefined' && navigator.deviceMemory >= 6; } catch (e) {}
-                                    getCache().then(function (c) {
-                                        if (!bufferedPut) { return c.put(url, clone); }
-                                        return clone.arrayBuffer().then(function (buf) {
-                                            return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
-                                        });
-                                    })
+                                    // 버퍼 put 은 첫 프레임 뒤에 시작한다(PUT_AFTER_FIRST_FRAME, 위 설명). 스트림 put 은 미루면 tee 가 본문을 통째로 쥐고 있게 되므로 그대로 둔다.
+                                    var waitFrame = bufferedPut && PUT_AFTER_FIRST_FRAME && typeof window.__aitAfterFirstFrame === 'function';
+                                    if (waitFrame) { window.__aitCacheDeferred.afterFirstFrame.push(url); }
+                                    (waitFrame ? new Promise(function (go) { window.__aitAfterFirstFrame(go, 0); }) : Promise.resolve())
+                                        .then(function () {
+                                            putTimer = setTimeout(function () {
+                                                if (!putDone) { window.__aitCacheStats.errors.push('put timeout ' + url + ': ' + PUT_TIMEOUT_MS + 'ms'); }
+                                            }, PUT_TIMEOUT_MS);
+                                            return getCache();
+                                        })
+                                        .then(function (c) {
+                                            if (!bufferedPut) { return c.put(url, clone); }
+                                            return clone.arrayBuffer().then(function (buf) {
+                                                return c.put(url, new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Content-Length': String(buf.byteLength) } }));
+                                            });
+                                        })
                                         .then(function () { putDone = true; clearTimeout(putTimer); window.__aitCacheStats.puts.push(url); markPopulated(url); })
                                         .catch(function (e) {
                                             putDone = true; clearTimeout(putTimer);

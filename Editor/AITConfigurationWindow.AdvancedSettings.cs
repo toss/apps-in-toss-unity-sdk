@@ -203,7 +203,7 @@ namespace AppsInToss.Editor
 
             config.pageCacheDeferredPut = DrawPerfTriState(
                 config.pageCacheDeferredPut, "페이지 캐시 put 지연",
-                "early-fetch 캐시 put 을 첫 프레임 이후로 미룹니다. 자동은 WebKit(iOS) 계열에서만 켭니다.",
+                "early-fetch 캐시 put 을 첫 프레임 이후로 미룹니다. 자동은 WebKit(iOS) 계열에서만 켜고, Chromium 은 메모리 6GB 이상에서 버퍼 put 만 첫 프레임 뒤로 미룹니다. 비활성은 모든 엔진에서 부팅 중 바로 put 합니다.",
                 AITDefaultSettings.GetDefaultPageCacheDeferredPut(), autoText: "WebKit 만 활성", anyExplicitIsModified: true);
 
             config.idbPrewarm = DrawPerfTriState(

@@ -299,10 +299,27 @@ for (const engine of ENGINES) {
         expect(server.count(`${token}.wasm`)).toBe(1);
 
         if (engine !== 'webkit') {
-          // Chromium: 지연 없이 부팅 중 put(기존 경로).
-          await waitFor(page, `window.__aitCacheStats.puts.length >= 2`);
-          const info = await page.evaluate(() => JSON.parse(JSON.stringify(window['__aitCacheDeferred'])));
-          expect(info.queued).toEqual([]);
+          // Chromium: 지연 put 큐는 쓰지 않고 부팅 중 clone 한다. 버퍼 put(deviceMemory >= 6)은 본문 읽기·put 을 첫 프레임 뒤에 시작하고,
+          // 스트림 put(그 미만)은 부팅 중 바로 put 한다. 어느 쪽이든 재다운로드는 없다.
+          const mid = await page.evaluate(() => ({
+            mem: navigator['deviceMemory'],
+            puts: window['__spy'].puts.length,
+            clones: window['__spy'].clones,
+            info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])),
+          }));
+          expect(mid.info.queued).toEqual([]);
+          expect(mid.info.putAfterFirstFrame, '자동(-1)은 Chromium 에서 버퍼 put 을 첫 프레임 뒤로').toBe(true);
+          expect(mid.clones, '부팅 중 clone(put 대상 3건)').toBe(3);
+          if (typeof mid.mem === 'number' && mid.mem >= 6) {
+            expect(mid.puts, '버퍼 put: 첫 프레임 전 put 없음').toBe(0);
+            expect(mid.info.afterFirstFrame.length).toBe(3);
+            await fireFirstFrame(page);
+          }
+          await waitFor(page, `window.__aitCacheStats.puts.length >= 3`);
+          const after = await page.evaluate(() => ({ stats: JSON.parse(JSON.stringify(window['__aitCacheStats'])) }));
+          expect(after.stats.errors).toEqual([]);
+          expect(server.count(`${token}.data`)).toBe(1);
+          expect(server.count(`${token}.wasm`)).toBe(1);
           return;
         }
 

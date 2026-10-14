@@ -1,0 +1,27 @@
+{
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "deny": [
+      "Read(/sdk-runtime-generator~/pnpm-lock.yaml)",
+      "Read(/WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml)",
+      "Read(/Tests~/E2E/tests/pnpm-lock.yaml)",
+      "Read(/WebGLTemplates/AITTemplate/Runtime/devconsole/vconsole.min.js)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file_path=$(jq -r '.tool_input.file_path // \"\"'); case \"$file_path\" in */Runtime/SDK/*) echo '⚠️ BLOCKED: Runtime/SDK/ 파일은 자동 생성됩니다. sdk-runtime-generator~/를 수정하세요.' >&2; exit 2;; esac"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "playwright@claude-plugins-official": true
+  }
+}

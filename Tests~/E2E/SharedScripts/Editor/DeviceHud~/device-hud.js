@@ -142,10 +142,14 @@
       var ctx = origGet.apply(this, arguments);
       if (ctx && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
         var methods = ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced', 'drawRangeElements'];
+        var origs = {};
+        // 첫 화면 draw 를 잡으면 원래 함수로 되돌려 플레이 중 draw 호출마다 래퍼 비용이 붙지 않게 한다.
+        var restore = function () { for (var k in origs) { try { ctx[k] = origs[k]; } catch (e) {} } };
         for (var i = 0; i < methods.length; i++) {
           (function (m) {
             if (typeof ctx[m] === 'function' && !ctx['__hud_' + m]) {
               var orig = ctx[m];
+              origs[m] = orig;
               ctx[m] = function () {
                 if (run.ttff === null) {
                   var onScreen = true;
@@ -156,7 +160,9 @@
                     startFrames();
                   }
                 }
-                return orig.apply(ctx, arguments);
+                var r = orig.apply(ctx, arguments);
+                if (run.ttff !== null) restore();
+                return r;
               };
               ctx['__hud_' + m] = true;
             }

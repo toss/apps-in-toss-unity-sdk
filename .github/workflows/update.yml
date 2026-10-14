@@ -348,24 +348,35 @@ jobs:
           fi
 
       # 다중 버전 호환성 테스트용 pnpm alias 추가
-      # 이 alias는 SDK 생성에는 사용되지 않으며, 이후 CI에서 multi-version 테스트 시 사용됨
+      # 이 alias는 SDK 생성에는 사용되지 않으며, 이후 CI에서 multi-version 테스트 시 사용됨.
+      # 건너뛴 중간 버전도 호환성 커버리지를 잃지 않도록 alias는 함께 추가한다.
       - name: 다중 버전 테스트 alias 추가
         if: steps.check.outputs.skip != 'true'
         working-directory: sdk-runtime-generator~
+        env:
+          SKIPPED_VERSIONS: ${{ needs.detect-versions.outputs.skipped_versions }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ALIAS_KEY="web-framework-${VERSION}"
+          ADDED="false"
 
-          # package.json devDependencies에 alias가 없으면 추가
-          if ! jq -e ".devDependencies[\"${ALIAS_KEY}\"]" package.json > /dev/null 2>&1; then
-            jq --arg key "$ALIAS_KEY" \
-               --arg val "npm:@apps-in-toss/web-framework@${VERSION}" \
-               '.devDependencies[$key] = $val' package.json > tmp.json
-            mv tmp.json package.json
-            echo "✅ 테스트 alias 추가: ${ALIAS_KEY}"
+          for ALIAS_VERSION in $SKIPPED_VERSIONS $VERSION; do
+            ALIAS_KEY="web-framework-${ALIAS_VERSION}"
+
+            # package.json devDependencies에 alias가 없으면 추가
+            if ! jq -e ".devDependencies[\"${ALIAS_KEY}\"]" package.json > /dev/null 2>&1; then
+              jq --arg key "$ALIAS_KEY" \
+                 --arg val "npm:@apps-in-toss/web-framework@${ALIAS_VERSION}" \
+                 '.devDependencies[$key] = $val' package.json > tmp.json
+              mv tmp.json package.json
+              echo "✅ 테스트 alias 추가: ${ALIAS_KEY}"
+              ADDED="true"
+            else
+              echo "⏭️ alias 이미 존재: ${ALIAS_KEY}"
+            fi
+          done
+
+          if [ "$ADDED" = "true" ]; then
             pnpm install --no-frozen-lockfile
-          else
-            echo "⏭️ alias 이미 존재: ${ALIAS_KEY}"
           fi
 
       # 기준 파일의 값을 루트 package.json, 생성기 package.json, BuildConfig package.json,

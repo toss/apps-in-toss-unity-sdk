@@ -188,6 +188,16 @@ function serializeJson(json, originalText) {
   return originalText.endsWith('\n') ? body + '\n' : body;
 }
 
+function isSorted(keys) {
+  return keys.every((k, i) => i === 0 || keys[i - 1] <= k);
+}
+
+function sortKeysInPlace(obj) {
+  const entries = Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const k of Object.keys(obj)) delete obj[k];
+  for (const [k, v] of entries) obj[k] = v;
+}
+
 function container(json, site) {
   return site.section ? json[site.section] : json;
 }
@@ -301,7 +311,10 @@ function runApply(root, log = console.log) {
       if (!present && site.optional) continue;
       if (box[site.key] !== expected) {
         changed.push(`${file}: ${siteLabel(site)} ${present ? box[site.key] : '(없음)'} → ${expected}`);
+        const keysBefore = Object.keys(box);
         box[site.key] = expected;
+        // 키가 알파벳 순으로 정렬돼 있던 섹션에 새 키를 넣으면 끝에 붙어 불필요한 diff 가 생기므로 다시 정렬한다.
+        if (!present && site.section && isSorted(keysBefore)) sortKeysInPlace(box);
       }
     }
     const next = serializeJson(json, text);

@@ -227,6 +227,17 @@ test('apply 는 두 번 실행해도 파일을 바꾸지 않고, 관련 없는 �
   assert.equal(readJson(root, BC).devDependencies.vite, '8.3.4');
 });
 
+test('apply 가 정렬된 섹션에 빠진 필수 키를 넣으면 알파벳 순서를 유지한다', () => {
+  const root = makeRepo();
+  const gen = readJson(root, GEN);
+  delete gen.dependencies['@apps-in-toss/web-analytics'];
+  writeJson(root, GEN, gen);
+  sync.runApply(root, () => {});
+  const keys = Object.keys(readJson(root, GEN).dependencies);
+  assert.deepEqual(keys, [...keys].sort());
+  assert.ok(keys.includes('@apps-in-toss/web-analytics'));
+});
+
 test('fixed 항목(@apps-in-toss/framework)도 어긋나면 check 가 잡는다', () => {
   const root = makeRepo();
   const gen = readJson(root, GEN);

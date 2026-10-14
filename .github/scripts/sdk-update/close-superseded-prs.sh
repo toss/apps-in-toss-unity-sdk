@@ -32,8 +32,13 @@ is_lower() {
   [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -n1)" = "$a" ]
 }
 
+# 목록 조회가 일시 실패(5xx, rate limit)해도 새 PR 은 이미 만들어진 뒤라 잡을 실패시키지 않는다.
+# 낮은 버전 PR 은 다음 실행에서 다시 정리된다.
 ROWS=$(gh api "repos/${REPO}/pulls?state=open&per_page=100" --paginate \
-  --jq '.[] | select(.head.ref | startswith("update/")) | [.number, .head.ref, .user.login, (.head.repo.full_name // "")] | @tsv')
+  --jq '.[] | select(.head.ref | startswith("update/")) | [.number, .head.ref, .user.login, (.head.repo.full_name // "")] | @tsv') || {
+  echo "::warning::열린 PR 목록 조회에 실패해 정리를 건너뜁니다"
+  exit 0
+}
 
 CLOSED=0
 while IFS=$'\t' read -r NUMBER BRANCH AUTHOR HEAD_REPO; do

@@ -29,6 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ "$method" = GET ]; then
+  if [ -n "${FAIL_LIST:-}" ]; then exit 1; fi
   jq -r "$jq_filter" "$FIXTURE"
   exit 0
 fi
@@ -108,6 +109,12 @@ grep -q "DELETE .*3.7.0-20261002" "$CALLS" || fail "케이스 4: 나머지 PR �
 : > "$CALLS"
 NEW_VERSION="latest" NEW_PR_NUMBER="103" bash "$SCRIPT" > "$T/out5.log" 2>&1 || fail "케이스 5 실패"
 [ ! -s "$CALLS" ] || fail "케이스 5: 쓰기 호출이 있었다"
+
+# --- 케이스 6: 목록 조회가 실패해도 잡을 실패시키지 않고 아무것도 하지 않는다 ---
+: > "$CALLS"
+FAIL_LIST=1 NEW_VERSION="3.8.0" NEW_PR_NUMBER="103" bash "$SCRIPT" > "$T/out6.log" 2>&1 || fail "케이스 6: 목록 조회 실패에 스크립트가 실패했다"
+[ ! -s "$CALLS" ] || fail "케이스 6: 쓰기 호출이 있었다"
+grep -q "::warning::" "$T/out6.log" || fail "케이스 6: 경고가 없다"
 
 if [ "$FAILED" -ne 0 ]; then
   echo "close-superseded-prs.test.sh 실패"

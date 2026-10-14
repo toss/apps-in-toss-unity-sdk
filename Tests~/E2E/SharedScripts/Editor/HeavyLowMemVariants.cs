@@ -18,6 +18,12 @@ using AppsInToss.Editor;
 ///   lto600       : 코드 최적화를 DiskSizeLTO 로 강제한다(AIT_WEBGL_CODE_OPTIMIZATION 환경변수를 이 프로세스에 설정). 6000.0 은 기본으로 LTO 를 건너뛰는
 ///                  버전(링크 OOM 위험)이라 그 게이트를 풀어 재는 변형이다. 다른 버전에서는 이미 기본이라 효과가 같다.
 ///                  빌드 후 build-validation.json 의 wasmCodeBytes 와 "[AIT-CodeSize]" 로그로 code 섹션 크기를 비교한다.
+///
+///   아래 3종은 "현재 브랜치의 크기 레버 3개 중 정확히 하나만 main 값으로 되돌리는" 단일 요인 A/B 변형이다(wasm 크기·TTFF·메모리·런타임 비용 기여도 분해용).
+///   빌드 파이프라인의 기존 env 오버라이드를 이 빌드 프로세스에만 주입하며 SDK 기본값·사용자 빌드에는 영향이 없다. 적용 내용은 "[AIT-Variant]" 로그로 남는다.
+///   lto-off        : 코드 최적화를 적용하지 않는다(AIT_WEBGL_CODE_OPTIMIZATION=off, main 의 6000.0 동작과 같음). 가능하면 BuildTimes 도 명시한다.
+///   codegen-speed  : IL2CPP Code Generation 을 OptimizeSpeed 로(AIT_IL2CPP_CODE_GENERATION, main 값).
+///   exc-stacktrace : WebGL 예외 처리를 FullWithStacktrace 로(main 값). 이 브랜치 기본은 FullWithoutStacktrace.
 /// </summary>
 public static class HeavyLowMemVariants
 {
@@ -131,6 +137,40 @@ public static class HeavyLowMemVariants
         config.exceptionSupport = 1;
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         Debug.Log("[heavy] exc-explicit: exceptionSupport=ExplicitlyThrownExceptionsOnly");
+    }
+
+    [HeavyVariant("lto-off")]
+    public static void ApplyLtoOff(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+
+        // 같은 프로세스 안에서 빌드가 돌므로 환경변수가 AITBuildInitializer 의 ResolveDecision 입력으로 그대로 전달된다.
+        // off = code optimization 적용 자체를 건너뛴다 → 프로젝트의 Unity 기본값이 남는다(main 의 6000.0 동작).
+        System.Environment.SetEnvironmentVariable(AITWebGLCodeOptimization.EnvOverrideKey, "off");
+        bool explicitDefault = AITWebGLCodeOptimization.TrySetByName("BuildTimes");   // 멤버가 없는 버전은 false(프로젝트 값 유지)
+        Debug.Log($"[AIT-Variant] lto-off: {AITWebGLCodeOptimization.EnvOverrideKey}=off, BuildTimes 명시={explicitDefault}, " +
+                  $"현재 codeOptimization={AITWebGLCodeOptimization.GetCurrentName() ?? "?"} (Unity {Application.unityVersion})");
+    }
+
+    [HeavyVariant("codegen-speed")]
+    public static void ApplyCodegenSpeed(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+
+        // env 오버라이드는 설정 필드·기본값보다 나중에 적용되므로 이 값이 최종이다.
+        System.Environment.SetEnvironmentVariable("AIT_IL2CPP_CODE_GENERATION", "OptimizeSpeed");
+        Debug.Log("[AIT-Variant] codegen-speed: AIT_IL2CPP_CODE_GENERATION=OptimizeSpeed");
+    }
+
+    [HeavyVariant("exc-stacktrace")]
+    public static void ApplyExcStacktrace(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+
+        // 저장값 2 = FullWithStacktrace(UI 순서, AITBuildInitializer.ConvertToExceptionSupport 참조).
+        config.exceptionSupport = 2;
+        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithStacktrace;
+        Debug.Log("[AIT-Variant] exc-stacktrace: exceptionSupport=FullWithStacktrace");
     }
 
     [HeavyVariant("lto600")]

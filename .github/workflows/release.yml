@@ -734,6 +734,19 @@ jobs:
             echo "prerelease 버전 감지: ${VERSION} → Latest 표시 안 함"
           fi
 
+          # 백필(bulk-release 등)로 더 낮은 버전을 나중에 릴리즈하면 gh의 자동 판정이 생성 시각을 따라
+          # 그 버전을 Latest로 표시한다(2026-10 v3.6.0·v3.7.0 백필 때 v3.8.0에서 Latest가 넘어감).
+          # 이미 더 높은 stable 릴리즈 태그가 있으면 Latest로 표시하지 않는다.
+          if [ -z "$PRERELEASE_FLAGS" ]; then
+            HIGHEST=$(git ls-remote --tags origin "refs/tags/release/v*" \
+              | sed -n 's#.*refs/tags/release/v\([0-9]*\.[0-9]*\.[0-9]*\)$#\1#p' \
+              | sort -V | tail -1)
+            if [ -n "$HIGHEST" ] && [ "$(printf "%s\n%s\n" "$VERSION" "$HIGHEST" | sort -V | tail -1)" != "$VERSION" ]; then
+              PRERELEASE_FLAGS="--latest=false"
+              echo "더 높은 릴리즈(v${HIGHEST})가 있음 → v${VERSION}은 Latest로 표시하지 않음"
+            fi
+          fi
+
           # 태그 기반으로 릴리즈 생성 (--verify-tag로 태그 확인)
           gh release create "${TAG_NAME}" \
             --title "v${VERSION}" \

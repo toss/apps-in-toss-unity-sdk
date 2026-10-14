@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: SDK 버전 동기화 스크립트 단위 테스트
+        run: node --test .github/scripts/sdk-update/sync-sdk-versions.test.cjs
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 

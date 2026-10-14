@@ -171,6 +171,22 @@ jobs:
 
           echo "✓ 모든 E2E 픽스처 package.json이 불변식을 지킵니다."
 
+  check-sdk-versions:
+    name: Check SDK 버전 기준 불변식
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Check SDK version SSOT (.github/sdk-versions.json)
+        # SDK 버전·web-framework·동반 패키지(web-analytics/bridge-core/devtools/framework)·pnpm 버전은
+        # 루트/생성기/BuildConfig package.json 과 Editor/AITPackageManagerHelper.cs 에 흩어져 있다.
+        # 기준은 .github/sdk-versions.json 한 곳이고, 나머지가 어긋나면 어떤 파일의 어떤 키가
+        # 다른지 알려 주며 실패한다. 수정: node .github/scripts/sdk-update/sync-sdk-versions.cjs apply
+        # Node stdlib만 사용 — ubuntu-latest 기본 Node로 충분.
+        run: node .github/scripts/sdk-update/sync-sdk-versions.cjs check
+
   ci-scripts:
     name: CI 스크립트 위생 검사
     runs-on: ubuntu-latest

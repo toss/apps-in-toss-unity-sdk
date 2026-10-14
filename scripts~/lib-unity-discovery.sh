@@ -234,7 +234,7 @@ show_help() {
     echo "    $0 --list-unity               # 설치된 버전 확인"
     echo ""
     echo "실행 순서:"
-    echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트 → [4] Meta GUID 위생"
+    echo "  --validate    : [1] 파일 구조 검증 → [2] Playwright 설정 → [3] SDK 유닛 테스트 → [4] Meta GUID 위생 → [5] 배포 URL 추출 → [6] SDK 버전 기준 불변식"
     echo "  --editmode    : [1] Unity EditMode 테스트 (~10초, 빌드 불필요)"
     echo "  --unity-build : [1] Unity WebGL 빌드"
     echo "  --e2e         : [1] Playwright E2E 테스트 (빌드 결과물 필요)"

@@ -2,7 +2,7 @@ Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-frame
 
 ## v3.x
 
-### v3.5.0 → v3.8.0
+### v3.5.0 → v3.6.0
 
 API 총 134개 · 추가 1 · 변경 0 · 제거 0
 
@@ -169,7 +169,7 @@ API 총 126개 · 추가 42 · 변경 64 · 제거 0
 - `AIT.StorageSetItem`: `parameter added: key: string; parameter added: value: string; parameter removed: args_0; parameter removed: args_1`
 - `AIT.SubmitGameCenterLeaderBoardScore`: `isDeprecated: false → true`
 
-변경 없음: v3.1.0 → v3.1.1 · v3.0.5 → v3.1.0 · v3.0.4 → v3.0.5 · v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2
+변경 없음: v3.7.0 → v3.8.0 · v3.6.0 → v3.7.0 · v3.1.0 → v3.1.1 · v3.0.5 → v3.1.0 · v3.0.4 → v3.0.5 · v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2
 
 ## v2.x
 

@@ -49,6 +49,20 @@ import { fileURLToPath } from 'url';
  *  - PERF_PAIR_PROJECT_PATH : (페어 A/B 모드) B 산출물의 프로젝트 경로. 미지정 시 기존 단일 측정과 동일.
  *  - PERF_LABEL_A / PERF_LABEL_B : 페어 모드에서 결과 JSON pairing 섹션에 남길 라벨(기본 'A'/'B').
  *
+ *  - PERF_MEMORY_GUARD  : 메모리 회귀 가드(아래). 0 이면 끄고, 1 이면 항상 켠다. 미지정 시 SDK 검증 대상 쪽(단일 모드 / 페어 A)에서만 켜며
+ *                         PERF_LABEL_A 가 'base#'(재사용한 기존 run 아티팩트 = 비교 기준선)로 시작하면 끈다. 페어 B 에는 걸지 않는다.
+ *  - PERF_WASM_MAX_BYTES : wasm 해제 크기 상한(바이트) 덮어쓰기. 의도적으로 코드가 커지는 변경일 때만 올린다.
+ *  - PERF_AUDIO_PCM_MAX_BYTES : 디코드된 오디오 PCM 상한(바이트) 덮어쓰기.
+ *
+ * 메모리 회귀 가드(노이즈 없는 구조 불변식, 위 기록 전용 원칙의 예외): 렌더러 메모리 ~300MB 절감의 근원이 런타임 플래그가 아니라
+ * 빌드·로더 설정이라, RSS 대신 그 설정 자체를 단언한다.
+ *  1) Decompression Fallback OFF: window.__AIT_WASM_PATH 가 jsDecompress===false 이고 mode 가 unityweb/buffered/pending 이 아니어야 한다
+ *     (Chromium + Unity 6000.x 에서는 mode==='direct' 까지 요구). 그리고 부팅 뒤 unityInstance.Module.wasmBinary 가 비어 있어야 한다
+ *     (로더가 wasm 을 직접 받으면 wasm 전체 사본이 JS 힙에 남는다. heavy 6000.0 에서 92MB).
+ *  2) wasm 크기 예산: build-validation.json 의 wasmTotalBytes(해제 후 크기)가 버전별 상한 이하여야 한다(WASM_BUDGETS).
+ *  3) 오디오: 긴 클립이 외부화돼 브라우저가 디코드 PCM 을 쥐지 않아야 한다. HeavyAudioProbe 가 붙은 빌드에서 decodeAudioData/createBuffer 로 잡힌
+ *     PCM 합이 상한 이하여야 한다(main 은 47~76MB, 브랜치는 0.02MB).
+ *
  * 페어 A/B 모드(PERF_PAIR_PROJECT_PATH 지정 시): 같은 measure 잡 안에서 A/B 두 산출물을 각자
  * 별도 preview 서버로 띄우고 반복마다 A→B/B→A 를 교대하며 인터리브 측정한다(러너 개체 편차 상쇄).
  * 집계는 "중앙값의 차"가 아니라 "반복별 차의 중앙값"(paired delta) — 잡 내부 드리프트까지 상쇄된다.
@@ -133,6 +147,21 @@ function detectVersion(projectPath) {
   return m ? m[1] : 'unknown';
 }
 const UNITY_VERSION = detectVersion(PROJECT);
+
+// ---- 메모리 회귀 가드 설정 ----
+const GUARD_ENV = process.env.PERF_MEMORY_GUARD;
+// 기본: SDK 검증 대상(단일 모드 / 페어 A)에서만 켠다. 'base#<run>' 라벨은 기존 run 아티팩트를 비교 기준선으로 재사용한 측정이다.
+const GUARD_ON = GUARD_ENV === '1' || (GUARD_ENV !== '0' && !/^base#/.test(process.env.PERF_LABEL_A || ''));
+const POSTURE = process.env.AIT_PERF_POSTURE || 'default';
+// wasm 해제 크기 상한(바이트). 근거: perf run 38451092192(perf/consolidated 225a0be0, release, gzip, default posture)의 build-validation
+// wasmTotalBytes 관측값 2021.3=48,988,841 / 6000.0=31,440,869 / 6000.3=32,131,552 에 약 20% 여유. main(최적화 전)은 6000.0 에서 ~92MB 라 충분히 잡힌다.
+const WASM_BUDGETS = { '2021.3': 59_000_000, '6000.0': 38_000_000, '6000.3': 39_000_000 };
+// 같은 heavy 픽스처를 쓰는 posture 만 예산을 건다. minimal/game/mobile*/speed 와 예외 처리 접미사(-explicit/-nostack)는 wasm 크기가 달라 건너뛴다.
+const WASM_BUDGET_POSTURES = ['default', 'full', 'fullmesh'];
+// 디코드 PCM 상한: 외부화가 동작하면 ~0.02MB, 깨지면 수십 MB. 중간값 8MB.
+const AUDIO_PCM_MAX_DEFAULT = 8 * 1048576;
+/** @type {Record<string, any>} 라벨별(A/B) 첫 반복에서 수집한 가드 입력 */
+const guardInputs = {};
 
 // Unity 버전별 포트 오프셋 (E2EBuildRunner.GetPortOffsetForUnityVersion 와 동일 규약)
 function portOffset(version) {
@@ -856,6 +885,14 @@ async function logAudioDecode(page, label, consoleLines) {
   // wasm 적재 경로(index.html 이 기록). 첫 프레임에 enc/dec 가 채워진 뒤의 값이다.
   const wasmPath = await page.evaluate(() => window['__AIT_WASM_PATH'] || null).catch(() => null);
   if (wasmPath) console.log(`  __AIT_WASM_PATH${tag}: ${JSON.stringify(wasmPath)}`);
+  // 가드 입력: 부팅 뒤 Module.wasmBinary 존재 여부(로더가 wasm 사본을 쥐고 있는지).
+  const wasmBinary = await page.evaluate(() => {
+    const M = window['unityInstance'] && window['unityInstance'].Module;
+    if (!M) return { hasModule: false, present: null, bytes: 0 };
+    const b = M.wasmBinary;
+    return { hasModule: true, present: b !== undefined && b !== null, bytes: b && b.byteLength ? b.byteLength : 0 };
+  }).catch(() => ({ hasModule: false, present: null, bytes: 0 }));
+  console.log(`  Module.wasmBinary${tag}: ${wasmBinary.hasModule ? (wasmBinary.present ? `있음(${(wasmBinary.bytes / 1048576).toFixed(1)}MB)` : '없음') : 'Module 접근 불가'}`);
   const audio = await page.evaluate(() => ({
     pcm: window.__aitAudioPcmBytes, media: window.__aitAudioMediaEls,
     calls: window.__aitAudioDecodeCalls || 0, inBytes: window.__aitAudioDecodeInBytes || 0, errors: window.__aitAudioDecodeErrors || 0,
@@ -883,6 +920,7 @@ async function logAudioDecode(page, label, consoleLines) {
   const diag = /AIT-WasmPath|AIT-UnityMem|AIT-CodeSize|AIT-Memory\] (first-frame|텔레메트리)|AIT-GL\] 텍스처 업로드|managed brotli/;
   const rest = consoleLines.filter((l) => !diag.test(l)).slice(0, 40);
   for (const l of [...consoleLines.filter((l) => diag.test(l)), ...rest]) console.log(`    console${tag}: ${l.slice(0, 260)}`);
+  guardInputs[label] = { wasmPath, wasmBinary, audio, audioProbed: probed };
   const texDrawCheck = parseTexDrawCheck(consoleLines);
   if (texDrawCheck) {
     // 긴 줄(텍스처별 상세)은 잘리지 않게 따로 전부 남긴다.
@@ -1077,7 +1115,7 @@ test.afterAll(async () => {
   pairServerProcess = null;
 });
 
-test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
+test('TTFF 실측 (median-of-N, record-only)', async ({ browser, browserName }) => {
   // 무거운 빌드 + 스로틀 + N회 반복이므로 넉넉한 타임아웃 (config 600s와 정합).
   // 페어 모드는 한 테스트가 A/B 두 산출물을 인터리브로 재므로 시간 예산 2배(config 1200s와 정합).
   test.setTimeout(TEST_TIMEOUT_MS);
@@ -1258,6 +1296,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
     `at least one valid TTFF sample required for A (got ${resultA.ttffMs.values.length}/${ITERATIONS}). ` +
     `Draw counts: ${samplesA.map(s => s.firstDrawCount).join(',')}`).toBeGreaterThan(0);
   expectTexDrawCheck(resultA, LABEL_A);
+  expectMemoryGuards(LABEL_A, browserName);
   if (PAIR_MODE) {
     const bTtffValues = samplesB.map(s => s.ttffMs).filter(v => typeof v === 'number' && v > 0);
     expect(bTtffValues.length,
@@ -1281,4 +1320,71 @@ function expectTexDrawCheck(result, label) {
   expect(t.line, `[${label}] 전부 복원(restored=${t.restored}/${t.restoredTotal})됐는데 [AIT-TexStreamProbe] draw-check 줄이 없다`).not.toBeNull();
   expect(t.pass,
     `[${label}] Unity 가 복원된 텍스처를 제대로 샘플링하지 못함: ${t.line}`).toBe(t.restoredTotal);
+}
+
+/** build-validation.json(C# BuildOutputValidator 산출)의 해제 wasm 크기. 파일이 없거나 측정 못 했으면 null. */
+function readWasmTotalBytes() {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.resolve(AIT_BUILD, 'build-validation.json'), 'utf-8'));
+    return typeof j.wasmTotalBytes === 'number' && j.wasmTotalBytes > 0 ? j.wasmTotalBytes : null;
+  } catch { return null; }
+}
+
+/**
+ * 메모리 회귀 가드(파일 상단 설명 참고). SDK 검증 대상(A)에만 건다. 입력 수집 실패는 판정 불가라 경고만 남기고 넘어가고,
+ * 값이 잡힌 상태에서 어긋나면 실패시킨다.
+ */
+function expectMemoryGuards(label, browserName) {
+  if (!GUARD_ON) {
+    console.log(`  메모리 가드 생략(PERF_MEMORY_GUARD=${GUARD_ENV ?? '(기본)'}, 라벨 ${process.env.PERF_LABEL_A ?? 'A'})`);
+    return;
+  }
+  const g = guardInputs[label];
+  const errs = [];
+
+  // (1) Decompression Fallback OFF → 로더가 wasm 을 받지 않고 index.html 의 instantiateWasm 훅이 스트리밍 컴파일한다.
+  const wp = g && g.wasmPath;
+  if (!wp) {
+    console.warn(`  메모리 가드[${label}] __AIT_WASM_PATH 미수집 — wasm 적재 경로 단언 생략`);
+  } else {
+    if (wp.jsDecompress !== false) errs.push(`__AIT_WASM_PATH.jsDecompress=${JSON.stringify(wp.jsDecompress)} (false 여야 함: Decompression Fallback 이 켜져 로더가 JS 로 wasm 을 푼다)`);
+    if (['unityweb', 'buffered', 'pending'].includes(wp.mode)) errs.push(`__AIT_WASM_PATH.mode='${wp.mode}' (direct/rewrap 스트리밍 컴파일이어야 함${wp.fallback ? `, fallback=${wp.fallback}` : ''})`);
+    // direct 는 응답이 네이티브 Response 이고 URL·application/wasm 이 있을 때만 선택된다. 2021.3 은 rewrap 이 관측돼(run 38451092192) 6000.x + Chromium 에서만 엄격히 요구한다.
+    if (browserName === 'chromium' && /^6000\./.test(UNITY_VERSION) && wp.mode !== 'direct') errs.push(`__AIT_WASM_PATH.mode='${wp.mode}' (Unity ${UNITY_VERSION}/chromium 에서는 'direct' 여야 함)`);
+  }
+  const wb = g && g.wasmBinary;
+  if (!wb || !wb.hasModule) {
+    console.warn(`  메모리 가드[${label}] unityInstance.Module 접근 불가 — Module.wasmBinary 단언 생략`);
+  } else if (wb.present) {
+    errs.push(`unityInstance.Module.wasmBinary 가 남아 있음(${(wb.bytes / 1048576).toFixed(1)}MB): 로더가 wasm 을 직접 받아 사본을 JS 힙에 쥐고 있다`);
+  }
+
+  // (2) wasm 해제 크기 예산.
+  const envMax = process.env.PERF_WASM_MAX_BYTES ? Number(process.env.PERF_WASM_MAX_BYTES) : null;
+  const budgetApplies = envMax !== null || WASM_BUDGET_POSTURES.includes(POSTURE);
+  const wasmMax = envMax ?? WASM_BUDGETS[UNITY_VERSION] ?? null;
+  const wasmBytes = readWasmTotalBytes();
+  if (!budgetApplies) {
+    console.log(`  wasm 예산 생략: posture=${POSTURE} (PERF_WASM_MAX_BYTES 로 강제 가능)`);
+  } else if (wasmMax === null) {
+    console.warn(`  wasm 예산 생략: Unity ${UNITY_VERSION} 의 상한이 없다(PERF_WASM_MAX_BYTES 로 지정)`);
+  } else if (wasmBytes === null) {
+    console.warn(`  wasm 예산 생략: ${path.join(AIT_BUILD, 'build-validation.json')} 에 wasmTotalBytes 가 없다`);
+  } else {
+    console.log(`  wasm 크기[${label}]: ${(wasmBytes / 1e6).toFixed(2)}MB / 상한 ${(wasmMax / 1e6).toFixed(2)}MB`);
+    if (wasmBytes > wasmMax) errs.push(`wasm 해제 크기 ${wasmBytes}B 가 상한 ${wasmMax}B 초과(Unity ${UNITY_VERSION}). 코드 크기 레버(DiskSizeLTO / IL2CPP OptimizeSize / 예외 모드)가 풀렸는지 확인하고, 의도한 증가라면 PERF_WASM_MAX_BYTES 나 WASM_BUDGETS 를 올린다`);
+  }
+
+  // (3) 디코드 PCM 상한. 프로브 클립이 있는 빌드에서만 의미가 있다(없으면 PCM 이 원래 0 이라 지켜볼 것이 없다).
+  const pcmMax = process.env.PERF_AUDIO_PCM_MAX_BYTES ? Number(process.env.PERF_AUDIO_PCM_MAX_BYTES) : AUDIO_PCM_MAX_DEFAULT;
+  if (!g || !g.audio || typeof g.audio.pcm !== 'number') {
+    console.warn(`  메모리 가드[${label}] 오디오 PCM 미수집 — 단언 생략`);
+  } else if (!g.audioProbed) {
+    console.log(`  오디오 PCM 가드 생략: HeavyAudioProbe 가 없는 빌드(posture=${POSTURE})`);
+  } else {
+    console.log(`  오디오 PCM[${label}]: ${(g.audio.pcm / 1048576).toFixed(2)}MB / 상한 ${(pcmMax / 1048576).toFixed(2)}MB`);
+    if (g.audio.pcm > pcmMax) errs.push(`디코드된 오디오 PCM ${g.audio.pcm}B 가 상한 ${pcmMax}B 초과: 긴 클립 외부화(스트리밍)가 풀려 브라우저가 PCM 을 쥐고 있다`);
+  }
+
+  expect(errs, `메모리 회귀 가드 실패[${label}]:\n - ${errs.join('\n - ')}`).toEqual([]);
 }

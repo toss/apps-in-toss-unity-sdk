@@ -17,6 +17,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v7
 
+      - name: 낮은 버전 update/ PR 정리 셸 테스트
+        shell: bash
+        run: bash .github/scripts/sdk-update/close-superseded-prs.test.sh
+
       - name: 배포 URL 추출 셸 테스트
         # ubuntu-latest 기본 awk는 mawk. 배포 잡(preview/beta-release/release)이
         # 쓰는 awk와 같은 구현으로 검증한다.

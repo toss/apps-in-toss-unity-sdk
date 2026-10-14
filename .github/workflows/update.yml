@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '릴리즈 버전 (예: 1.6.0) - 비워두면 누락된 모든 버전 감지'
+        description: '릴리즈 버전 (예: 1.6.0) - 비워두면 누락된 버전 중 가장 높은 버전 하나를 감지'
         required: false
         type: string
       force:
@@ -23,6 +23,11 @@ permissions:
   # 필수 'scan' 체크를 bot PR에 직접 보고하기 위해 필요 (아래 'scan 체크 충족' step)
   statuses: write
 
+# 정기 실행과 수동 실행이 겹쳐 같은 버전 PR이 두 번 만들어지는 것을 막는다.
+concurrency:
+  group: sdk-update
+  cancel-in-progress: false
+
 jobs:
   # =====================================================
   # 누락된 버전 감지
@@ -31,8 +36,12 @@ jobs:
     name: 누락된 버전 감지
     runs-on: ubuntu-latest
     outputs:
-      versions: ${{ steps.detect.outputs.versions }}
+      # 처리할 버전은 하나다: 누락 버전이 여러 개여도 가장 높은 버전만 PR로 만든다.
+      version: ${{ steps.detect.outputs.version }}
       has_versions: ${{ steps.detect.outputs.has_versions }}
+      # 처리할 버전의 열린 PR이 이미 있으면 그 번호 (낮은 버전 PR 정리 기준)
+      open_pr: ${{ steps.detect.outputs.open_pr }}
+      skipped_versions: ${{ steps.detect.outputs.skipped_versions }}
 
     steps:
       - name: Checkout main
@@ -52,13 +61,21 @@ jobs:
         id: detect
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           # 입력된 버전이 있으면 해당 버전만 사용
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-            echo "입력된 버전 사용: ${VERSION}"
-            echo "versions=[\"${VERSION}\"]" >> $GITHUB_OUTPUT
-            echo "has_versions=true" >> $GITHUB_OUTPUT
+          if [ -n "${INPUT_VERSION}" ]; then
+            if ! [[ "${INPUT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::올바른 버전 형식이 아닙니다: ${INPUT_VERSION}"
+              exit 1
+            fi
+            echo "입력된 버전 사용: ${INPUT_VERSION}"
+            {
+              echo "version=${INPUT_VERSION}"
+              echo "has_versions=true"
+              echo "open_pr="
+              echo "skipped_versions="
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -81,14 +98,18 @@ jobs:
           echo "기존 태그:"
           echo "$EXISTING_TAGS"
 
-          # 열린 PR 목록 (update/ 브랜치)
+          # 열린 PR 목록 (update/ 브랜치) — 버전별 PR 번호를 함께 읽는다
           echo ""
           echo "=== 열린 PR 확인 ==="
-          OPEN_PR_VERSIONS=$(gh pr list --state open --json headRefName --jq '.[].headRefName' 2>/dev/null | grep '^update/' | sed 's/update\/\([0-9.]*\).*/\1/' | sort -V || echo "")
-          echo "열린 PR 버전:"
-          echo "$OPEN_PR_VERSIONS"
+          OPEN_PRS=$(gh pr list --state open --limit 200 --json number,headRefName --jq '.[] | select(.headRefName | startswith("update/")) | "\(.number) \(.headRefName | sub("^update/"; "") | sub("-.*$"; ""))"' 2>/dev/null || echo "")
+          echo "열린 update/ PR (번호 버전):"
+          echo "$OPEN_PRS"
 
-          # 누락된 버전 찾기
+          # 배포 제외 버전(denylist)은 후보에서 뺀다. 가장 높은 후보가 제외 버전이면 매번 실패하고
+          # 그 아래 버전으로 내려가지 못하기 때문이다.
+          DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' sdk-policy.json)
+
+          # 누락된 버전 찾기 (열린 PR 유무는 여기서 보지 않는다 — 최상위 후보를 고른 뒤 확인)
           echo ""
           echo "=== 누락된 버전 감지 ==="
           MISSING_VERSIONS=""
@@ -120,66 +141,98 @@ jobs:
               continue
             fi
 
-            # 이미 열린 PR이 있으면 스킵
-            if echo "$OPEN_PR_VERSIONS" | grep -qx "$VERSION"; then
-              echo "  ${VERSION}: 열린 PR 존재 (스킵)"
+            # 배포 제외 버전이면 스킵
+            DENIED_HIT=""
+            for DENIED in $DENIED_VERSIONS; do
+              if [ "$VERSION" = "$DENIED" ] || [[ "$VERSION" == "$DENIED"-* ]]; then
+                DENIED_HIT="$DENIED"
+              fi
+            done
+            if [ -n "$DENIED_HIT" ]; then
+              echo "  ${VERSION}: 배포 제외 버전 (스킵, 거부 목록: ${DENIED_HIT})"
               continue
             fi
 
-            echo "  ${VERSION}: 누락됨 (처리 대상)"
+            echo "  ${VERSION}: 누락됨 (후보)"
             MISSING_VERSIONS="${MISSING_VERSIONS} ${VERSION}"
           done
 
-          # 결과 정리
           MISSING_VERSIONS=$(echo "$MISSING_VERSIONS" | xargs)
 
           if [ -z "$MISSING_VERSIONS" ]; then
             echo ""
             echo "누락된 버전이 없습니다."
-            echo "versions=[]" >> $GITHUB_OUTPUT
-            echo "has_versions=false" >> $GITHUB_OUTPUT
+            {
+              echo "version="
+              echo "has_versions=false"
+              echo "open_pr="
+              echo "skipped_versions="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 후보 중 가장 높은 버전 하나만 처리한다. 중간 버전은 건너뛴다
+          # (버전마다 PR을 만들면 PR끼리 충돌하고 리베이스가 반복된다).
+          LATEST=$(echo "$MISSING_VERSIONS" | tr ' ' '\n' | sort -V | tail -n1)
+          SKIPPED=$(echo "$MISSING_VERSIONS" | tr ' ' '\n' | grep -vx "$LATEST" | xargs || true)
+          echo ""
+          echo "누락된 버전 후보: ${MISSING_VERSIONS}"
+          echo "처리 대상(최신): ${LATEST}"
+          echo "건너뛴 중간 버전: ${SKIPPED:-없음}"
+
+          # 최신 버전의 열린 PR이 이미 있으면 새로 만들 것이 없다 (낮은 버전 PR 정리는 별도 잡)
+          OPEN_PR=$(echo "$OPEN_PRS" | awk -v v="$LATEST" '$2 == v { print $1; exit }')
+
+          {
+            echo "version=${LATEST}"
+            echo "skipped_versions=${SKIPPED}"
+            echo "open_pr=${OPEN_PR}"
+          } >> "$GITHUB_OUTPUT"
+          if [ -n "$OPEN_PR" ]; then
+            echo "v${LATEST}: 열린 PR #${OPEN_PR} 존재 (새 PR 생성 스킵)"
+            echo "has_versions=false" >> "$GITHUB_OUTPUT"
           else
-            echo ""
-            echo "누락된 버전 목록: ${MISSING_VERSIONS}"
-            # JSON 배열로 변환
-            JSON_VERSIONS=$(echo "$MISSING_VERSIONS" | tr ' ' '\n' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "JSON: ${JSON_VERSIONS}"
-            echo "versions=${JSON_VERSIONS}" >> $GITHUB_OUTPUT
-            echo "has_versions=true" >> $GITHUB_OUTPUT
+            echo "has_versions=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 감지 결과 요약
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          HAS_VERSIONS: ${{ steps.detect.outputs.has_versions }}
+          OPEN_PR: ${{ steps.detect.outputs.open_pr }}
+          SKIPPED_VERSIONS: ${{ steps.detect.outputs.skipped_versions }}
         run: |
-          echo "## SDK Update - 버전 감지 결과" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          VERSIONS='${{ steps.detect.outputs.versions }}'
-          HAS_VERSIONS='${{ steps.detect.outputs.has_versions }}'
-
-          if [ "$HAS_VERSIONS" = "true" ]; then
-            echo "### 처리 대상 버전" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "$VERSIONS" | jq -r '.[]' | while read v; do
-              echo "- v${v}" >> $GITHUB_STEP_SUMMARY
-            done
-          else
-            echo "✅ 누락된 버전이 없습니다." >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "## SDK Update - 버전 감지 결과"
+            echo ""
+            if [ "$HAS_VERSIONS" = "true" ]; then
+              echo "### 처리 대상 버전"
+              echo ""
+              echo "- v${TARGET_VERSION}"
+            elif [ -n "$OPEN_PR" ]; then
+              echo "v${TARGET_VERSION} 업데이트 PR #${OPEN_PR} 이(가) 이미 열려 있습니다."
+            else
+              echo "✅ 누락된 버전이 없습니다."
+            fi
+            if [ -n "$SKIPPED_VERSIONS" ]; then
+              echo ""
+              echo "### 건너뛴 중간 버전"
+              echo ""
+              echo "가장 높은 버전만 처리합니다: ${SKIPPED_VERSIONS}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # =====================================================
-  # 각 버전별 PR 생성
+  # 최신 버전 하나에 대한 PR 생성
   # =====================================================
   update:
-    name: SDK 업데이트 v${{ matrix.version }}
+    name: SDK 업데이트 v${{ needs.detect-versions.outputs.version }}
     runs-on: ubuntu-latest
     needs: detect-versions
     if: needs.detect-versions.outputs.has_versions == 'true'
 
-    strategy:
-      fail-fast: false
-      max-parallel: 1  # 순차 실행 (git 충돌 방지)
-      matrix:
-        version: ${{ fromJson(needs.detect-versions.outputs.versions) }}
+    outputs:
+      pr_number: ${{ steps.create-pr.outputs.pr_number }}
 
     steps:
       - name: Checkout main
@@ -199,8 +252,9 @@ jobs:
 
       - name: 버전 설정
         id: version
+        env:
+          VERSION: ${{ needs.detect-versions.outputs.version }}
         run: |
-          VERSION="${{ matrix.version }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
           # 타임스탬프 생성 (YYYYMMDD-HHmmss)
@@ -229,7 +283,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ matrix.version }}"
+          VERSION="${{ steps.version.outputs.version }}"
           FORCE="${{ github.event.inputs.force }}"
 
           SKIP="false"
@@ -249,33 +303,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      # 동반 패키지(web-analytics/bridge-core/devtools) 버전을 npm에서 결정해 기준 파일
+      # (.github/sdk-versions.json)에 기록한다. 규칙과 근거는 스크립트 머리말 참고.
+      # 다음 단계(SDK 재생성)와 "버전 파일 동기화" 단계가 이 기준 파일을 읽는다.
       - name: 동반 패키지 버전 결정
         if: steps.check.outputs.skip != 'true'
-        id: family
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # 3.0부터 web-framework와 자매 패키지(web-analytics/bridge-core)는 lockstep으로
-          # publish되지 않는다(web-framework@3.0.1은 자매 패키지 의존 선언 자체가 제거됨).
-          # 요청 버전이 해당 패키지에 실제로 존재하면 그대로 쓰고(lockstep 복원 시 자동 동기화),
-          # 없으면 그 패키지의 latest를 쓴다 — release/v3.0.0-rc.4가 검증한 조합과 같은 방식.
-          resolve() {
-            local PKG="$1"
-            if npm view "${PKG}" versions --json --registry https://registry.npmjs.org \
-              | jq -e --arg v "$VERSION" '[.] | flatten | index($v) != null' > /dev/null; then
-              echo "${VERSION}"
-            else
-              npm view "${PKG}" dist-tags.latest --registry https://registry.npmjs.org
-            fi
-          }
-
-          ANALYTICS_VERSION=$(resolve "@apps-in-toss/web-analytics")
-          BRIDGE_CORE_VERSION=$(resolve "@apps-in-toss/bridge-core")
-          DEVTOOLS_VERSION=$(resolve "@apps-in-toss/devtools")
-          echo "web-analytics: ${ANALYTICS_VERSION} / bridge-core: ${BRIDGE_CORE_VERSION} / devtools: ${DEVTOOLS_VERSION}"
-          echo "analytics_version=${ANALYTICS_VERSION}" >> $GITHUB_OUTPUT
-          echo "bridge_core_version=${BRIDGE_CORE_VERSION}" >> $GITHUB_OUTPUT
-          echo "devtools_version=${DEVTOOLS_VERSION}" >> $GITHUB_OUTPUT
+          node .github/scripts/sdk-update/sync-sdk-versions.cjs resolve \
+            --version "${{ steps.version.outputs.version }}" \
+            --registry https://registry.npmjs.org
 
       - name: web-framework 버전 업데이트 및 SDK 재생성
         if: steps.check.outputs.skip != 'true'
@@ -283,7 +319,7 @@ jobs:
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ANALYTICS_VERSION="${{ steps.family.outputs.analytics_version }}"
+          ANALYTICS_VERSION=$(jq -r '.companions["@apps-in-toss/web-analytics"]' ../.github/sdk-versions.json)
 
           echo "=== web-framework v${VERSION}, web-analytics v${ANALYTICS_VERSION} 업데이트 ==="
 
@@ -332,42 +368,13 @@ jobs:
             echo "⏭️ alias 이미 존재: ${ALIAS_KEY}"
           fi
 
-      - name: 루트 package.json 버전 업데이트
+      # 기준 파일의 값을 루트 package.json, 생성기 package.json, BuildConfig package.json,
+      # PNPM_VERSION 에 쓰고, 모두 일치하는지 다시 검사한다.
+      - name: 버전 파일 동기화
         if: steps.check.outputs.skip != 'true'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json
-          mv tmp.json package.json
-          echo "package.json 버전: ${VERSION}"
-
-      - name: BuildConfig package.json 버전 동기화
-        if: steps.check.outputs.skip != 'true'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          ANALYTICS_VERSION="${{ steps.family.outputs.analytics_version }}"
-          BRIDGE_CORE_VERSION="${{ steps.family.outputs.bridge_core_version }}"
-          DEVTOOLS_VERSION="${{ steps.family.outputs.devtools_version }}"
-          BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
-
-          # BuildConfig의 @apps-in-toss 패밀리 버전 동기화
-          # 자매 패키지 버전은 "동반 패키지 버전 결정" 단계가 패키지별로 해석한다 (3.0부터 lockstep publish 아님).
-          # bridge-core는 직접 의존성으로 존재할 때만 갱신 — 향후 직접 핀이 제거되어도 phantom 키를 다시 만들지 않도록 조건부 처리.
-          # devtools는 devDependencies에 존재할 때만 갱신 — 동일한 phantom 키 방지 원칙.
-          jq --arg fw "$VERSION" --arg wa "$ANALYTICS_VERSION" --arg bc "$BRIDGE_CORE_VERSION" --arg dt "$DEVTOOLS_VERSION" '
-            .dependencies["@apps-in-toss/web-framework"] = $fw |
-            .dependencies["@apps-in-toss/web-analytics"] = $wa |
-            (if .dependencies["@apps-in-toss/bridge-core"]
-             then .dependencies["@apps-in-toss/bridge-core"] = $bc
-             else . end) |
-            (if .devDependencies["@apps-in-toss/devtools"]
-             then .devDependencies["@apps-in-toss/devtools"] = $dt
-             else . end)
-          ' "$BUILDCONFIG_PKG" > tmp.json
-          mv tmp.json "$BUILDCONFIG_PKG"
-          echo "BuildConfig 버전 — web-framework: ${VERSION}, web-analytics: ${ANALYTICS_VERSION}, bridge-core: ${BRIDGE_CORE_VERSION}, devtools: ${DEVTOOLS_VERSION}"
-
-          # 확인
-          cat "$BUILDCONFIG_PKG" | jq '.dependencies'
+          node .github/scripts/sdk-update/sync-sdk-versions.cjs apply
+          node .github/scripts/sdk-update/sync-sdk-versions.cjs check
 
       - name: BuildConfig pnpm-lock.yaml 업데이트
         if: steps.check.outputs.skip != 'true'
@@ -397,8 +404,8 @@ jobs:
             echo "기능: SDK v${VERSION} 업데이트"
             echo ""
             echo "- @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성"
-            echo "- package.json 버전 동기화"
-            echo "- BuildConfig package.json web-framework/web-analytics/bridge-core 버전 동기화"
+            echo "- .github/sdk-versions.json 갱신 (web-framework/web-analytics/bridge-core/devtools)"
+            echo "- package.json·BuildConfig package.json 버전 동기화"
             echo "- unity-bridge.ts 자동 생성"
             echo ""
             echo "자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -426,6 +433,14 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH_NAME="${{ steps.version.outputs.branch_name }}"
           GENERATE_STATUS="${{ steps.generate.outputs.generate_status }}"
+          FAMILY=$(jq -r '.companions | to_entries | map("\(.key | sub("@apps-in-toss/"; "")) v\(.value)") | join(", ")' .github/sdk-versions.json)
+          SKIPPED="${{ needs.detect-versions.outputs.skipped_versions }}"
+          if [ -n "$SKIPPED" ]; then
+            SKIPPED_NOTE="
+          건너뛴 중간 버전: ${SKIPPED// /, } (가장 높은 버전만 PR로 만듭니다)"
+          else
+            SKIPPED_NOTE=""
+          fi
 
           # SDK 생성 실패 시 경고 메시지
           if [ "$GENERATE_STATUS" = "failed" ]; then
@@ -444,6 +459,8 @@ jobs:
             --body "## SDK 업데이트: v${VERSION}
 
           ${GENERATE_WARNING}\`@apps-in-toss/web-framework\` v${VERSION} 기반으로 SDK 코드를 재생성했습니다.
+
+          동반 패키지: ${FAMILY}${SKIPPED_NOTE}
 
           ### 검토 사항
           - [ ] E2E 테스트 통과 확인 (이 워크플로우에서 자동 실행)
@@ -470,8 +487,7 @@ jobs:
           echo "PR 생성 완료: ${PR_RESULT} (번호: ${PR_NUMBER})"
 
       # GITHUB_TOKEN으로 생성된 PR은 다른 워크플로우를 자동 트리거하지 않으므로
-      # matrix 각 entry에서 직접 E2E 테스트를 workflow_dispatch로 트리거
-      # (별도 run-tests job은 matrix outputs가 마지막 entry만 전달하는 문제가 있어 제거)
+      # 이 잡에서 직접 E2E 테스트를 workflow_dispatch로 트리거
       - name: E2E 테스트 트리거
         if: steps.create-pr.outputs.pr_created == 'true' && steps.create-pr.outputs.pr_number != ''
         continue-on-error: true
@@ -538,3 +554,31 @@ jobs:
           else
             echo "❌ **처리 실패**" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # =====================================================
+  # 더 낮은 버전의 update/ PR 정리
+  # 새 업데이트 PR을 만든 뒤(또는 최신 버전의 PR이 이미 열려 있을 때) 낮은 버전의 열린
+  # bot update/ PR을 "대체됨" 코멘트와 함께 닫고 브랜치를 지운다. 사람이 만든 PR은 건드리지 않는다.
+  # =====================================================
+  supersede:
+    name: 낮은 버전 PR 정리
+    runs-on: ubuntu-latest
+    needs: [detect-versions, update]
+    # update 잡이 스킵·실패해도 최신 버전 PR이 이미 열려 있으면 정리한다.
+    if: >-
+      always() && needs.detect-versions.result == 'success' &&
+      (needs.update.outputs.pr_number != '' || needs.detect-versions.outputs.open_pr != '')
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: 낮은 버전 update/ PR 닫기
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NEW_VERSION: ${{ needs.detect-versions.outputs.version }}
+          NEW_PR_NUMBER: ${{ needs.update.outputs.pr_number || needs.detect-versions.outputs.open_pr }}
+        run: bash .github/scripts/sdk-update/close-superseded-prs.sh

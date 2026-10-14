@@ -262,6 +262,11 @@ test_sdk_versions() {
         ok=false
     fi
 
+    echo "Running close-superseded-prs shell tests..."
+    if ! bash "$DIR/close-superseded-prs.test.sh"; then
+        ok=false
+    fi
+
     if [ "$ok" = true ]; then
         print_success "SDK Version Invariants"
         return 0

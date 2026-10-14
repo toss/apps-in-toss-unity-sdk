@@ -1361,7 +1361,9 @@ function expectMemoryGuards(label, browserName) {
 
   // (2) wasm 해제 크기 예산.
   const envMax = process.env.PERF_WASM_MAX_BYTES ? Number(process.env.PERF_WASM_MAX_BYTES) : null;
-  const budgetApplies = envMax !== null || WASM_BUDGET_POSTURES.includes(POSTURE);
+  // 예산은 perf.yml 의 벤치 빌드(AIT_PERF_POSTURE 를 명시) 기준이다. E2E 워크플로의 일반 샘플(AIT_PERF_POSTURE 없음)은
+  // 테스트 API 가 많아 wasm 이 훨씬 크므로 걸지 않는다.
+  const budgetApplies = envMax !== null || (process.env.AIT_PERF_POSTURE !== undefined && WASM_BUDGET_POSTURES.includes(POSTURE));
   const wasmMax = envMax ?? WASM_BUDGETS[UNITY_VERSION] ?? null;
   const wasmBytes = readWasmTotalBytes();
   if (!budgetApplies) {

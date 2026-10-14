@@ -271,6 +271,8 @@ public class HeavyBuildRunner
     private static bool ApplyPerfVariants()
     {
         string raw = System.Environment.GetEnvironmentVariable(HeavyBuildVariants.EnvVar);
+        // device-hud 가 요청되지 않았으면 이전 빌드가 프로젝트 템플릿에 남긴 HUD 영역을 비운다(변형 미지정 빌드에는 아무것도 주입되지 않는다).
+        HeavyDeviceHudVariant.CleanUpUnlessRequested(HeavyBuildVariants.ParseNames(raw));
         if (string.IsNullOrWhiteSpace(raw)) return true;
 
         try

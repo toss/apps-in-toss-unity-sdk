@@ -220,9 +220,11 @@ jobs:
 
           ANALYTICS_VERSION=$(resolve "@apps-in-toss/web-analytics")
           BRIDGE_CORE_VERSION=$(resolve "@apps-in-toss/bridge-core")
-          echo "web-analytics: ${ANALYTICS_VERSION} / bridge-core: ${BRIDGE_CORE_VERSION}"
+          DEVTOOLS_VERSION=$(resolve "@apps-in-toss/devtools")
+          echo "web-analytics: ${ANALYTICS_VERSION} / bridge-core: ${BRIDGE_CORE_VERSION} / devtools: ${DEVTOOLS_VERSION}"
           echo "analytics_version=${ANALYTICS_VERSION}" >> $GITHUB_OUTPUT
           echo "bridge_core_version=${BRIDGE_CORE_VERSION}" >> $GITHUB_OUTPUT
+          echo "devtools_version=${DEVTOOLS_VERSION}" >> $GITHUB_OUTPUT
 
       - name: web-framework 버전 업데이트 및 SDK 재생성
         if: steps.author-check.outputs.skip != 'true'
@@ -291,6 +293,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ANALYTICS_VERSION="${{ steps.family.outputs.analytics_version }}"
           BRIDGE_CORE_VERSION="${{ steps.family.outputs.bridge_core_version }}"
+          DEVTOOLS_VERSION="${{ steps.family.outputs.devtools_version }}"
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
 
           # BuildConfig의 @apps-in-toss 패밀리 버전 동기화
@@ -299,15 +302,20 @@ jobs:
           # 만들지 않도록 조건부 처리 (update.yml과 동일 정책).
           # 이 절이 없던 시절 리베이스된 PR은 web-framework/web-analytics만 올라가고 bridge-core가
           # 옛 버전에 남아, 머지 시 main이 패밀리 split 상태가 됐다.
-          jq --arg fw "$VERSION" --arg wa "$ANALYTICS_VERSION" --arg bc "$BRIDGE_CORE_VERSION" '
+          # devtools도 같은 이유로 devDependencies에 있을 때만 갱신한다. 빠져 있던 시절에는 리베이스가
+          # update.yml이 올린 devtools를 main 값으로 되돌려 web-framework와 어긋났다.
+          jq --arg fw "$VERSION" --arg wa "$ANALYTICS_VERSION" --arg bc "$BRIDGE_CORE_VERSION" --arg dt "$DEVTOOLS_VERSION" '
             .dependencies["@apps-in-toss/web-framework"] = $fw |
             .dependencies["@apps-in-toss/web-analytics"] = $wa |
             (if .dependencies["@apps-in-toss/bridge-core"]
              then .dependencies["@apps-in-toss/bridge-core"] = $bc
+             else . end) |
+            (if .devDependencies["@apps-in-toss/devtools"]
+             then .devDependencies["@apps-in-toss/devtools"] = $dt
              else . end)
           ' "$BUILDCONFIG_PKG" > tmp.json
           mv tmp.json "$BUILDCONFIG_PKG"
-          echo "BuildConfig 버전 — web-framework: ${VERSION}, web-analytics: ${ANALYTICS_VERSION}, bridge-core: ${BRIDGE_CORE_VERSION}"
+          echo "BuildConfig 버전 — web-framework: ${VERSION}, web-analytics: ${ANALYTICS_VERSION}, bridge-core: ${BRIDGE_CORE_VERSION}, devtools: ${DEVTOOLS_VERSION}"
 
           # 확인
           cat "$BUILDCONFIG_PKG" | jq '.dependencies'
@@ -349,7 +357,7 @@ jobs:
             echo "- @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성"
             echo "- main 브랜치 최신 상태 기반 리베이스"
             echo "- package.json 버전 동기화"
-            echo "- BuildConfig package.json web-framework/web-analytics/bridge-core 버전 동기화"
+            echo "- BuildConfig package.json web-framework/web-analytics/bridge-core/devtools 버전 동기화"
             echo ""
             echo "자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "COMMIT_MESSAGE_EOF"

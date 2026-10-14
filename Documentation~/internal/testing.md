@@ -98,6 +98,8 @@ Tests~/E2E/
 
 `./run-local-tests.sh --help`가 옵션·소요시간의 정본입니다(정의: `scripts~/lib-unity-discovery.sh`의 `show_help`).
 
+`--validate`는 파일 구조 검증, Playwright 설정, SDK 유닛 테스트, Meta GUID 위생, 배포 URL 추출에 더해 SDK 버전 기준 불변식 단계를 돌립니다. 이 단계는 `sync-sdk-versions.cjs check`로 `.github/sdk-versions.json`과 `package.json` 3개·`PNPM_VERSION`의 일치를 확인하고, 동기화 스크립트와 `close-superseded-prs.sh`의 테스트(`*.test.cjs`, `*.test.sh`)를 실행합니다. 어긋나면 `sync-sdk-versions.cjs apply`로 맞춥니다.
+
 Playwright를 직접 돌릴 때도 pnpm을 씁니다.
 
 ```bash

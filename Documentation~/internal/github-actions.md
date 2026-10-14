@@ -12,14 +12,14 @@
 | Unity Build | `workflow_call` 전용 | 다른 워크플로가 호출하는 빌드 모듈 |
 | Preview | 수동 | 브랜치나 PR을 빌드해 미리보기 배포 |
 | Perf | PR 라벨, push(main), 수동 | 콜드 로드 TTFF 측정과 baseline 비교 |
-| Validate | push, PR | SDK Generator 유닛 테스트와 불변식 검사 |
-| Lint | push, PR | `.meta` 누락과 GUID 위생 검사 |
+| Validate | push, PR | SDK Generator 유닛 테스트, 불변식 검사, 버전 동기화·PR 정리 스크립트 테스트 |
+| Lint | push, PR | `.meta` 누락, GUID 위생, SDK 버전 기준 불변식 검사 |
 | String Check | push, PR | 내부 호스트명·자격증명·사설 식별자 유출 스캔 |
 | Release | 수동, push(main), `workflow_call` | 버전 결정, SDK 재생성, 빌드 검증, 릴리즈 태그 생성, 배포 |
 | Beta Release | 수동 | 파일럿 채널 브랜치 갱신과 prerelease 태그 |
 | Bulk Release | 수동 | 여러 버전 일괄 릴리즈 |
-| SDK Update | 수동, 스케줄(평일 09시 KST) | `@apps-in-toss/web-framework` 버전 동기화 |
-| SDK Update Auto Rebase | push(main), 수동 | `update/` PR 충돌 자동 rebase |
+| SDK Update | 수동, 스케줄(평일 09시 KST) | 누락된 최신 `@apps-in-toss/web-framework` 버전 하나로 PR 생성, 낮은 버전 PR 정리 |
+| SDK Update Auto Rebase | push(main), 수동 | `update/` PR 충돌·기준 파일 불일치 자동 재생성 |
 | Update API Changelog | push(main), 수동 | API 변경 이력 갱신 |
 | Regenerate Lockfiles | 스케줄(매일), 수동 | pnpm lockfile 재생성 PR |
 
@@ -132,7 +132,9 @@ EOF
 
 ### SDK Update
 
-`version`을 비우면 누락된 버전을 모두 감지해 처리합니다.
+`version`을 비우면 누락된 버전을 감지해 가장 높은 버전 하나만 PR로 만듭니다. 중간 버전은 건너뜁니다(`skipped_versions`). 그 버전의 열린 `update/` PR이 이미 있으면 새로 만들지 않습니다. PR을 만든 뒤(또는 이미 있을 때) `supersede` 잡이 `close-superseded-prs.sh`로 더 낮은 버전의 bot `update/` PR을 코멘트와 함께 닫고 브랜치를 지웁니다. 사람이 만든 브랜치와 fork PR은 건드리지 않습니다.
+
+동반 패키지(web-analytics, bridge-core, devtools) 버전은 `sync-sdk-versions.cjs resolve`가 정합니다. 같은 번호가 npm에 있으면 그 번호, 없으면 latest를 쓰고, 결과를 `.github/sdk-versions.json`에 기록한 뒤 `apply`와 `check`로 모든 파일에 반영합니다.
 
 ```bash
 gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/214934319/dispatches \
@@ -143,7 +145,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/214934319/dispatches 
 EOF
 ```
 
-특정 버전을 지정하거나, 같은 버전이 이미 있어도 강제로 돌리려면 입력을 추가합니다.
+특정 버전을 지정하거나(항상 그 버전 하나만 처리), 같은 버전이 이미 있어도 강제로 돌리려면 입력을 추가합니다.
 
 ```bash
 gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/214934319/dispatches \
@@ -274,6 +276,20 @@ actionlint는 내장 shellcheck를 끄고 돌립니다. 그래서 워크플로 Y
 셸 옵션은 원래 스텝의 실행 방식과 맞춥니다. 기본 셸 스텝(`shell:` 미지정)은 `bash -e {0}`이라 스크립트 헤더에 `set -e`만 두고, `shell: bash`를 명시한 스텝은 `-eo pipefail`이 붙으므로 `set -eo pipefail`을 씁니다. `.ps1`은 같은 세션에서 `& "<path>"`로 호출해 러너가 앞뒤로 붙이는 `$ErrorActionPreference`/`LASTEXITCODE` 처리를 그대로 상속합니다.
 
 워크플로 변경을 REST dispatch로 검증할 때는 `ref`를 브랜치로 줍니다. `ref: main` + `target_ref`는 main에 있는 워크플로 YAML을 실행하므로 브랜치의 변경 사항을 검증하지 못합니다.
+
+### SDK 버전 기준 파일
+
+SDK·web-framework·동반 패키지·`@apps-in-toss/framework`·pnpm 버전의 기준은 `.github/sdk-versions.json`입니다. `.github/scripts/sdk-update/sync-sdk-versions.cjs`가 이 값을 읽고 씁니다.
+
+| 모드 | 동작 |
+|------|------|
+| `resolve --version X.Y.Z` | npm에서 동반 패키지 버전을 정해 기준 파일을 갱신 (`fixed`와 pnpm은 그대로) |
+| `apply` | 기준 파일을 `package.json` 3개와 `PNPM_VERSION`에 기록 |
+| `check` | 어긋난 파일·키·값을 출력하고 exit 1 |
+
+`lint.yml`의 `check-sdk-versions` 잡과 `--validate`가 `check`를 실행합니다. Dependabot은 pnpm 버전을 올리지 않도록 제외해 두었으므로(`dependabot.yml`의 `ignore`), pnpm은 기준 파일을 고친 뒤 `apply`로 올립니다.
+
+SDK Update Auto Rebase는 main이 바뀔 때 열린 bot `update/` PR을 점검합니다. 닫힌 PR은 되살리지 않고(재생성 도중 닫혀도 push하지 않음), main의 SDK 버전 이하인 PR은 건너뜁니다. PR 브랜치에 기준 파일이 없거나 기준 파일의 버전이 PR 버전과 다르면(기준 파일 도입 전에 만든 PR 포함) 충돌이 없어도 재생성합니다.
 
 ## 알아둘 점
 

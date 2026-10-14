@@ -42,7 +42,7 @@ cp .githooks/patterns.local.example .githooks/patterns.local
 | pnpm | SDK Generator 패키지 관리 | Generator 작업 시 필요 |
 | dotnet | CSharpier 포맷팅 | `pnpm format` 사용 시 |
 
-pnpm 버전은 저장소 안에서 핀되어 있고, `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION` 상수와 세 곳의 `package.json` `packageManager` 필드가 항상 같은 값이어야 합니다. 한 곳을 올리면 나머지도 함께 올리세요.
+pnpm 버전을 포함한 SDK 버전 핀의 기준은 `.github/sdk-versions.json`입니다. 올릴 때는 이 파일을 고친 뒤 `node .github/scripts/sdk-update/sync-sdk-versions.cjs apply`를 실행하면 세 곳의 `package.json`과 `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION`에 반영됩니다. 파일을 직접 고쳐 어긋나면 `./run-local-tests.sh --validate`와 CI의 `check-sdk-versions`가 실패합니다.
 
 ## SDK Generator
 

@@ -303,6 +303,12 @@ importers:
       web-framework-3.5.0:
         specifier: npm:@apps-in-toss/web-framework@3.5.0
         version: '@apps-in-toss/web-framework@3.5.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.6.0:
+        specifier: npm:@apps-in-toss/web-framework@3.6.0
+        version: '@apps-in-toss/web-framework@3.6.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.7.0:
+        specifier: npm:@apps-in-toss/web-framework@3.7.0
+        version: '@apps-in-toss/web-framework@3.7.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
       web-framework-3.8.0:
         specifier: npm:@apps-in-toss/web-framework@3.8.0
         version: '@apps-in-toss/web-framework@3.8.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
@@ -1386,6 +1392,14 @@ packages:
 
   '@apps-in-toss/cli@3.5.0':
     resolution: {integrity: sha512-tnq5CSnWagx/4ToRFgfOABGD1ElTuPqLzDsqbKjB40MX3cbPM3j8aYb83AjzPbGJYLJVI7MPI2StIV0l5cn3+A==}
+    hasBin: true
+
+  '@apps-in-toss/cli@3.6.0':
+    resolution: {integrity: sha512-2XK3uvMtqbEJQ3Pke8afytQP1gLsk57O8u23K3mQBNi2J9C2fdtCguMYZl/LUxUcUb1onQklO0wHbIz1UTpEdw==}
+    hasBin: true
+
+  '@apps-in-toss/cli@3.7.0':
+    resolution: {integrity: sha512-Xv+8AXe3kEB8RSWD6mYWh0iph9kZ7t7Mk/fbloDIXLKQaZZaJWs1evnkGJ2Wq6aCVmqvPtIF9xqkB0phxAl+Pg==}
     hasBin: true
 
   '@apps-in-toss/cli@3.8.0':
@@ -4191,6 +4205,14 @@ packages:
 
   '@apps-in-toss/web-framework@3.5.0':
     resolution: {integrity: sha512-ClMN3i4fvhxvxXE+idm3bU44V3Uvej596cN1LKbmvR0uUNyi5E5FU1ZIa4PI3XYz0iubR0JHYryYGuMqugECnw==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.6.0':
+    resolution: {integrity: sha512-k8v3RKO4Lf749ZUyGRB0cx4/gW8IX/9xda/W/FhTsy1UGFLX11Qs+tvRXQYljKPYWc/SVMsTEcBLgq/1quDzMA==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.7.0':
+    resolution: {integrity: sha512-7aJ1dz0cSzQ9scJs3URsevK3zlZIPvYQJdinqPpJ1wSWcU3H12h7db2WTx0JD6ETwVZc5/Sxi1a7NYWsZVeKzQ==}
     hasBin: true
 
   '@apps-in-toss/web-framework@3.8.0':
@@ -13759,6 +13781,36 @@ snapshots:
       - typanion
 
   '@apps-in-toss/cli@3.5.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@clack/prompts': 1.8.1
+      c12: 3.3.4
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      jscodeshift: 17.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      picocolors: 1.1.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+
+  '@apps-in-toss/cli@3.6.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@clack/prompts': 1.8.1
+      c12: 3.3.4
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      jscodeshift: 17.4.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))
+      picocolors: 1.1.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+
+  '@apps-in-toss/cli@3.7.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.8.1
@@ -25883,6 +25935,32 @@ snapshots:
   '@apps-in-toss/web-framework@3.5.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/cli': 3.5.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.5.0(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
+  '@apps-in-toss/web-framework@3.6.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.6.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.5.0(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
+  '@apps-in-toss/web-framework@3.7.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.7.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
       semver: 7.8.5
       valibot: 1.5.0(typescript@7.0.2)

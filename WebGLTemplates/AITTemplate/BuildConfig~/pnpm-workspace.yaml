@@ -10,10 +10,10 @@
 # 주의: pnpm은 이 설정을 pnpm-workspace.yaml에서만 읽는다 (.npmrc / package.json#pnpm 불가).
 # 이 파일은 미니앱 빌드 디렉토리로 복사되며, 사용자 프로젝트에 동명 파일이 있으면 그쪽이 우선한다.
 #
-# 격리 기간은 생성기 workspace·regen-lockfiles.yml과 같은 4320분(3일)으로 둔다. 배포되는 lockfile은
+# 격리 기간은 생성기 workspace·regen-lockfiles.yml과 같은 7200분(5일)으로 둔다. 배포되는 lockfile은
 # 이 기준으로 만들어지므로 사용자 설치 시점에는 항상 통과한다. lockfile 없이 새로 해석하는 경우
-# (사용자 BuildConfig가 의존성을 바꿔 lockfile이 맞지 않을 때)에는 게시 3일 미만 서드파티 버전을 고르지 않는다.
-minimumReleaseAge: 4320
+# (사용자 BuildConfig가 의존성을 바꿔 lockfile이 맞지 않을 때)에는 게시 5일 미만 서드파티 버전을 고르지 않는다.
+minimumReleaseAge: 7200
 minimumReleaseAgeExclude:
   - '@apps-in-toss/*'
   - '@toss/*'

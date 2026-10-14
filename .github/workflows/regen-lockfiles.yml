@@ -128,23 +128,37 @@ jobs:
           done
           echo "✓ lockfile 3개 모두 public registry만 참조 (금지 패턴 없음)"
 
+      - name: Stage lockfiles
+        id: stage
+        run: |
+          git add Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml
+          if git diff --staged --quiet; then
+            echo "lockfiles unchanged"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=chore/regen-lockfiles-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+
+      # git commit + git push 로 만든 bot 커밋은 서명이 없어 main Ruleset(required_signatures)에
+      # 막혀 PR이 blocked로 영구 적체됐다(#1241~#1274). REST git data API로 만든 커밋은
+      # GitHub이 자동 서명(Verified)하므로 composite action으로 커밋한다.
+      # 이 커밋도 GITHUB_TOKEN 이벤트라 push 트리거 워크플로우는 발화하지 않는다(기존과 동일).
+      - name: Commit lockfiles (signed)
+        if: steps.stage.outputs.changed == 'true'
+        uses: ./.github/actions/signed-commit
+        with:
+          branch: ${{ steps.stage.outputs.branch }}
+          message: "빌드: pnpm lockfile 자동 재생성 (public registry)"
+
       - name: Open PR if changed
+        if: steps.stage.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           AUTO_MERGE: ${{ inputs.auto_merge || 'true' }}
           REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.stage.outputs.branch }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Tests~/E2E/tests/pnpm-lock.yaml WebGLTemplates/AITTemplate/BuildConfig~/pnpm-lock.yaml sdk-runtime-generator~/pnpm-lock.yaml
-          if git diff --staged --quiet; then
-            echo "lockfiles unchanged"
-            exit 0
-          fi
-          BRANCH="chore/regen-lockfiles-$(date +%Y%m%d-%H%M%S)"
-          git checkout -b "$BRANCH"
-          git commit -m "빌드: pnpm lockfile 자동 재생성 (public registry)"
-          git push -u origin "$BRANCH"
           PR_RESULT=$(gh pr create \
             --title "빌드: pnpm lockfile 자동 재생성" \
             --body "주기적 lockfile 재생성 — public registry(npmjs.org) 기반." \

@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
       statuses: write
     env:
-      # 공급망 격리(minimum-release-age): 게시 3일(4320분) 미만 버전을 해석에서 제외해,
+      # 공급망 격리(minimum-release-age): 게시 5일(7200분) 미만 버전을 해석에서 제외해,
       # 게시 직후 삭제·오염되는 버전(2026-07 enhanced-resolve@5.24.2 등)을 lockfile에
       # 스냅샷하는 사고 방지. 사내 통제 스코프는 당일 릴리즈(SDK 버전 동시 bump)가
       # 정상 흐름이고, 격리되면 정확 핀 해석이 아예 실패하므로 제외.
@@ -33,7 +33,7 @@ jobs:
       # ⚠️ exclude 플래그는 2개 이상 반복될 때만 배열로 파싱된다 — 1개만 남기면 문자열로
       #    파싱돼 통째로 무시되므로(11.6.0 실측) 항목을 1개로 줄이지 말 것.
       MRA_FLAGS: >-
-        --config.minimum-release-age=4320
+        --config.minimum-release-age=7200
         --config.minimum-release-age-exclude=@apps-in-toss/*
         --config.minimum-release-age-exclude=@toss/*
         --config.minimum-release-age-exclude=@granite-js/*

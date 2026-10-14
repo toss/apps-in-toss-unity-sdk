@@ -349,17 +349,37 @@ jobs:
 
       # 다중 버전 호환성 테스트용 pnpm alias 추가
       # 이 alias는 SDK 생성에는 사용되지 않으며, 이후 CI에서 multi-version 테스트 시 사용됨.
-      # 건너뛴 중간 버전도 호환성 커버리지를 잃지 않도록 alias는 함께 추가한다.
+      # 건너뛴 중간 버전도 호환성 커버리지와 API changelog를 잃지 않도록 alias는 함께 추가한다.
+      # 대상은 기존 alias 최고 버전 초과 ~ 처리 버전 이하의 npm 정식 버전 전부(배포 제외 버전 빼고)다.
+      # detect-versions의 skipped_versions만 보면 version 입력으로 실행했을 때(skipped가 비어 있음)
+      # 중간 버전 alias가 빠져 changelog에서 해당 버전 구간이 통째로 사라진다.
       - name: 다중 버전 테스트 alias 추가
         if: steps.check.outputs.skip != 'true'
         working-directory: sdk-runtime-generator~
-        env:
-          SKIPPED_VERSIONS: ${{ needs.detect-versions.outputs.skipped_versions }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ADDED="false"
 
-          for ALIAS_VERSION in $SKIPPED_VERSIONS $VERSION; do
+          HIGHEST_ALIAS=$(jq -r '.devDependencies | keys[] | select(test("^web-framework-[0-9]+\\.[0-9]+\\.[0-9]+$")) | sub("^web-framework-"; "")' package.json | sort -V | tail -n1)
+          DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' ../sdk-policy.json)
+          ALIAS_VERSIONS=""
+          for V in $(npm view @apps-in-toss/web-framework versions --json | jq -r '.[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V); do
+            # HIGHEST_ALIAS < V <= VERSION
+            if [ -n "$HIGHEST_ALIAS" ] && [ "$(printf '%s\n%s\n' "$V" "$HIGHEST_ALIAS" | sort -V | tail -n1)" = "$HIGHEST_ALIAS" ]; then
+              continue
+            fi
+            if [ "$(printf '%s\n%s\n' "$V" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then
+              continue
+            fi
+            if echo "$DENIED_VERSIONS" | grep -qx "$V"; then
+              echo "⏭️ 배포 제외 버전이라 alias 생략: ${V}"
+              continue
+            fi
+            ALIAS_VERSIONS="${ALIAS_VERSIONS} ${V}"
+          done
+          echo "alias 대상: ${ALIAS_VERSIONS:-없음} (기존 최고: ${HIGHEST_ALIAS:-없음})"
+
+          for ALIAS_VERSION in $ALIAS_VERSIONS $VERSION; do
             ALIAS_KEY="web-framework-${ALIAS_VERSION}"
 
             # package.json devDependencies에 alias가 없으면 추가

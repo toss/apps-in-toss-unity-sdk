@@ -118,6 +118,8 @@
     "web-framework-3.4.0": "npm:@apps-in-toss/web-framework@3.4.0",
     "web-framework-3.4.1": "npm:@apps-in-toss/web-framework@3.4.1",
     "web-framework-3.5.0": "npm:@apps-in-toss/web-framework@3.5.0",
+    "web-framework-3.6.0": "npm:@apps-in-toss/web-framework@3.6.0",
+    "web-framework-3.7.0": "npm:@apps-in-toss/web-framework@3.7.0",
     "web-framework-3.8.0": "npm:@apps-in-toss/web-framework@3.8.0"
   }
 }

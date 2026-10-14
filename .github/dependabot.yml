@@ -1,5 +1,9 @@
 version: 2
 updates:
+  # npm 항목의 cooldown은 pnpm minimumReleaseAge(7200분=5일)와 맞춘다. 게시 5일 미만 버전으로
+  # 올리면 lockfile 재생성과 frozen install의 공급망 정책 검사가 그 버전을 거부한다.
+  # (cooldown은 버전 업데이트에만 적용되고 보안 업데이트에는 적용되지 않는다.)
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -13,6 +17,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
     ignore:
       - dependency-name: "pnpm"
 
@@ -21,6 +27,8 @@ updates:
     directory: "/sdk-runtime-generator~"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
       - dependency-name: "@apps-in-toss/framework"
@@ -33,6 +41,8 @@ updates:
     directory: "/WebGLTemplates/AITTemplate/BuildConfig~"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
       - dependency-name: "@apps-in-toss/web-analytics"
@@ -45,9 +55,13 @@ updates:
     directory: "/Tests~/E2E/tests"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
 
   # 공유 테스트 스크립트
   - package-ecosystem: "npm"
     directory: "/Tests~/E2E/SharedScripts"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5

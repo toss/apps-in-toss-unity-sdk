@@ -23,7 +23,7 @@ SDK 런타임 코드를 재생성하고 검증합니다.
 ## 주의
 
 - `Runtime/SDK/` 의 파일은 절대 직접 수정하지 말 것 (`CLAUDE.md`의 "자동 생성 코드 정책" 참조)
-- pnpm 버전이 변경됐다면 `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION`과 3개 `package.json`의 `packageManager` 필드 동기화 확인 (CLAUDE.md "pnpm 버전 핀 동기화" 참조)
+- pnpm 등 버전 핀이 변경됐다면 `.github/sdk-versions.json`을 고친 뒤 `sync-sdk-versions.cjs apply`로 동기화 (CLAUDE.md "버전 핀 동기화" 참조)
 
 ## push 전 점검
 

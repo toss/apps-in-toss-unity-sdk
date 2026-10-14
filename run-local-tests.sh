@@ -254,6 +254,7 @@ main() {
             test_sdk_generator_unit
             test_meta_guids
             test_deploy_url_extraction
+            test_sdk_versions
             ;;
     esac
 

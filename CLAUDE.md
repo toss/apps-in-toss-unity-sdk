@@ -48,13 +48,9 @@
 
 ## 자주 하는 실수 방지
 
-### pnpm 버전 핀 동기화
+### 버전 핀 동기화
 
-`Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION` 상수와 다음 세 파일의 `"packageManager"` 필드를 동기화한다:
-
-- `package.json`
-- `sdk-runtime-generator~/package.json`
-- `WebGLTemplates/AITTemplate/BuildConfig~/package.json`
+SDK·web-framework·동반 패키지·pnpm 버전의 기준은 `.github/sdk-versions.json` 한 곳이다. 바꿀 때는 기준 파일을 고친 뒤 `node .github/scripts/sdk-update/sync-sdk-versions.cjs apply`로 `package.json` 3개와 `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION`에 반영한다. 어긋남은 lint.yml `check-sdk-versions`와 `--validate`가 잡는다.
 
 ### GitHub CLI / Actions
 - GraphQL 기반 `gh` 명령(`gh pr create`/`merge`/`view`, `gh workflow run`)은 실패하므로 REST `gh api`를 쓴다.
@@ -86,7 +82,7 @@ review-fix-loop 등 자동화 skill이 파싱하는 규약 섹션. 각 항목은
 - **Test**: none
 - **Lint**: none
 
-`--validate`(~30초)는 파일 구조 검증 + Playwright 설정 + SDK 유닛 테스트(vitest invariants 포함)를 묶어서 실행하므로 별도 Test 항목을 두지 않는다. Unity E2E(`--all`)는 비용이 크고 매 패스 실행에 부적합해 제외한다 — 변경이 E2E에 영향을 주면 `./run-local-tests.sh --e2e`를 수동 호출한다. Lint(`.meta` 체크, 포맷 등)는 GitHub Actions `lint` 워크플로우가 담당한다.
+`--validate`(~30초)는 파일 구조 검증 + Playwright 설정 + SDK 유닛 테스트(vitest invariants 포함) + SDK 버전 기준 불변식을 묶어서 실행하므로 별도 Test 항목을 두지 않는다. Unity E2E(`--all`)는 비용이 크고 매 패스 실행에 부적합해 제외한다 — 변경이 E2E에 영향을 주면 `./run-local-tests.sh --e2e`를 수동 호출한다. Lint(`.meta` 체크, 포맷 등)는 GitHub Actions `lint` 워크플로우가 담당한다.
 
 ## 상세 문서
 

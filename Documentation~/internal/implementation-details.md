@@ -44,7 +44,7 @@ SDK의 `WebGLTemplates/AITTemplate/`이 원본이고, `Editor/AITTemplateManager
 3. https://repo.huaweicloud.com
 ```
 
-패키지 매니저는 pnpm이고, 버전 핀의 단일 출처는 `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION`입니다. 동기화 규칙은 CLAUDE.md의 "pnpm 버전 핀 동기화"를 참조하세요.
+패키지 매니저는 pnpm이고, 버전 핀의 단일 출처는 `.github/sdk-versions.json`입니다. `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION`과 `package.json`들의 `packageManager`는 `.github/scripts/sdk-update/sync-sdk-versions.cjs apply`가 이 파일에서 써 넣는 값입니다. 동기화 규칙은 CLAUDE.md의 "버전 핀 동기화"를 참조하세요.
 
 ## 설정 저장소
 

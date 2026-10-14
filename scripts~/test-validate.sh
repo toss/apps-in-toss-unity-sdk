@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts~/test-validate.sh — 파일 구조 검증, Playwright 설정, SDK 유닛 테스트, Meta GUID 위생
+# scripts~/test-validate.sh — 파일 구조 검증, Playwright 설정, SDK 유닛 테스트, Meta GUID 위생, SDK 버전 기준 불변식
 # lib-globals.sh, lib-logging.sh, lib-unity-discovery.sh 이후에 source되어야 함
 
 # 1. E2E 파일 구조 검증
@@ -235,6 +235,43 @@ test_deploy_url_extraction() {
         return 0
     else
         print_failure "Deploy URL Extraction"
+        return 1
+    fi
+}
+
+# 5.8 SDK 버전 기준(.github/sdk-versions.json) 불변식 + 동기화 스크립트 단위 테스트
+# 기준 파일과 package.json 3개·PNPM_VERSION 이 어긋나면 실패한다. 수정: sync-sdk-versions.cjs apply
+test_sdk_versions() {
+    print_header "SDK Version Invariants"
+
+    if ! command -v node >/dev/null 2>&1; then
+        print_skip "SDK Version Invariants - node 없음"
+        return 0
+    fi
+
+    local ok=true
+    local DIR="$SCRIPT_DIR/.github/scripts/sdk-update"
+
+    echo "Checking SDK version SSOT (.github/sdk-versions.json)..."
+    if ! node "$DIR/sync-sdk-versions.cjs" check; then
+        ok=false
+    fi
+
+    echo "Running sync-sdk-versions unit tests..."
+    if ! node --test "$DIR/sync-sdk-versions.test.cjs"; then
+        ok=false
+    fi
+
+    echo "Running close-superseded-prs shell tests..."
+    if ! bash "$DIR/close-superseded-prs.test.sh"; then
+        ok=false
+    fi
+
+    if [ "$ok" = true ]; then
+        print_success "SDK Version Invariants"
+        return 0
+    else
+        print_failure "SDK Version Invariants"
         return 1
     fi
 }

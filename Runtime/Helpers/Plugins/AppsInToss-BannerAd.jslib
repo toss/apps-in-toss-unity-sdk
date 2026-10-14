@@ -114,13 +114,13 @@ mergeInto(LibraryManager.library, {
         // ResizeObserver로 그 높이를 관찰해 '캔버스 대비 비율(heightFraction)'로 보고하면
         // C#이 RectTransform 영역을 배너 실제 크기에 맞출 수 있다 (문구 강조 ~90px vs 이미지 강조 가변).
         var lastSentHeight = -1;
-        function sendResize() {
+        function sendResize(force) {
             if (slot.destroyed) return;
             var rect = container.getBoundingClientRect();
             var h = rect.height;
             var w = rect.width;
             if (h <= 0) return;
-            if (Math.abs(h - lastSentHeight) < 0.5) return; // 미세 변동 무시
+            if (!force && Math.abs(h - lastSentHeight) < 0.5) return; // 미세 변동 무시
             lastSentHeight = h;
             var canvas = document.querySelector('#unity-canvas');
             var base = canvas ? canvas.getBoundingClientRect()
@@ -141,8 +141,16 @@ mergeInto(LibraryManager.library, {
             }));
         }
 
+        // 캔버스만 커지거나 작아지면 배너 높이(CSS px)는 그대로라 위 관찰이 걸러낸다.
+        // 이때도 heightFraction은 달라지므로 화면 크기 변경 시 C#이 강제 재보고를 요청한다.
+        // iOS 키보드처럼 window resize 없이 캔버스만 바뀌는 경우가 있어 Rect 위치도 함께 다시 맞춘다.
+        slot.refreshSize = function() {
+            slot.applyRect();
+            sendResize(true);
+        };
+
         if (typeof ResizeObserver !== 'undefined') {
-            slot.resizeObserver = new ResizeObserver(function() { sendResize(); });
+            slot.resizeObserver = new ResizeObserver(function() { sendResize(false); });
             slot.resizeObserver.observe(container);
         }
 
@@ -249,6 +257,17 @@ mergeInto(LibraryManager.library, {
         if (!slot || slot.destroyed) return;
         slot.lastRect = { x: x, y: y, w: width, h: height };
         slot.applyRect();
+    },
+
+    __AITBannerAd_RefreshSizes: function() {
+        // C# 프레임이 끝난 뒤 보고해야 새 화면 크기 기준으로 역산된다
+        setTimeout(function() {
+            var banners = window.__aitBanners;
+            if (!banners) return;
+            Object.keys(banners).forEach(function(id) {
+                banners[id].refreshSize();
+            });
+        }, 0);
     },
 
     __AITBannerAd_Hide: function(instanceId) {

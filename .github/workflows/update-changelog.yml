@@ -66,7 +66,7 @@ jobs:
         uses: ./.github/actions/signed-commit
         with:
           branch: docs/auto-changelog
-          message: "문서: API Changelog 리포트 자동 갱신"
+          message: "문서: Unity API Changelog 리포트 자동 갱신"
           force: "true"
 
       - name: Open and merge Report PR
@@ -90,8 +90,8 @@ jobs:
           EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
           if [ -z "$EXISTING_PR" ]; then
             gh pr create \
-              --title "문서: API Changelog 리포트 자동 갱신" \
-              --body "API Changelog 리포트를 자동 갱신합니다." \
+              --title "문서: Unity API Changelog 리포트 자동 갱신" \
+              --body "Unity API Changelog 리포트를 자동 갱신합니다." \
               --base main \
               --head "$BRANCH"
           fi

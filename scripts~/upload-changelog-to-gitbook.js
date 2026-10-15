@@ -104,7 +104,7 @@ async function createChangeRequest(spaceId, token) {
         "Content-Type": "application/json",
       },
       // 빈 객체 {}는 400 "body is required"로 거부된다(2026-08-19 실측) — subject 필수.
-      body: JSON.stringify({ subject: "API Changelog 자동 갱신" }),
+      body: JSON.stringify({ subject: "Unity API Changelog 자동 갱신" }),
     },
     "change-request 생성",
   );

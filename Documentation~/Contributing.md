@@ -44,6 +44,16 @@ cp .githooks/patterns.local.example .githooks/patterns.local
 
 pnpm 버전을 포함한 SDK 버전 핀의 기준은 `.github/sdk-versions.json`입니다. 올릴 때는 이 파일을 고친 뒤 `node .github/scripts/sdk-update/sync-sdk-versions.cjs apply`를 실행하면 세 곳의 `package.json`과 `Editor/AITPackageManagerHelper.cs`의 `PNPM_VERSION`에 반영됩니다. 파일을 직접 고쳐 어긋나면 `./run-local-tests.sh --validate`와 CI의 `check-sdk-versions`가 실패합니다.
 
+### 의존성 설치가 레지스트리 문제로 실패할 때
+
+생성기와 BuildConfig는 게시된 지 5일이 지난 서드파티 버전만 lockfile에 넣습니다. 그래도 기본 레지스트리에 해당 버전이 아직 없거나 npmjs.org에 SOCKS 프록시로만 닿는 환경에서는 `pnpm install`이 `ERR_PNPM_FETCH_404` 등으로 실패할 수 있습니다. 이때는 로컬 중계 스크립트로 커밋된 lockfile을 그대로 설치하세요.
+
+```bash
+node scripts~/npm-relay.cjs -- pnpm install --frozen-lockfile
+```
+
+중계 서버는 명령이 도는 동안만 127.0.0.1에 뜨고 요청을 프록시(기본 `socks5h://127.0.0.1:1080`, `--proxy`로 변경)를 거쳐 npmjs.org에서 받아 옵니다. lockfile을 새로 만들거나 고치는 데는 쓰지 마세요. lockfile 재생성은 `regen-lockfiles.yml` 워크플로가 맡습니다.
+
 ## SDK Generator
 
 `Runtime/SDK/`의 C# 코드는 전부 `sdk-runtime-generator~/`가 만들어 냅니다.

@@ -9,6 +9,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using AppsInToss.Editor;
 
 public static class BuildOutputValidator
 {
@@ -22,6 +23,12 @@ public static class BuildOutputValidator
         public string[] errors;
         public string[] warnings;
         public FileDetail[] files;
+
+        // wasm 섹션 크기(진단, P0-5). 해제한 wasm 기준이며 측정하지 못했으면 -1. 검증 통과 여부에는 영향이 없다.
+        public long wasmCodeBytes = -1;
+        public long wasmTotalBytes = -1;
+        public long wasmDataBytes = -1;
+        public string wasmFile;
     }
 
     [Serializable]
@@ -197,7 +204,45 @@ public static class BuildOutputValidator
         int fileCount = files.Count;
 
         bool passed = errors.Count == 0;
-        return BuildResult(passed, buildSizeMB, compressionFormat, fileCount, errors, warnings, files);
+        var result = BuildResult(passed, buildSizeMB, compressionFormat, fileCount, errors, warnings, files);
+
+        // 11. wasm 코드 섹션 크기(진단). 압축 파일은 내장 Node 로 풀어 읽는다. 실패해도 검증 결과는 그대로다.
+        MeasureWasmSections(distBuildPath, buildFiles, result);
+        return result;
+    }
+
+    /// <summary>
+    /// 해제한 wasm 의 code/data 섹션 크기를 result 에 채우고 <c>[AIT-CodeSize] code=&lt;bytes&gt; ...</c> 한 줄을 남긴다.
+    /// 어떤 실패도 던지지 않는다(측정 못 하면 값은 -1, 사유는 경고 로그).
+    /// </summary>
+    private static void MeasureWasmSections(string distBuildPath, string[] buildFiles, ValidationResult result)
+    {
+        try
+        {
+            string wasmPath = null;
+            foreach (string f in buildFiles)
+            {
+                if (DetectFileType(Path.GetFileName(f)) == "wasm") { wasmPath = f; break; }
+            }
+            if (wasmPath == null) return;
+
+            result.wasmFile = Path.GetFileName(wasmPath);
+            if (AITWasmSections.TryMeasureFile(wasmPath, out AITWasmSections.Sizes sizes, out string error))
+            {
+                result.wasmCodeBytes = sizes.codeBytes;
+                result.wasmTotalBytes = sizes.totalBytes;
+                result.wasmDataBytes = sizes.dataBytes;
+                Debug.Log($"[AIT-CodeSize] code={sizes.codeBytes} total={sizes.totalBytes} data={sizes.dataBytes} custom={sizes.customBytes} file={result.wasmFile}");
+            }
+            else
+            {
+                Debug.LogWarning($"[AIT-CodeSize] 측정 실패({result.wasmFile}): {error}");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[AIT-CodeSize] 측정 예외(무시): {e.Message}");
+        }
     }
 
     private static ValidationResult BuildResult(bool passed, float buildSizeMB, string compressionFormat,

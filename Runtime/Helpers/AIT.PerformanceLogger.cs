@@ -7,6 +7,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Scripting;
@@ -22,6 +24,11 @@ namespace AppsInToss
     /// 프레임 스톨, 화면 변경, GC 수집, TimeScale 변경, first-interactive
     /// (first-interactive: 원래 첫 씬 로드 완료 시점 — time-to-original-scene.
     ///  부팅 첫 씬 로드는 first-paint 직전에 발생하므로 base 빌드에서는 두 지표가 근접함)
+    ///
+    /// first-interactive 이벤트에는 SDK 훅(Sentry, StreamingFont, VisibilityHelper, StreamingAudio,
+    /// StreamingTexture, AITVersion, PerformanceLogger)별 부팅 소요 시간(<see cref="AITHookTimer"/>
+    /// 집계)과 wasm 스트리밍 컴파일 폴백 사유(있다면)도 함께 실어, TTFF의 SDK-오버헤드/엔진-초기화
+    /// 구간을 분리해 볼 수 있게 한다.
     /// </remarks>
     [Preserve]
     internal static class AITPerformanceLogger
@@ -32,6 +39,9 @@ namespace AppsInToss
 
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern int __AITDebugLog_FirstInteractiveEnabled();
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern string __AITDebugLog_GetWasmStreamingFallbackReason();
 #endif
 
         private const string Tag = "[AITPerformanceLogger]";
@@ -89,6 +99,8 @@ namespace AppsInToss
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
         {
+            using var _hookTimer = AITHookTimer.Begin("PerformanceLogger");
+
             if (_initialized) return;
             _initialized = true;
 
@@ -127,13 +139,7 @@ namespace AppsInToss
 
             try
             {
-                var eventLogParams = new EventLogParams
-                {
-                    Log_name = logName,
-                    Log_type = "unity_runtime",
-                    Params = parameters
-                };
-                __AITDebugLog_Send(AITJsonSettings.Serialize(eventLogParams));
+                __AITDebugLog_Send(BuildLogJson(logName, parameters));
             }
             catch (Exception ex)
             {
@@ -144,6 +150,125 @@ namespace AppsInToss
                 _isSending = false;
             }
 #endif
+        }
+
+        private const string RuntimeLogType = "unity_runtime";
+
+        /// <summary>
+        /// 로그 페이로드(<see cref="EventLogParams"/> 와 같은 모양)를 JSON 문자열로 만든다.
+        /// </summary>
+        /// <remarks>
+        /// 부팅 첫 씬의 scene_loaded 로그는 첫 프레임 전에 나간다. 여기서 Newtonsoft 를 처음 쓰면
+        /// 리플렉션으로 계약을 만드는 비용이 그대로 TTFF 에 얹히므로(6000.3 CPU 4x 기준 약 87ms)
+        /// 이 로거가 쓰는 값 형식은 직접 쓴다. 모르는 형식이 섞이면 Newtonsoft 로 넘긴다.
+        /// </remarks>
+        internal static string BuildLogJson(string logName, Dictionary<string, object> parameters)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"log_name\":");
+            AppendJsonString(sb, logName);
+            sb.Append(",\"log_type\":\"").Append(RuntimeLogType).Append("\",\"params\":");
+            if (!TryAppendJsonValue(sb, parameters))
+            {
+                return AITJsonSettings.Serialize(new EventLogParams
+                {
+                    Log_name = logName,
+                    Log_type = RuntimeLogType,
+                    Params = parameters
+                });
+            }
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        private static bool TryAppendJsonValue(StringBuilder sb, object value)
+        {
+            switch (value)
+            {
+                case null:
+                    sb.Append("null");
+                    return true;
+                case string s:
+                    AppendJsonString(sb, s);
+                    return true;
+                case bool b:
+                    sb.Append(b ? "true" : "false");
+                    return true;
+                case int i:
+                    sb.Append(i.ToString(CultureInfo.InvariantCulture));
+                    return true;
+                case long l:
+                    sb.Append(l.ToString(CultureInfo.InvariantCulture));
+                    return true;
+                case double d:
+                    if (double.IsNaN(d) || double.IsInfinity(d)) return false;
+                    AppendJsonFloat(sb, d.ToString("R", CultureInfo.InvariantCulture));
+                    return true;
+                case float f:
+                    if (float.IsNaN(f) || float.IsInfinity(f)) return false;
+                    AppendJsonFloat(sb, f.ToString("R", CultureInfo.InvariantCulture));
+                    return true;
+                case Dictionary<string, object> dict:
+                    sb.Append('{');
+                    bool first = true;
+                    foreach (var kv in dict)
+                    {
+                        if (!first) sb.Append(',');
+                        first = false;
+                        AppendJsonString(sb, kv.Key);
+                        sb.Append(':');
+                        if (!TryAppendJsonValue(sb, kv.Value)) return false;
+                    }
+                    sb.Append('}');
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        // Newtonsoft 와 같게 정수로 떨어지는 실수에도 소수점을 남긴다(1 -> 1.0).
+        private static void AppendJsonFloat(StringBuilder sb, string text)
+        {
+            sb.Append(text);
+            if (text.IndexOf('.') < 0 && text.IndexOf('E') < 0 && text.IndexOf('e') < 0)
+            {
+                sb.Append(".0");
+            }
+        }
+
+        private static void AppendJsonString(StringBuilder sb, string value)
+        {
+            if (value == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('"');
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < ' ' || c == '\u0085' || c == '\u2028' || c == '\u2029')
+                        {
+                            sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            sb.Append(c);
+                        }
+                        break;
+                }
+            }
+            sb.Append('"');
         }
 
         // ---- 1. Scene Transition ----
@@ -180,7 +305,14 @@ namespace AppsInToss
                             { "event_type", "first_interactive" },
                             { "scene_name", scene.name },
                             { "scene_build_index", scene.buildIndex },
-                            { "time_since_start_ms", (long)Math.Round(Time.realtimeSinceStartup * 1000.0, 0) }
+                            { "time_since_start_ms", (long)Math.Round(Time.realtimeSinceStartup * 1000.0, 0) },
+                            // SDK 훅(Sentry/StreamingFont/VisibilityHelper/StreamingAudio/StreamingTexture/
+                            // AITVersion/PerformanceLogger)별 부팅 소요 시간 — TTFF의 SDK 오버헤드 구간 분리용.
+                            { "hook_timings_ms", AITHookTimer.SnapshotMs() },
+                            { "hook_timings_total_ms", AITHookTimer.TotalMs() },
+                            // wasm 스트리밍 컴파일이 느린 경로(더블 다운로드+직렬 컴파일)로 폴백했다면 그 사유.
+                            // 템플릿이 신호를 채우지 않는 구버전/다른 템플릿이면 null.
+                            { "wasm_streaming_fallback_reason", GetWasmStreamingFallbackReason() }
                         });
                     }
                 }
@@ -214,8 +346,12 @@ namespace AppsInToss
         /// first-interactive 로그 활성 여부를 반환한다.
         /// WebGL 비에디터 환경에서 jslib extern을 1회 호출한 뒤 캐시한다(fail-open).
         /// 그 외 환경에서는 항상 false(SendLog가 어차피 no-op).
+        ///
+        /// AIT_FIRST_INTERACTIVE_LOG 게이트 그 자체 — <see cref="AITHookTimer"/>가 훅 타이밍
+        /// 계측(Stopwatch/performance.mark) 활성 여부를 판단할 때도 이 메서드를 그대로 재사용한다
+        /// (내부 접근을 위해 internal로 노출).
         /// </summary>
-        private static bool IsFirstInteractiveLogEnabled()
+        internal static bool IsFirstInteractiveLogEnabled()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             if (_firstInteractiveEnabledCache < 0)
@@ -232,6 +368,29 @@ namespace AppsInToss
             return _firstInteractiveEnabledCache == 1;
 #else
             return false;
+#endif
+        }
+
+        /// <summary>
+        /// wasm 스트리밍 컴파일 폴백 사유를 조회한다.
+        /// WebGL 템플릿이 window.__AIT_WASM_STREAMING_FALLBACK__ 에 짧은 사유 문자열을 남기면 그 값을,
+        /// 폴백이 없었거나(정상 스트리밍) 템플릿이 이 값을 채우지 않는 구버전/다른 템플릿이면 null을 반환한다.
+        /// 존재 여부를 알 수 없는 전역이라 실패를 완전히 무해화한다(try/catch + 빈 문자열→null 정규화).
+        /// </summary>
+        private static string GetWasmStreamingFallbackReason()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try
+            {
+                var reason = __AITDebugLog_GetWasmStreamingFallbackReason();
+                return string.IsNullOrEmpty(reason) ? null : reason;
+            }
+            catch
+            {
+                return null;
+            }
+#else
+            return null;
 #endif
         }
 

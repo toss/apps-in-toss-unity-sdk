@@ -14,7 +14,7 @@ on:
         type: number
         default: 2
       min_version:
-        description: '최소 버전 (비워두면 sdk-policy.json에서 읽음). 이전 버전 배포가 필요하면 낮은 버전으로 지정'
+        description: '최소 버전 (비워두면 sdk-policy.json 값과 3.0.0 중 높은 쪽). 이전 버전 배포가 필요하면 낮은 버전으로 지정'
         required: false
         type: string
       build_strategy:
@@ -62,9 +62,14 @@ jobs:
             echo "sdk-policy.json에서 minVersion을 읽지 못해 폴백 사용: ${POLICY_MIN_VERSION}"
           fi
 
+          # 일괄 릴리즈는 기본적으로 2.x를 재배포하지 않는다. sdk-policy.json의 minVersion은
+          # 런타임 deprecation 기준이라 그대로 두고, 여기서만 하한을 3.0.0으로 올린다.
+          # 2.x가 필요하면 min_version 입력으로 낮춘다.
+          BULK_FLOOR_VERSION="3.0.0"
+
           MIN_VERSION="${{ inputs.min_version || '' }}"
           if [ -z "$MIN_VERSION" ]; then
-            MIN_VERSION="$POLICY_MIN_VERSION"
+            MIN_VERSION=$(printf '%s\n' "$POLICY_MIN_VERSION" "$BULK_FLOOR_VERSION" | sort -V | tail -n1)
           fi
           echo "최소 버전: ${MIN_VERSION}"
           echo "min_version=${MIN_VERSION}" >> $GITHUB_OUTPUT

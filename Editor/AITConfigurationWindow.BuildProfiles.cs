@@ -79,17 +79,6 @@ namespace AppsInToss.Editor
 
             EditorGUI.indentLevel++;
 
-            // 런타임 설정 헤더
-            EditorGUILayout.LabelField("런타임 설정", EditorStyles.boldLabel);
-
-            // 디버그 콘솔
-            profile.enableDebugConsole = EditorGUILayout.Toggle(
-                new GUIContent("디버그 콘솔 활성화", "개발/테스트 목적으로 콘솔 사용"),
-                profile.enableDebugConsole
-            );
-
-            GUILayout.Space(5);
-
             // 빌드 설정 헤더
             EditorGUILayout.LabelField("빌드 설정", EditorStyles.boldLabel);
 
@@ -152,7 +141,6 @@ namespace AppsInToss.Editor
 
         private void ResetProfile(AITBuildProfile profile, AITBuildProfile defaultProfile)
         {
-            profile.enableDebugConsole = defaultProfile.enableDebugConsole;
             profile.developmentBuild = defaultProfile.developmentBuild;
             profile.enableLZ4Compression = defaultProfile.enableLZ4Compression;
             profile.compressionFormat = defaultProfile.compressionFormat;
@@ -163,7 +151,6 @@ namespace AppsInToss.Editor
         private string GetProfileSummary(AITBuildProfile profile)
         {
             var parts = new System.Collections.Generic.List<string>();
-            if (profile.enableDebugConsole) parts.Add("Debug");
             if (profile.developmentBuild) parts.Add("Dev");
             if (profile.enableLZ4Compression) parts.Add("LZ4");
 
@@ -188,8 +175,7 @@ namespace AppsInToss.Editor
 
         private bool IsProfileDefault(AITBuildProfile profile, AITBuildProfile defaultProfile)
         {
-            return profile.enableDebugConsole == defaultProfile.enableDebugConsole &&
-                   profile.developmentBuild == defaultProfile.developmentBuild &&
+            return profile.developmentBuild == defaultProfile.developmentBuild &&
                    profile.enableLZ4Compression == defaultProfile.enableLZ4Compression &&
                    profile.compressionFormat == defaultProfile.compressionFormat &&
                    profile.managedStrippingLevel == defaultProfile.managedStrippingLevel &&

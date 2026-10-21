@@ -498,7 +498,6 @@ namespace AppsInToss.Editor
             Debug.Log("[AIT] ========================================");
             Debug.Log($"[AIT] 빌드 프로필: {profileName}");
             Debug.Log("[AIT] ========================================");
-            Debug.Log($"[AIT]   디버그 콘솔: {(profile.enableDebugConsole ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   Development Build: {(profile.developmentBuild ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   LZ4 압축: {(profile.enableLZ4Compression ? "활성화" : "비활성화")}");
             Debug.Log($"[AIT]   압축 포맷: {compressionStr}");
@@ -515,30 +514,15 @@ namespace AppsInToss.Editor
             if (profile == null) return null;
 
             // 환경 변수 읽기
-            string debugConsoleEnv = System.Environment.GetEnvironmentVariable("AIT_DEBUG_CONSOLE");
             string compressionFormatEnv = System.Environment.GetEnvironmentVariable("AIT_COMPRESSION_FORMAT");
             string developmentBuildEnv = System.Environment.GetEnvironmentVariable("AIT_DEVELOPMENT_BUILD");
 
             // 오버라이드할 항목이 없으면 원본 반환
-            if (string.IsNullOrEmpty(debugConsoleEnv) && string.IsNullOrEmpty(compressionFormatEnv) && string.IsNullOrEmpty(developmentBuildEnv))
+            if (string.IsNullOrEmpty(compressionFormatEnv) && string.IsNullOrEmpty(developmentBuildEnv))
                 return profile;
 
             // 복사본 생성 (새 필드 추가 시 누락 방지)
             var overriddenProfile = profile.Clone();
-
-            // AIT_DEBUG_CONSOLE 오버라이드
-            if (!string.IsNullOrEmpty(debugConsoleEnv))
-            {
-                if (bool.TryParse(debugConsoleEnv, out bool debugConsole))
-                {
-                    overriddenProfile.enableDebugConsole = debugConsole;
-                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_DEBUG_CONSOLE={debugConsole}");
-                }
-                else
-                {
-                    Debug.LogWarning($"[AIT] AIT_DEBUG_CONSOLE 환경 변수 값이 올바르지 않습니다: '{debugConsoleEnv}' (true/false 필요)");
-                }
-            }
 
             // AIT_COMPRESSION_FORMAT 오버라이드
             // 값: -1 = 자동, 0 = Disabled, 1 = Gzip, 2 = Brotli

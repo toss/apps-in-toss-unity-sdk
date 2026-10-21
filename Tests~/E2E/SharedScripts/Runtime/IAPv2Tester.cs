@@ -85,7 +85,7 @@ public class IAPv2Tester : MonoBehaviour
     private void Awake()
     {
         // WebGL 빌드에서는 Debug.Log/Warning 한 줄마다 스택트레이스가 함께 캡처되어
-        // vConsole 노이즈가 커지고, 문자열 생성 비용 때문에 프레임 성능도 저하된다.
+        // 웹 디버그 툴즈(vConsole) 노이즈가 커지고, 문자열 생성 비용 때문에 프레임 성능도 저하된다.
         // 진단 가치가 큰 Error/Exception은 스택트레이스를 그대로 유지한다.
         Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
         Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);

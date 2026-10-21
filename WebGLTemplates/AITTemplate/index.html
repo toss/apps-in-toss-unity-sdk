@@ -357,21 +357,8 @@
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 
-    <!-- Debug Console (vConsole) — 빌드 프로필로 게이팅, dev 전용. Unity 로더보다 먼저 로드해 조기 로그 캡처 -->
-    <script>
-        (function () {
-            if ('%AIT_ENABLE_DEBUG_CONSOLE%' !== 'true') return;   // prod: 조기 반환, 아무것도 로드 안 함
-            var v = document.createElement('script');
-            v.src = 'Runtime/devconsole/vconsole.min.js';
-            v.onload = function () {
-                var s = document.createElement('script');
-                s.src = 'Runtime/devconsole/ait-dev-console.js';    // VConsole 생성 + Metrics 플러그인 + 키보드 가드 + early-log replay
-                document.head.appendChild(s);
-            };
-            v.onerror = function () { /* dev 콘솔 미가용, 비치명적 */ };
-            document.head.appendChild(v);
-        })();
-    </script>
+    <!-- Unity Metrics 탭 — 플랫폼 웹 디버그 툴즈(vConsole)가 있을 때만 붙고, 없으면 휴면. Unity 로더보다 먼저 로드해 이벤트를 놓치지 않는다 -->
+    <script src="Runtime/ait-unity-metrics.js"></script>
 
     <!-- AITLoading: 커스텀 로딩 화면 API -->
     <script>

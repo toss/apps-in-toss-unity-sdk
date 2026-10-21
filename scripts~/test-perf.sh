@@ -55,7 +55,6 @@ test_heavy_build() {
 
     # perf CI(perf.yml)와 동일한 환경: 릴리즈 빌드 + gzip + HeavyBuildRunner 진입점
     if env \
-        AIT_DEBUG_CONSOLE=true \
         AIT_COMPRESSION_FORMAT="$compression_env" \
         AIT_DEVELOPMENT_BUILD=false \
         AIT_IL2CPP_CONFIGURATION=Release \

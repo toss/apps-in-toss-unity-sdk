@@ -47,14 +47,13 @@ test_unity_build() {
 
     echo "Building WebGL..."
     echo "Log file: $LOG_FILE"
-    echo "AIT_DEBUG_CONSOLE: true"
 
     # 기존 빌드 정리 (Library는 패키지 캐시를 위해 유지)
     rm -rf "$project_path/ait-build"
     rm -rf "$project_path/Temp"
 
-    # Unity 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
-    local env_vars="AIT_DEBUG_CONSOLE=true"
+    # Unity 빌드 실행
+    local env_vars=""
     if [ -n "$compression_env" ]; then
         env_vars="$env_vars AIT_COMPRESSION_FORMAT=$compression_env"
     fi
@@ -155,9 +154,9 @@ run_parallel_unity_builds_only() {
         rm -rf "$project_path/ait-build"
         rm -rf "$project_path/Temp"
 
-        # 백그라운드로 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
+        # 백그라운드로 빌드 실행
         (
-            local build_env="AIT_DEBUG_CONSOLE=true"
+            local build_env=""
             if [ -n "$compression_env" ]; then
                 build_env="$build_env AIT_COMPRESSION_FORMAT=$compression_env"
             fi
@@ -269,9 +268,9 @@ run_parallel_builds() {
         rm -rf "$project_path/ait-build"
         rm -rf "$project_path/Temp"
 
-        # 백그라운드로 빌드 실행 (AIT_DEBUG_CONSOLE=true로 디버그 콘솔 활성화)
+        # 백그라운드로 빌드 실행
         (
-            local build_env="AIT_DEBUG_CONSOLE=true"
+            local build_env=""
             if [ -n "$compression_env" ]; then
                 build_env="$build_env AIT_COMPRESSION_FORMAT=$compression_env"
             fi

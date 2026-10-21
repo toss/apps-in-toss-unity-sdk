@@ -33,8 +33,8 @@ importers:
         specifier: 2.10.9
         version: 2.10.9(@apps-in-toss/web-bridge@2.10.8)
       '@apps-in-toss/web-framework':
-        specifier: 3.8.0
-        version: 3.8.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.8.1
+        version: 3.8.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -312,6 +312,9 @@ importers:
       web-framework-3.8.0:
         specifier: npm:@apps-in-toss/web-framework@3.8.0
         version: '@apps-in-toss/web-framework@3.8.0(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.8.1:
+        specifier: npm:@apps-in-toss/web-framework@3.8.1
+        version: '@apps-in-toss/web-framework@3.8.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)'
 
 packages:
 
@@ -4221,6 +4224,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.8.0':
     resolution: {integrity: sha512-Jo7R0uQh2avJH09eMRA0M6tbaAHC93A7yUNZ4MfMv7axiSvFbnN3Js3r1le+4R7QPYL9WWzl2vyuw72Ep4IRLA==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.8.1':
+    resolution: {integrity: sha512-ocuKctC56ivnYRC3PRUU66jWKJZCarmxXwnd0cY3GsOF2OLQ4j6BFRHOxgg4nXR3OKVC3aBYYuQLKaA/bDYlvA==}
     hasBin: true
 
   '@babel/code-frame@7.24.7':
@@ -26003,6 +26010,19 @@ snapshots:
       - typanion
       - typescript
 
+  '@apps-in-toss/web-framework@3.8.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.8.1(@babel/preset-env@7.28.5(@babel/core@7.29.7))(typanion@3.14.0)
+      '@webview-bridge/web': 1.7.10
+      semver: 7.8.5
+      valibot: 1.5.0(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
   '@babel/code-frame@7.24.7':
     dependencies:
       '@babel/highlight': 7.25.9
@@ -29523,7 +29543,7 @@ snapshots:
   '@react-native/codegen@0.84.0(@babel/core@7.29.7)':
     dependencies:
       '@babel/core': 7.29.7
-      '@babel/parser': 7.28.5
+      '@babel/parser': 7.29.9
       hermes-parser: 0.32.0
       invariant: 2.2.4
       nullthrows: 1.1.1
@@ -32388,7 +32408,7 @@ snapshots:
       '@babel/register': 7.29.7(@babel/core@7.29.7)
       babel-core: 7.0.0-bridge.0(@babel/core@7.29.7)
       chalk: 4.1.2
-      flow-parser: 0.206.0
+      flow-parser: 0.336.0
       graceful-fs: 4.2.11
       micromatch: 4.0.8
       neo-async: 2.6.2

@@ -1,128 +1,27 @@
 /*!
- * AIT Dev Console — Apps in Toss Unity SDK 개발용 디버그 콘솔 (vConsole 통합)
+ * AIT Unity Metrics — Apps in Toss Unity SDK 개발용 Metrics 탭
  *
- * dev 빌드에서만 로드됨(enableDebugConsole). window.VConsole(vconsole.min.js) 의존.
- * - vConsole 초기화: Log / Network / Storage / System 패널 + 플로팅 스위치 버튼
- * - 커스텀 "Metrics" 플러그인 등록: 기존 자체 콘솔의 Metrics 탭을 이식
+ * Apps in Toss 플랫폼의 "웹 디버그 툴즈"가 미니앱 페이지에 주입하는 vConsole
+ * (window.__VCONSOLE_INSTANCE)에 "Unity Metrics" 탭(plugin id: unity_metrics)을 덧붙인다.
  *     Events / Statistics / Performance(FPS·JS Heap·GC·frame stall)
  *     → window.AppsInToss.eventLog/debugLog 인터셉트로 공급
- * - window._aitEarlyLogs(브릿지 부팅 로그) 리플레이
- * - Unity WebGL 전역 키보드 캡처 우회(vConsole 입력창 타이핑 허용)
  *
- * 이 파일은 SDK 소유 코드다. 동일 폴더의 vconsole.min.js는 vendored(MIT, Tencent).
+ * SDK는 자체 vConsole을 번들하지 않는다. __VCONSOLE_INSTANCE가 없으면(라이브/프로덕션,
+ * 로컬 브라우저 등) 이 스크립트는 휴면 상태로 끝난다: rAF 루프, eventLog 래핑,
+ * DOM/CSS 주입 모두 하지 않는다. 인스턴스가 나타난 뒤에만 수집을 시작한다.
+ *
+ * VConsolePlugin은 vConsole 인스턴스의 constructor 정적 프로퍼티로 접근하는데 공식 문서에
+ * 없는 경로다. 기능 검사 후 try/catch로 감싸 실패해도 게임에는 영향이 없게 한다.
+ *
+ * 이 파일은 SDK 소유 코드다.
  */
 (function () {
   'use strict';
 
-  if (!window.VConsole) {
-    console.error('[AIT] vConsole 미로드 — Dev Console 초기화를 건너뜁니다.');
-    return;
+  if (window._aitUnityMetricsInstalled) {
+    return; // 중복 설치 방지
   }
-  if (window._aitVConsole) {
-    return; // 중복 초기화 방지
-  }
-
-  // =========================================================================
-  // 콘솔 로그 미러 (Logs 복사용)
-  //  vConsole Log 탭은 가상 스크롤 + 중첩 객체 지연 렌더라 DOM 스크래핑 시
-  //  화면 밖/미확장 항목이 누락된다. 그래서 자체 링버퍼에 console.* 를 미러링한다.
-  //  "wrap, don't replace" — 원본 메서드를 항상 통과 호출해 vConsole 자체 캡처는 그대로 동작.
-  //  vConsole 생성보다 먼저 설치해 초기(replayEarlyLogs 포함) 로그도 담는다.
-  // =========================================================================
-  var logMirror = [];
-  // 500 → 2000 상향 근거: 실기기 결제 진단처럼 "수 분간 초당 수 건" 로깅되는 세션에서
-  // 500개는 5분이면 이미 몇 바퀴 밀려나가 세션 초반 로그가 유실된다(예: 5건/s × 5분 = 1500건).
-  // 2000개면 동일 조건에서 ~6~7분까지 온전히 보존.
-  // 메모리 상한: 엔트리당 텍스트는 LOG_ENTRY_MAX_CHARS(2000자) 하드 캡 + 소량 오버헤드이므로
-  // 최악의 경우(모든 엔트리가 최대 길이) 2000개 × 약 4KB(UTF-16 2byte/자 기준) ≈ 8MB — dev 빌드
-  // 전용 디버그 콘솔이 감당 가능한 수준. 실제로는 대부분의 로그가 훨씬 짧아 체감 사용량은 이보다
-  // 한참 작다(평균 100~150자/건 가정 시 총 ~0.5MB 안팎).
-  // LOG_COPY_MAX_CHARS(300000)와의 관계: 기존 500개 캡은 일반적인 로그 길이(줄당 ~140자 안팎)
-  // 기준 500×140≈70,000자로 복사 상한(300,000자)의 1/4도 못 채운 채 링버퍼가 먼저 비워졌다.
-  // 2000개로 올리면 2000×140≈280,000자로 복사 상한에 거의 맞춰져, 이미 설정된 복사 예산을
-  // 낭비하지 않고 실제로 활용하게 된다(반대로 장문 로그가 많은 세션은 여전히 복사 시점에
-  // LOG_COPY_MAX_CHARS 로 안전하게 잘린다).
-  var LOG_MIRROR_MAX = 2000;
-  var LOG_ENTRY_MAX_CHARS = 2000;
-
-  // JSON.stringify 는 자르기 전에 입력 전체를 직렬화하므로 대형 객체(typed array 등)에서
-  // 수백 ms 동기 스톨을 일으킨다 — frame_stall 지표를 콘솔 미러 스스로 오염시키는 자기유발 잼.
-  // 예산(budget.left) 안에서만 걷는 직렬화로 상한을 O(LOG_ENTRY_MAX_CHARS)로 고정한다.
-  // depth 상한 덕에 순환 참조도 안전(JSON.stringify 는 throw 했음).
-  function boundedStringify(value, budget, depth) {
-    if (value === null) return 'null';
-    var t = typeof value;
-    if (t === 'string') {
-      var s = value.length > budget.left ? value.slice(0, Math.max(0, budget.left)) + '…' : value;
-      budget.left -= s.length + 2;
-      return JSON.stringify(s);
-    }
-    if (t === 'number' || t === 'boolean') { var p = String(value); budget.left -= p.length; return p; }
-    if (t === 'undefined') { budget.left -= 9; return 'undefined'; }
-    if (t === 'function') { budget.left -= 10; return '[Function]'; }
-    if (t !== 'object') { var o = String(value); budget.left -= o.length; return o; } // symbol/bigint
-    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value)) {
-      // typed array / DataView: 원소를 걷지 않고 요약 (JSON.stringify 는 인덱스 전부를 키로 순회)
-      var name = (value.constructor && value.constructor.name) || 'TypedArray';
-      var sum = '[' + name + '(' + (value.length != null ? value.length : value.byteLength) + ')]';
-      budget.left -= sum.length;
-      return sum;
-    }
-    if (depth >= 4 || budget.left <= 0) return '…';
-    var i, out;
-    if (Object.prototype.toString.call(value) === '[object Array]') {
-      out = [];
-      for (i = 0; i < value.length; i++) {
-        if (budget.left <= 0) { out.push('…'); break; }
-        out.push(boundedStringify(value[i], budget, depth + 1));
-      }
-      return '[' + out.join(',') + ']';
-    }
-    var keys;
-    try { keys = Object.keys(value); } catch (e) { return '[object]'; }
-    out = [];
-    for (i = 0; i < keys.length; i++) {
-      if (budget.left <= 0) { out.push('…'); break; }
-      var v;
-      try { v = value[keys[i]]; } catch (e2) { v = '[getter threw]'; }
-      budget.left -= keys[i].length + 3;
-      out.push(JSON.stringify(keys[i]) + ':' + boundedStringify(v, budget, depth + 1));
-    }
-    return '{' + out.join(',') + '}';
-  }
-
-  function safeStringifyArg(arg) {
-    if (typeof arg === 'string') return arg;
-    if (arg === null) return 'null';
-    if (arg === undefined) return 'undefined';
-    if (arg instanceof Error) return arg.stack || (arg.name + ': ' + arg.message);
-    if (typeof arg === 'object') {
-      try { return boundedStringify(arg, { left: LOG_ENTRY_MAX_CHARS }, 0); } catch (e) { return String(arg); }
-    }
-    return String(arg);
-  }
-
-  (function installConsoleMirror() {
-    ['log', 'info', 'warn', 'error', 'debug'].forEach(function (level) {
-      var orig = console[level];
-      if (typeof orig !== 'function') return;
-      try {
-        // 일부 웹뷰/셸이 console 메서드를 non-writable 로 잠글 수 있다(strict mode 에선 throw).
-        // 재할당 실패는 해당 레벨의 미러링만 포기하고 나머지 초기화는 계속 진행.
-        console[level] = function () {
-          try {
-            var parts = [];
-            for (var i = 0; i < arguments.length; i++) parts.push(safeStringifyArg(arguments[i]));
-            var text = parts.join(' ');
-            if (text.length > LOG_ENTRY_MAX_CHARS) text = text.slice(0, LOG_ENTRY_MAX_CHARS) + '…(truncated)';
-            logMirror.push({ ts: Date.now(), level: level, text: text });
-            if (logMirror.length > LOG_MIRROR_MAX) logMirror.shift();
-          } catch (e) { /* 미러링 실패는 무시 — 원본 로깅은 계속 */ }
-          return orig.apply(console, arguments);
-        };
-      } catch (eAssign) { /* console[level] 잠김 — 이 레벨은 원본 유지 */ }
-    });
-  })();
+  window._aitUnityMetricsInstalled = true;
 
   // =========================================================================
   // Metrics 상태 (콘솔 UI 표시 여부와 무관하게 이벤트를 버퍼링)
@@ -156,16 +55,18 @@
     return 'unknown';
   }
 
+  // 파라미터 키는 Runtime/Helpers/AIT.PerformanceLogger.cs 의 SendLog 호출과 맞춘다.
   function formatEventSummary(event) {
     var p = event.params;
     var cat = event.category;
     if (cat === 'gc' && p) {
-      return 'Gen' + (p.generation || 0) + ' collection (total: ' + (p.gc_count || '?') + ')';
+      return 'Gen' + (p.generation || 0) + ' collection (total: ' + (p.gen0_total !== undefined ? p.gen0_total : '?') + ')';
     }
     if (cat === 'frame_stall' && p) {
-      return (p.stall_duration_ms || '?') + 'ms frame (threshold: ' + (p.threshold_ms || '?') + 'ms)';
+      return (p.frame_duration_ms !== undefined ? p.frame_duration_ms : '?') + 'ms frame (threshold: ' + (p.threshold_ms || '?') + 'ms)';
     }
     if (cat === 'lifecycle' && p) {
+      if (p.event_type === 'quitting') return 'quitting (session: ' + (p.session_duration_sec !== undefined ? p.session_duration_sec : '?') + 's)';
       return 'focus: ' + (p.has_focus !== undefined ? p.has_focus : '?');
     }
     if (cat === 'error' && p) {
@@ -173,10 +74,11 @@
       return msg.length > 60 ? msg.substring(0, 60) + '...' : msg;
     }
     if (cat === 'scene' && p) {
+      if (p.event_type === 'scene_unloaded') return 'Unloaded: ' + (p.scene_name || '?');
       return 'Loaded: ' + (p.scene_name || '?') + ' (' + (p.load_mode || '?') + ')';
     }
     if (cat === 'screen' && p) {
-      return (p.width || '?') + 'x' + (p.height || '?') + ' orientation: ' + (p.orientation || '?');
+      return (p.width || '?') + 'x' + (p.height || '?') + (p.orientation ? ' orientation: ' + p.orientation : '');
     }
     if (cat === 'timescale' && p) {
       return 'timeScale: ' + (p.time_scale !== undefined ? p.time_scale : '?');
@@ -220,7 +122,7 @@
   //    window.AppsInToss를 getter/setter로 교체해 향후 재할당도 대응.
   //  - 이 스크립트가 unity-bridge.ts(AppsInToss 할당) 전/후 어느 쪽에 로드돼도 동작.
   // =========================================================================
-  (function setupEventLogInterception() {
+  function setupEventLogInterception() {
     function wrapTarget(target) {
       if (!target || typeof target !== 'object') return;
       var origEventLog = target.eventLog;
@@ -315,14 +217,14 @@
         }, 300);
       }
     }
-  })();
+  }
 
   // =========================================================================
   // Performance 샘플러 (패널 열림 여부와 무관하게 항상 구동 → 히스토리 축적)
   // =========================================================================
   var fpsHistory = [];
   var FPS_HISTORY_MAX = 60;
-  var lastFrameTime = performance.now();
+  var lastFrameTime = 0;
   var frameCount = 0;
   var currentFps = 0;
 
@@ -339,7 +241,6 @@
     }
     requestAnimationFrame(measureFps);
   }
-  requestAnimationFrame(measureFps);
 
   // =========================================================================
   // Metrics 탭 렌더러
@@ -351,7 +252,6 @@
         '<button class="metric-subtab" data-subtab="stats">📈 Statistics</button>' +
         '<button class="metric-subtab" data-subtab="perf">⚡ Performance</button>' +
         '<button id="metric-copy-btn" class="metric-tool-btn" data-label="📋 Copy" title="현재 탭 내용을 클립보드로 복사">📋 Copy</button>' +
-        '<button id="metric-copy-logs-btn" class="metric-tool-btn" data-label="🪵 Logs" title="콘솔 로그를 클립보드로 복사">🪵 Logs</button>' +
       '</div>' +
       '<div class="metric-content" id="metric-panel-events">' +
         '<div class="metric-filter" id="metric-filter-bar"></div>' +
@@ -406,7 +306,7 @@
       };
     });
 
-    // 복사 버튼: "Copy"는 현재 서브탭(events/stats/perf)을 맥락에 맞게, "Logs"는 콘솔 미러를 복사.
+    // 복사 버튼: 현재 서브탭(events/stats/perf)을 맥락에 맞게 복사.
     var copyBtn = document.getElementById('metric-copy-btn');
     if (copyBtn) {
       copyBtn.onclick = function () {
@@ -417,12 +317,6 @@
         } else {
           handleCopy(copyBtn, buildEventsCopyText(), getFilteredEvents().length);
         }
-      };
-    }
-    var copyLogsBtn = document.getElementById('metric-copy-logs-btn');
-    if (copyLogsBtn) {
-      copyLogsBtn.onclick = function () {
-        handleCopy(copyLogsBtn, buildLogsCopyText(), logMirror.length);
       };
     }
 
@@ -659,24 +553,6 @@
     return lines.join('\n');
   }
 
-  var LOG_COPY_MAX_CHARS = 300000; // 전체 페이로드 상한(과도한 클립보드 방지)
-  function buildLogsCopyText() {
-    var lines = [];
-    lines.push('=== AIT Dev Console — Logs (' + logMirror.length + ' entries) ===');
-    lines.push('Exported: ' + fmtExportTime(new Date()));
-    lines.push('');
-    for (var i = 0; i < logMirror.length; i++) {
-      var e = logMirror[i];
-      var d = new Date(e.ts);
-      var ts = pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) +
-               '.' + d.getMilliseconds().toString().padStart(3, '0');
-      lines.push('[' + ts + '] [' + e.level + '] ' + e.text);
-    }
-    var out = lines.join('\n');
-    if (out.length > LOG_COPY_MAX_CHARS) out = out.slice(0, LOG_COPY_MAX_CHARS) + '\n...output truncated';
-    return out;
-  }
-
   // --- 복사 폴백 체인 (각 티어는 Promise<사용경로문자열> 반환, 실패 시 reject) ---
   // 비동기 티어(브릿지·navigator.clipboard)는 영원히 settle 안 될 수 있다 — 브릿지 메시지
   // 유실, 권한 프롬프트 pending 등. 그대로 두면 버튼이 영구 비활성되고 다음 티어에 진입조차
@@ -724,7 +600,7 @@
 
   function tryExecCommand(text) {
     // 레거시 최후수단(deprecated). 프로그램적으로 value 주입 → 실제 키입력 없음 →
-    // Unity 키보드 가드와 무관. #__vconsole 밖(body)에 붙이므로 preventDefault 오버라이드 영향 없음.
+    // 임시 textarea는 화면 밖에 붙였다가 즉시 제거한다.
     return new Promise(function (resolve, reject) {
       var ta = null;
       try {
@@ -775,7 +651,7 @@
     }, ok ? 1500 : 2000);
   }
 
-  // Copy/Logs 두 버튼이 하나의 OS 클립보드에 쓰므로, 버튼별 disabled 만으로는
+  // 복사 버튼이 하나의 OS 클립보드에 쓰므로, 버튼별 disabled 만으로는
   // 교차 클릭 시 나중에 settle 된 쪽이 클립보드를 덮어쓰는 경합이 남는다 → 공유 잠금.
   var copyInFlight = false;
 
@@ -792,70 +668,6 @@
       console.error('[AIT] 클립보드 복사 실패(모든 경로 소진):', err);
       setBtnFeedback(btn, false, null);
     });
-  }
-
-  // =========================================================================
-  // vConsole 기본 "Log" 탭에도 로그 복사 버튼 노출 (발견성 개선)
-  //  Metrics 탭의 "🪵 Logs" 버튼(#metric-copy-logs-btn)은 이미 있지만, 개발자가 실제로
-  //  주로 보는 기본 Log 탭에서는 접근할 방법이 없어 발견성이 0이었다. 실기기(Toss 웹뷰)에서
-  //  로그를 수동 전사해야 했던 문제를 이 버튼으로 해소한다. buildLogsCopyText/handleCopy를
-  //  그대로 재사용해 복사 텍스트 포맷·폴백 체인·버튼 피드백을 Metrics 탭과 동일하게 맞춘다.
-  //
-  //  구현 방식(vconsole.min.js 3.15.1 기준, 코드 정독 후 선택):
-  //  vConsole 플러그인 공식 API인 VConsolePlugin#onAddTool(addTool 콜백)은 플러그인이
-  //  _initPlugin() 될 때 딱 한 번만 트리거된다. 기본 "Log" 플러그인(id: "default")은
-  //  VConsole 생성자 내부(_addBuiltInPlugins → 이후 _autoRun 시점)에서 우리가 개입하기 전에
-  //  이미 초기화가 끝나버려, 생성 후 시점에는 그 플러그인 인스턴스에 onAddTool 을 새로
-  //  등록/후킹해도 다시 트리거되지 않는다(트리거는 초기화 1회성).
-  //  대신 vConsole 자신이 addTool 결과를 반영할 때 쓰는 것과 완전히 동일한 경로 —
-  //  compInstance.pluginList["default"].toolbarList 배열에 새 항목을 push 하고
-  //  compInstance.pluginList = compInstance.pluginList 로 재대입해 (Svelte) 반응성 갱신을
-  //  유도 — 를 그대로 재사용한다. 이 재대입 트릭은 vConsole 소스의 _initPlugin() 이
-  //  addTopBar/addTool 결과를 반영할 때 쓰는 것과 동일한 코드 경로이므로, DOM을 직접
-  //  스크래핑/주입하는 방식보다 vConsole 자체 렌더링 사이클과 충돌할 위험이 낮다.
-  //  이렇게 추가한 항목은 vConsole 툴바 CSS(.vc-tool)를 그대로 상속하므로 Clear/Top/Bottom과
-  //  동일한 크기의 터치 타깃을 갖고, global:false 라 Log 탭이 활성일 때만 노출되어
-  //  vConsole 자체 버튼과 자리를 다투거나 겹치지 않는다.
-  //
-  //  타이밍: compInstance/toolbarList 준비 여부는 스크립트 로드 시점의 document.readyState
-  //  에 따라 달라질 수 있어(로딩 중이면 VConsole 이 DOMContentLoaded 까지 초기화를 미룸),
-  //  생성자 직후가 아니라 공식 옵션인 onReady 콜백(= vConsole 초기화 완전 종료 시점, 이
-  //  플러그인의 addTool 트리거 포함)에서 호출한다.
-  // =========================================================================
-  function installLogTabCopyButton(vc) {
-    try {
-      if (!vc || !vc.compInstance || !vc.compInstance.pluginList) return;
-      var pluginList = vc.compInstance.pluginList;
-      var logEntry = pluginList['default'];
-      if (!logEntry || !Array.isArray(logEntry.toolbarList)) return;
-
-      // 중복 방지(예: 향후 재초기화 경로가 생기더라도 두 번 추가되지 않도록).
-      var i;
-      for (i = 0; i < logEntry.toolbarList.length; i++) {
-        if (logEntry.toolbarList[i] && logEntry.toolbarList[i].__aitLogCopy) return;
-      }
-
-      logEntry.toolbarList.push({
-        name: '🪵 Logs',
-        global: false, // Clear/Top/Bottom과 동일하게 Log 탭이 열려 있을 때만 노출.
-        data: null,
-        __aitLogCopy: true,
-        // vConsole 은 툴 클릭 시 onClick.call(clickedDomElement, event, data) 형태로 호출한다
-        // (this = 클릭된 <i class="vc-tool"> 엘리먼트) — handleCopy(btn, text, count) 가
-        // 기대하는 버튼 참조와 정확히 호환된다.
-        onClick: function () {
-          handleCopy(this, buildLogsCopyText(), logMirror.length);
-        }
-      });
-
-      // vConsole _initPlugin() 내부와 동일한 재대입 트릭으로 반응성 갱신을 트리거해
-      // 이미 마운트된 툴바에 새 버튼이 실제로 렌더링되도록 한다.
-      vc.compInstance.pluginList = vc.compInstance.pluginList;
-    } catch (e) {
-      // 내부 구조가 다른(vConsole 버전 차이 등) 경우에도 콘솔 전체가 죽지 않도록 격리.
-      // Metrics 탭의 기존 복사 버튼은 이 실패와 무관하게 정상 동작한다.
-      console.error('[AIT] Log 탭 복사 버튼 주입 실패(무시하고 계속):', e);
-    }
   }
 
   // =========================================================================
@@ -917,145 +729,71 @@
   }
 
   // =========================================================================
-  // Unity WebGL 키보드 캡처 우회
-  //  Unity 프레임워크가 window/document capture phase에서 keydown/keypress의
-  //  preventDefault()를 호출해 HTML input 문자 삽입을 막는다. 이를 우회해
-  //  vConsole 입력창(#__vconsole 내부)에서는 타이핑이 되도록 한다.
+  // 활성화: 플랫폼 vConsole(window.__VCONSOLE_INSTANCE)에 탭을 붙이고 수집 시작
+  //  - 인스턴스가 없으면 아무것도 하지 않는다(rAF·eventLog 래핑·DOM/CSS 주입 없음).
+  //  - 호스트가 페이지 로드 시점에 주입하므로 이미 있으면 즉시, 없으면 DOMContentLoaded/load와
+  //    짧은 폴링(총 5초)으로 기다린다. 끝내 없으면 포기(라이브/로컬 브라우저).
+  //  - VConsolePlugin은 비공개 경로라 기능 검사 + try/catch. 탭 등록에 성공한 경우에만
+  //    수집을 시작하므로 실패해도 게임·SDK 동작에는 영향이 없다.
   // =========================================================================
-  function installUnityKeyboardGuard() {
-    var cachedRoot = null;
-    function vcRoot() {
-      if (!cachedRoot) cachedRoot = document.getElementById('__vconsole');
-      return cachedRoot;
-    }
+  var PLUGIN_ID = 'unity_metrics';
+  var PLUGIN_NAME = 'Unity Metrics';
+  var WAIT_POLL_MS = 250;
+  var WAIT_MAX_MS = 5000;
+  var attached = false;
 
-    var origPreventDefault = Event.prototype.preventDefault;
-    Event.prototype.preventDefault = function () {
-      if (this instanceof KeyboardEvent && this.target) {
-        var r = vcRoot();
-        if (r && r.contains(this.target)) {
-          // 개행 외 키: preventDefault 무력화 → Unity 전역 캡처가 막는 타이핑을 우회.
-          // Enter: 아래로 흘려보내 origPreventDefault 호출 → 개행 삽입을 막아
-          //        vConsole REPL 실행 후 입력창에 잔여 '\n'이 남지 않게 한다.
-          if (this.key !== 'Enter') return;
-        }
-      }
-      return origPreventDefault.call(this);
-    };
+  function tryAttach() {
+    if (attached) return true;
+    var instance = window.__VCONSOLE_INSTANCE;
+    if (!instance || typeof instance.addPlugin !== 'function') return false;
+    var PluginCtor = instance.constructor && instance.constructor.VConsolePlugin;
+    if (typeof PluginCtor !== 'function') return false;
 
-    // vConsole 자체 편집 요소(command/filter 입력창 등) 판별.
-    function isVConsoleEditable(el, root) {
-      if (!el || !root || !root.contains(el)) return false;
-      var tag = el.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
-    }
-
-    ['keydown', 'keyup', 'keypress'].forEach(function (eventType) {
-      document.addEventListener(eventType, function (e) {
-        var r = vcRoot();
-        if (r && e.target && r.contains(e.target)) {
-          // 편집 입력창에서 Enter 만 vConsole 내부 핸들러로 통과시켜 REPL(입력 실행)을 살린다.
-          // 일반 문자 키는 네이티브로 타이핑되므로(위 preventDefault 무력화) vConsole 핸들러가
-          // 불필요 → 계속 차단해 게임 입력 누수를 최소화한다(Enter 만 Unity 로 새는 미세 리스크).
-          if (e.key === 'Enter' && isVConsoleEditable(e.target, r)) return;
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }
-      }, true); // capture 단계, Unity 리스너보다 먼저 등록되어 우선 실행
-    });
-  }
-
-  // =========================================================================
-  // Unity 빌드 자산 fetch 우회 라우터
-  //  제약: vConsole 네트워크 계측이 chunked 응답 reader에서 예외를 던져 Unity 6 로더의
-  //  .data 다운로드를 깨뜨린다(스트림 종료 read({done:true,value:undefined}) 가드 부재 →
-  //  value.length 접근에서 TypeError). 로더는 그 실패를 rethrow 없이 삼키고 undefined를
-  //  resolve하므로 run dependency(dataUrl)가 영구 미충족 → createUnityInstance가 영영
-  //  settle되지 않는다(warm reload 무한 로딩). 계측이 Response를 Proxy로 감싸는 탓에
-  //  WebAssembly.instantiateStreaming의 brand check도 실패해 wasm이 매 로드 2회
-  //  다운로드되는 낭비까지 따라온다.
-  //  대책: vConsole 생성 직전의 fetch(= 진짜 Response를 반환하는 구현. 콜드 로드에서는
-  //  SDK early-fetch 셔임, warm reload에서는 네이티브)를 캡처해 두고, Unity 빌드
-  //  산출물(Build/, StreamingAssets/) 요청만 그쪽으로 라우팅한다. 나머지 트래픽은 계측
-  //  fetch를 그대로 타므로 Network 탭 기능은 유지된다.
-  //  (vConsole은 XHR도 패치하지만 Unity 로더는 fetch만 쓰므로 XHR은 손대지 않는다.)
-  // =========================================================================
-  var UNITY_ASSET_PATH_RE = /\/(Build|StreamingAssets)\//;
-
-  function requestUrlOf(input) {
-    if (typeof input === 'string') return input;
-    if (!input || typeof input !== 'object') return null;
-    if (typeof input.url === 'string') return input.url;    // Request
-    if (typeof input.href === 'string') return input.href;  // URL
-    return null;
-  }
-
-  function isUnityAssetRequest(input) {
-    var raw = requestUrlOf(input);
-    if (!raw) return false; // 판정 불가 → 계측 fetch로(보수적)
+    attached = true; // 실패해도 재시도하지 않는다(중복 등록·반복 예외 방지)
     try {
-      return UNITY_ASSET_PATH_RE.test(new URL(raw, location.href).pathname);
+      var plugin = new PluginCtor(PLUGIN_ID, PLUGIN_NAME);
+      plugin.on('renderTab', function (callback) { callback(METRICS_TAB_HTML); });
+      plugin.on('ready', function () { ensureWired(); });
+      plugin.on('show', function () { isMetricsVisible = true; updateMetricExplorerUI(); });
+      plugin.on('hide', function () { isMetricsVisible = false; });
+      instance.addPlugin(plugin);
     } catch (e) {
-      return false;
+      console.warn('[AIT] Unity Metrics 탭 등록 실패(무시하고 계속):', e);
+      return true;
     }
-  }
 
-  function installUnityAssetFetchBypass(preVconsoleFetch) {
-    if (typeof preVconsoleFetch !== 'function') return;
-    var instrumentedFetch = window.fetch;
-    // 계측이 설치되지 않았으면(fetch 그대로) 라우터도 불필요.
-    if (typeof instrumentedFetch !== 'function' || instrumentedFetch === preVconsoleFetch) return;
-    window.fetch = function (input) {
-      var target = isUnityAssetRequest(input) ? preVconsoleFetch : instrumentedFetch;
-      return target.apply(this, arguments);
-    };
-  }
-
-  function replayEarlyLogs() {
-    var logs = window._aitEarlyLogs;
-    if (logs && logs.length) {
-      console.log('=== Bridge Initialization Logs ===');
-      logs.forEach(function (l) { console.log('[Bridge] ' + l); });
-      console.log('=== End Bridge Logs ===');
+    try {
+      injectMetricsCss();
+      setupEventLogInterception();
+      lastFrameTime = performance.now();
+      requestAnimationFrame(measureFps);
+    } catch (e2) {
+      console.warn('[AIT] Unity Metrics 수집 시작 실패(무시하고 계속):', e2);
     }
+    return true;
   }
 
-  // =========================================================================
-  // 초기화
-  // =========================================================================
-  injectMetricsCss();
+  function waitForInstance() {
+    try {
+      if (tryAttach()) return;
+    } catch (e) { return; }
 
-  // vConsole 생성 전 fetch를 캡처해 둔다 — 생성자가 동기적으로 네트워크 계측(mockFetch)을
-  // 설치하므로, 이 시점의 fetch만이 Unity 로더에 안전한(진짜 Response) 구현이다.
-  var preVconsoleFetch = window.fetch;
+    var elapsed = 0;
+    var timerId = null;
+    function check() {
+      var done = false;
+      try { done = tryAttach(); } catch (e) { done = true; }
+      if (done || elapsed >= WAIT_MAX_MS) {
+        if (timerId !== null) clearInterval(timerId);
+        timerId = null;
+        document.removeEventListener('DOMContentLoaded', check);
+        window.removeEventListener('load', check);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', check);
+    window.addEventListener('load', check);
+    timerId = setInterval(function () { elapsed += WAIT_POLL_MS; check(); }, WAIT_POLL_MS);
+  }
 
-  var vConsole = new window.VConsole({
-    theme: 'dark',
-    defaultPlugins: ['system', 'network', 'storage'],
-    // 최상위 maxLogNumber 는 deprecated — 경고 console.debug 가 우리 로그 미러에까지
-    // 섞여 들어가므로 v3 정식 shape(log.maxLogNumber)로 전달한다.
-    log: { maxLogNumber: 1000 },
-    // onReady 는 compInstance 생성 + 모든 기본 플러그인의 _initPlugin(addTool 트리거 포함)이
-    // 끝난 뒤 호출되도록 vConsole 이 보장하는 공식 훅이다(내부적으로 setTimeout(0)으로 실행되므로
-    // 이 시점엔 아래 `var vConsole = ...` 대입도 이미 끝나 있어 클로저 참조가 안전하다).
-    // document.readyState 가 "loading"이라 초기화가 DOMContentLoaded 까지 미뤄지는 경우에도
-    // 생성자 직후 호출보다 이 방식이 안전하다.
-    onReady: function () { installLogTabCopyButton(vConsole); }
-  });
-  // 생성자 반환과 같은 틱에 라우터를 설치한다 — 계측 fetch가 유효한 구간에는 항상
-  // 라우터도 함께 있어야 Unity 로더 요청이 계측을 거치는 창이 생기지 않는다.
-  installUnityAssetFetchBypass(preVconsoleFetch);
-  window._aitVConsole = vConsole;
-
-  var metricsPlugin = new window.VConsole.VConsolePlugin('ait_metrics', 'Metrics');
-  metricsPlugin.on('renderTab', function (callback) { callback(METRICS_TAB_HTML); });
-  metricsPlugin.on('ready', function () { ensureWired(); });
-  metricsPlugin.on('show', function () { isMetricsVisible = true; updateMetricExplorerUI(); });
-  metricsPlugin.on('hide', function () { isMetricsVisible = false; });
-  vConsole.addPlugin(metricsPlugin);
-
-  installUnityKeyboardGuard();
-  replayEarlyLogs();
-
-  console.log('[AIT] Dev Console(vConsole) 초기화 완료 — 스위치 버튼으로 열기/닫기, Metrics 탭 포함');
+  waitForInstance();
 })();

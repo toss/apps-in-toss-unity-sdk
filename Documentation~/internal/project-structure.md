@@ -91,7 +91,7 @@ WebGLTemplates/AITTemplate/
 ├── index.html                플레이스홀더가 들어 있는 템플릿
 ├── loading.html              로딩 화면 템플릿
 ├── Runtime/
-│   └── devconsole/                 인앱 디버그 콘솔
+│   └── ait-unity-metrics.js        웹 디버그 툴즈(vConsole)에 붙는 Unity Metrics 탭
 ├── TemplateData/             스타일과 이미지
 └── BuildConfig~/             Vite·granite 빌드 설정
     ├── granite.config.ts

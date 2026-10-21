@@ -163,14 +163,14 @@ function aitDevtoolsPanelPlugin(): Plugin {
 /**
  * Unity WASM 스트리밍 컴파일용 네이티브 fetch 보호 플러그인.
  *
- * 근본 원인: SDK 자체 번들 Dev Console(vConsole, Runtime/devconsole/vconsole.min.js)의
- * Network 패널이 `new VConsole(...)` 생성 시 자동으로 window.fetch를 `Proxy(fetch, ...)`로
+ * 근본 원인: 플랫폼의 웹 디버그 툴즈(window.__VCONSOLE_INSTANCE, vConsole)의
+ * Network 패널이 생성 시 자동으로 window.fetch를 `Proxy(fetch, ...)`로
  * 교체하고, 응답도 `new Proxy(response, ...)`로 감싸 반환한다. 이 Proxy는 instanceof/duck
  * typing은 모두 통과하지만 V8의 WebAssembly.compileStreaming/instantiateStreaming 내부
  * 브랜드 체크(엔진 내부 슬롯 확인, Proxy로는 위장 불가)를 통과하지 못해
  * "wasm streaming compile failed" → ArrayBuffer 폴백(다운로드/컴파일 오버랩 상실)이 발생한다.
  *
- * Dev Console은 `enableDebugConsole` Unity 빌드 프로필 플래그로 켜지며, 이 vite 레벨의
+ * 웹 디버그 툴즈는 호스트(Toss 앱)가 주입하므로 이 vite 레벨의
  * AIT_DEVTOOLS/AIT_DEVTOOLS_PANEL과는 완전히 독립적이다(실측 확인: AIT_DEVTOOLS=0 이어도
  * 재현됨) — 따라서 이 가드는 devtoolsEnabled 여부와 무관하게 항상 설치한다.
  *
@@ -273,7 +273,7 @@ async function sdkConfig(env: ConfigEnv): Promise<UserConfig> {
   return {
     // Unity WebGL 압축 파일 헤더 처리 플러그인. devtools는 항상 맨 앞에 위치
     // (web-framework → devtools mock alias가 다른 플러그인보다 먼저 걸려야 함)
-    // native-fetch-guard는 devtoolsEnabled와 무관하게(enableDebugConsole은 별도 게이트)
+    // native-fetch-guard는 devtoolsEnabled와 무관하게(웹 디버그 툴즈는 호스트가 주입)
     // 항상 포함 — apply:'serve'라 build/preview에는 어차피 적용 안 됨.
     plugins: [aitNativeFetchGuardPlugin(), ...devtoolsPlugins, unityWebContentEncodingPlugin()],
     // Apps in Toss 플랫폼에서 서브 경로 호스팅을 위해 상대 경로 사용

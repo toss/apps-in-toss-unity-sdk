@@ -268,21 +268,6 @@ namespace AppsInToss.Editor.Package
                 }
             }
 
-            // Dev 전용 디버그 콘솔(vConsole) 산출물 정리:
-            // enableDebugConsole=false(프로덕션)면 index.html 부트스트랩이 조기 반환해
-            // devconsole 스크립트를 로드하지 않지만, CopyDirectory는 플래그와 무관하게 복사한다.
-            // public 저장소 산출 위생을 위해 프로덕션 빌드에서는 Runtime/devconsole/ 를 제거한다
-            // (%AIT_ENABLE_DEBUG_CONSOLE% 치환과 동일하게 profile.enableDebugConsole을 소스로 사용).
-            if (!profile.enableDebugConsole)
-            {
-                string devConsoleDest = Path.Combine(runtimeDest, "devconsole");
-                if (Directory.Exists(devConsoleDest))
-                {
-                    Directory.Delete(devConsoleDest, true);
-                    Debug.Log("[AIT] ✓ 프로덕션 빌드: Runtime/devconsole/ 제거 (디버그 콘솔 비활성화)");
-                }
-            }
-
             // StreamingAssets 폴더 → public/StreamingAssets (있는 경우)
             string streamingAssetsSrc = Path.Combine(webglPath, "StreamingAssets");
             string streamingAssetsDest = Path.Combine(publicPath, "StreamingAssets");
@@ -317,9 +302,6 @@ namespace AppsInToss.Editor.Package
             }
 
             string indexContent = File.ReadAllText(indexSrc);
-
-            // 프로필 기반 설정값
-            string enableDebugConsole = profile.enableDebugConsole ? "true" : "false";
 
             // 프로젝트의 index.html에서 사용자 커스텀 섹션 추출 (있는 경우)
             string projectIndexPath = Path.Combine(Application.dataPath, "WebGLTemplates", "AITTemplate", "index.html");
@@ -372,7 +354,6 @@ namespace AppsInToss.Editor.Package
                 // 실질 no-op 인 경우에도 그대로 통과시켜, 호출부마다 안전 여부를 판단하는 일이
                 // 없도록 한다(판단이 개입하는 순간 다음 토큰에서 빠뜨리게 된다).
                 // AITJsStringEscaperWiringTests 가 템플릿에서 따옴표 자리 토큰을 유도해 대조한다.
-                .Replace("%AIT_ENABLE_DEBUG_CONSOLE%", AITJsStringEscaper.EscapeSingleQuoted(enableDebugConsole))
                 .Replace("%AIT_FIRST_INTERACTIVE_LOG%", AITJsStringEscaper.EscapeSingleQuoted(EffectiveFirstInteractiveLog(config) ? "true" : "false"))
                 .Replace("%AIT_PLAYERPREFS_PERSISTENCE%", AITJsStringEscaper.EscapeSingleQuoted(EffectivePlayerPrefsPersistence(config) ? "true" : "false"))
                 .Replace("%AIT_KEYBOARD_MODE%", AITJsStringEscaper.EscapeSingleQuoted(KeyboardModeToken(config)))

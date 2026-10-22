@@ -560,8 +560,9 @@
   // 중복 쓰기라 무해. (3티어 execCommand 는 동기라 타임아웃 불필요.)
   // 브릿지: Android 는 첫 복사 때 네이티브 권한 창("텍스트 복사 허용")을 띄우고 사용자가 고를
   // 때까지 settle 하지 않는다. 짧게 끊으면 허용 전에 실패 처리되므로 사람이 응답할 시간을 준다.
-  // navigator.clipboard: 3초. Chromium 계열 transient activation(~5s) 안쪽이라 타임아웃 뒤에도
-  // execCommand 티어가 유효할 수 있다.
+  // navigator.clipboard: 3초. 브릿지가 곧바로 실패했다면 Chromium 계열 transient activation(~5s)
+  // 안쪽이라 타임아웃 뒤에도 execCommand 티어가 유효할 수 있다. 브릿지가 오래 기다린 뒤라면
+  // activation 이 끝나 두 웹 티어도 실패한다(Android 는 원래 둘 다 쓸 수 없어 잃는 것이 없다).
   var CLIPBOARD_BRIDGE_TIMEOUT_MS = 60000;
   var CLIPBOARD_TIER_TIMEOUT_MS = 3000;
 
@@ -663,6 +664,8 @@
     if (copyInFlight || btn.disabled) return; // 재진입/교차 진입 방지
     copyInFlight = true;
     btn.disabled = true;
+    // setBtnFeedback 이 복원할 라벨을 진행 표시로 덮기 전에 남겨 둔다.
+    if (!btn.getAttribute('data-label')) btn.setAttribute('data-label', btn.textContent);
     btn.textContent = '⏳ 복사 중…'; // 권한 창 응답을 기다리는 동안 눌렸는지 알 수 있게
     copyViaClipboard(text).then(function (method) {
       copyInFlight = false;

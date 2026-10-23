@@ -556,9 +556,14 @@
   // --- 복사 폴백 체인 (각 티어는 Promise<사용경로문자열> 반환, 실패 시 reject) ---
   // 비동기 티어(브릿지·navigator.clipboard)는 영원히 settle 안 될 수 있다 — 브릿지 메시지
   // 유실, 권한 프롬프트 pending 등. 그대로 두면 버튼이 영구 비활성되고 다음 티어에 진입조차
-  // 못 하므로 티어별 타임아웃으로 상한을 건다. 3초: Chromium 계열 transient activation(~5s)
-  // 안쪽이라 1티어 타임아웃 후에도 후속 티어가 유효할 수 있고, 타임아웃 뒤 원 호출이 늦게
-  // 성공해도 동일 텍스트 중복 쓰기라 무해. (3티어 execCommand 는 동기라 타임아웃 불필요.)
+  // 못 하므로 티어별 타임아웃으로 상한을 건다. 타임아웃 뒤 원 호출이 늦게 성공해도 동일 텍스트
+  // 중복 쓰기라 무해. (3티어 execCommand 는 동기라 타임아웃 불필요.)
+  // 브릿지: Android 는 첫 복사 때 네이티브 권한 창("텍스트 복사 허용")을 띄우고 사용자가 고를
+  // 때까지 settle 하지 않는다. 짧게 끊으면 허용 전에 실패 처리되므로 사람이 응답할 시간을 준다.
+  // navigator.clipboard: 3초. 브릿지가 곧바로 실패했다면 Chromium 계열 transient activation(~5s)
+  // 안쪽이라 타임아웃 뒤에도 execCommand 티어가 유효할 수 있다. 브릿지가 오래 기다린 뒤라면
+  // activation 이 끝나 두 웹 티어도 실패한다(Android 는 원래 둘 다 쓸 수 없어 잃는 것이 없다).
+  var CLIPBOARD_BRIDGE_TIMEOUT_MS = 60000;
   var CLIPBOARD_TIER_TIMEOUT_MS = 3000;
 
   function withTimeout(promise, ms, label) {
@@ -583,7 +588,7 @@
     catch (e) { return Promise.reject(e); }
     // jslib와 동일하게 Promise/비Promise 양쪽 방어 (비Promise면 동기 성공으로 간주).
     if (r && typeof r.then === 'function') {
-      return withTimeout(r, CLIPBOARD_TIER_TIMEOUT_MS, 'AppsInToss.setClipboardText')
+      return withTimeout(r, CLIPBOARD_BRIDGE_TIMEOUT_MS, 'AppsInToss.setClipboardText')
         .then(function () { return 'AppsInToss.setClipboardText'; });
     }
     return Promise.resolve('AppsInToss.setClipboardText');
@@ -659,6 +664,9 @@
     if (copyInFlight || btn.disabled) return; // 재진입/교차 진입 방지
     copyInFlight = true;
     btn.disabled = true;
+    // setBtnFeedback 이 복원할 라벨을 진행 표시로 덮기 전에 남겨 둔다.
+    if (!btn.getAttribute('data-label')) btn.setAttribute('data-label', btn.textContent);
+    btn.textContent = '⏳ 복사 중…'; // 권한 창 응답을 기다리는 동안 눌렸는지 알 수 있게
     copyViaClipboard(text).then(function (method) {
       copyInFlight = false;
       if (method) console.debug('[AIT] 클립보드 복사 경로: ' + method);

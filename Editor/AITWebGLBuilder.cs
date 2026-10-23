@@ -348,7 +348,7 @@ namespace AppsInToss.Editor
         /// AITVersion.Version 은 EnsureLoaded 경로 / 설치 방식에 따라 "unknown" 일 수 있으므로
         /// 빌드 산출물에 박는 값은 package.json 을 권위 있는 소스로 사용.
         /// </summary>
-        private static string ResolveSdkVersion()
+        internal static string ResolveSdkVersion()
         {
             try
             {

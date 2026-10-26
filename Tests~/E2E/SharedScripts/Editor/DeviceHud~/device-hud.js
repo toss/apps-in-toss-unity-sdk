@@ -1,7 +1,10 @@
 // perf 실기기 측정 HUD (device-hud 변형 전용). HeavyDeviceHudVariant 가 index.html 의 USER_HEAD 영역에 이 파일을 인라인한다.
-// 규칙: ES2017 이하 문법만, 네트워크 요청 없음(클립보드와 localStorage 만 사용), 모든 저장소 접근은 try/catch.
+// 규칙: ES2017 이하 문법만, 모든 저장소 접근은 try/catch.
 // 퍼센트 기호로 감싼 대문자 토큰(플레이스홀더 형태)과 빌드 폴더 경로 리터럴은 쓰지 않는다(빌드 검증기가 오탐한다).
 // __AIT_HUD_BUILD_JSON__ 은 빌드 시 {variant, posture, unity, sha} JSON 리터럴로 치환된다.
+// 자동 측정: 첫 그리기 뒤 5초(부팅 구간)가 지나면 게임 자동 플레이를 켜고 60초를 잰 뒤, 같은 탭에서 AUTO_RUNS 번까지
+// 새로고침해 반복한다. 수신 주소는 저장소에 두지 않는다. 배포 직전에 로컬에서 __AIT_HUD_REPORT_URL__ 을 https 주소로
+// 바꾸거나 페이지 쿼리 aitHudReport 로 넘기면 측정마다 결과를 POST 하고, 없으면 클립보드 복사만 쓴다.
 (function () {
   'use strict';
   if (window.__aitDeviceHud) return;
@@ -13,6 +16,12 @@
   var MAX_RUNS = 10;
   var PHASE_A_MS = 5000;
   var PHASE_B_MS = 60000;
+  var AUTO_RUNS = 3;
+  var REPORT_URL = (function () {
+    var q = safe(function () { return new URLSearchParams(location.search).get('aitHudReport'); }, null);
+    var u = q || '__AIT_HUD_REPORT_URL__';
+    return /^https:\/\//.test(u) ? u : null;
+  })();
 
   function now() { return performance.now(); }
   function r1(v) { return typeof v === 'number' && isFinite(v) ? Math.round(v * 10) / 10 : null; }
@@ -26,6 +35,16 @@
     overlayHidden: null,
     firstVisible: null
   };
+
+  // ---- 자동 반복 회차 (sessionStorage: 같은 탭의 새로고침에서만 이어진다. QR 로 새로 열면 1회차부터) ----
+  var SEQ_KEY = 'aitDeviceHud.seq:' + LABEL;
+  var session = safe(function () { return JSON.parse(window.sessionStorage.getItem(SEQ_KEY)); }, null);
+  if (!session || typeof session.n !== 'number') session = { id: run.id, n: 0 };
+  session.n++;
+  safe(function () { window.sessionStorage.setItem(SEQ_KEY, JSON.stringify(session)); });
+  run.session = session.id;
+  run.seq = session.n;
+  run.kind = session.n === 1 ? 'open' : 'reload';
 
   // ---- wasm Memory 수집 (perf-ttff.test.js 와 같은 방식: 생성자를 감싸고 grow 로 보강) ----
   var memories = [];
@@ -93,10 +112,16 @@
         frameDone = true;
         run.state = 'done';
         persist();
+        onRunDone();
         return;
       }
       if (run.state !== 'frames') run.state = 'frames';
-      if (ts - frameT0 > PHASE_A_MS && !run.__aSaved) { run.__aSaved = true; persist(); }
+      if (ts - frameT0 > PHASE_A_MS && !run.__aSaved) {
+        run.__aSaved = true;
+        persist();
+        startAutoplay();
+        upload(false);
+      }
     }
     window.requestAnimationFrame(onFrame);
   }
@@ -299,9 +324,84 @@
     };
   }
 
+  // ---- 게임 자동 플레이 (mobilegame posture 의 AITRunScene.Cmd: autoplay/start/retry, 상태는 window.__AIT_RUN) ----
+  var autoTimer = null, autoStarts = 0;
+  function gameCmd(c) {
+    return safe(function () { window.unityInstance.SendMessage('AITRunScene', 'Cmd', c); return true; }, false);
+  }
+  function startAutoplay() {
+    if (autoTimer) return;
+    var statsReset = false;
+    autoTimer = setInterval(function () {
+      if (frameDone) { clearInterval(autoTimer); return; }
+      var s = window.__AIT_RUN;
+      if (!s) return;
+      // 게임 쪽 프레임 통계를 자동 플레이 구간만으로 다시 센다.
+      if (!statsReset) statsReset = gameCmd('stats');
+      if (s.state === 'title' || s.state === 'over') {
+        gameCmd('autoplay');
+        if (gameCmd(s.state === 'title' ? 'start' : 'retry')) autoStarts++;
+      }
+    }, 500);
+  }
+  function gameState() {
+    return safe(function () {
+      var s = window.__AIT_RUN;
+      if (!s) return null;
+      var keep = ['state', 'step', 'score', 'runs', 'autoplay', 'checksum', 'checksumAt', 'frames', 'avgMs', 'p50Ms', 'p95Ms',
+        'p99Ms', 'maxMs', 'longFrames', 'heavy', 'stage', 'stageLoads', 'stageLoadMsMax', 'stageErrors', 'bodies', 'particles',
+        'buildings', 'screenW', 'screenH', 'errorCount', 'bgmPlaying'];
+      var o = {};
+      for (var i = 0; i < keep.length; i++) if (keep[i] in s) o[keep[i]] = s[keep[i]];
+      o.autoStarts = autoStarts;
+      return o;
+    }, null);
+  }
+
+  // ---- 자동 전송 + 다음 회차 ----
+  var uploadState = REPORT_URL ? 'wait' : 'off';
+  function upload(final) {
+    if (!REPORT_URL) return;
+    var body;
+    try {
+      body = JSON.stringify({ build: LABEL, buildInfo: BUILD, final: final, sentAt: new Date().toISOString(), current: snapshot() });
+    } catch (e) { return; }
+    var tries = 0;
+    var send = function () {
+      tries++;
+      // text/plain 이면 CORS 단순 요청이라 preflight 가 없다.
+      safe(function () {
+        fetch(REPORT_URL, { method: 'POST', mode: 'cors', keepalive: body.length < 60000, headers: { 'Content-Type': 'text/plain' }, body: body })
+          .then(function (r) {
+            if (!r.ok) throw new Error('http ' + r.status);
+            if (final) { uploadState = 'sent'; refreshLabel(); }
+          })
+          .catch(function () {
+            if (tries < 5) setTimeout(send, 1500 * tries);
+            else if (final) { uploadState = 'fail'; refreshLabel(); }
+          });
+      });
+    };
+    send();
+  }
+  function onRunDone() {
+    upload(true);
+    if (run.seq >= AUTO_RUNS) return;
+    // 전송이 끝나거나 실패로 확정될 때까지 기다린 뒤 새로고침한다(최대 15초).
+    var waited = 0;
+    var t = setInterval(function () {
+      waited += 500;
+      if (uploadState === 'sent' || uploadState === 'fail' || uploadState === 'off' || waited >= 15000) {
+        clearInterval(t);
+        safe(function () { location.reload(); });
+      }
+    }, 500);
+  }
+
   function snapshot() {
     var out = {
       id: run.id, at: run.at, state: run.state, elapsedMs: r1(now()),
+      session: run.session, seq: run.seq, kind: run.kind,
       timeOrigin: safe(function () { return Math.round(performance.timeOrigin); }, null),
       nav: collectNav(),
       ttff: r1(run.ttff), overlayHidden: r1(run.overlayHidden), firstVisible: r1(run.firstVisible),
@@ -313,7 +413,8 @@
         sinceFirstDrawMs: frameT0 === null ? null : r1(lastTs - frameT0),
         hiddenSkips: hiddenSkips
       },
-      longtask: longtask ? { count: longtask.count, totalMs: r1(longtask.totalMs), maxMs: r1(longtask.maxMs) } : null
+      longtask: longtask ? { count: longtask.count, totalMs: r1(longtask.totalMs), maxMs: r1(longtask.maxMs) } : null,
+      game: gameState()
     };
     return out;
   }
@@ -377,7 +478,16 @@
     for (var i = 0; i < st.runs.length; i++) if (st.runs[i].id === run.id) found = true;
     return found ? c : c + 1;
   }
-  function baseLabel() { return '📋 복사 (' + storedCount() + ')'; }
+  function progress() {
+    if (run.state === 'done') {
+      if (run.seq < AUTO_RUNS) return '⏭ ' + run.seq + '/' + AUTO_RUNS + ' 다음 회차';
+      return uploadState === 'sent' ? '✅ ' + AUTO_RUNS + '/' + AUTO_RUNS + ' 전송 완료' :
+        uploadState === 'fail' ? '⚠️ 전송 실패' : '✅ ' + AUTO_RUNS + '/' + AUTO_RUNS + ' 완료';
+    }
+    var sec = frameT0 === null || lastTs === null ? 0 : Math.floor((lastTs - frameT0) / 1000);
+    return '⏱ ' + run.seq + '/' + AUTO_RUNS + ' · ' + Math.min(sec, (PHASE_A_MS + PHASE_B_MS) / 1000) + 's';
+  }
+  function baseLabel() { return progress() + ' · 📋 ' + storedCount(); }
   function refreshLabel() { if (btn && !labelTimer) btn.textContent = baseLabel(); }
   function flash(text) {
     if (!btn) return;
@@ -497,4 +607,5 @@
 
   // 부팅 중 앱이 죽어도 마지막 값이 남도록 주기 저장(가볍게 3초).
   setInterval(function () { if (!frameDone) persist(); }, 3000);
+  setInterval(refreshLabel, 1000);
 })();

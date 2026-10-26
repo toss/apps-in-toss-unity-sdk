@@ -5,22 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  find-my-way: '>=8.2.2'
-  ip: '>=2.0.1'
   '@babel/core': '>=7.29.6 <8'
-  '@fastify/middie': '>=9.3.2 <10'
-  '@fastify/static': '>=10.1.2 <11'
-  '@emnapi/core': '>=1.11.3 <2'
-  '@emnapi/runtime': '>=1.11.3 <2'
   esbuild: '>=0.28.1'
-  fast-uri: '>=3.1.2 <4'
-  fast-xml-parser: '>=5.7.0 <6'
-  fastify: '>=5.8.3 <6'
-  shell-quote: '>=1.11.0 <2'
-  braces: '-'
-  sprintf-js: '-'
-  image-size: '-'
-  decode-uri-component: '-'
 
 importers:
 

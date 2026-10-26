@@ -21,46 +21,13 @@ minimumReleaseAgeExclude:
   - '@granite-js/*'
 
 # transitive 의존성 보안/호환 고정 (구 package.json#pnpm.overrides에서 이전).
+# @apps-in-toss/framework를 걷어내면서 granite 빌드 툴체인(fastify·mpack·jest·metro 등)이
+# 트리에서 빠져, 그쪽만 겨냥하던 항목은 정리했다. 남은 둘은 지금 트리에 실제로 있다.
 overrides:
-  find-my-way: '>=8.2.2'
-  ip: '>=2.0.1'
-  # dependabot 취약점 대응(패치 존재분). granite 빌드 툴체인의 전이 의존이며
-  # SDK 산출물에 배포되지 않는다. 예기치 않은 상위 major 점프 차단 위해 캡.
+  # dependabot 취약점 대응(패치 존재분). @apps-in-toss/web-framework → cli → jscodeshift의
+  # 전이 의존이며 SDK 산출물에 배포되지 않는다. 예기치 않은 상위 major 점프 차단 위해 캡.
   '@babel/core': '>=7.29.6 <8'
-  '@fastify/middie': '>=9.3.2 <10'
-  # GHSA-83w8-p2f5-377r(경로순회) / GHSA-8pvw-jcv7-9cmj(인가 우회). @granite-js/mpack이
-  # 7.0.1을 정확 핀하지만 fastify·@fastify/middie와 동일하게 override로 덮는다. mpack은
-  # web-framework 1.x 픽스처의 전이 devDependency일 뿐이고 런타임 코드가 실행되지 않는다
-  # (multi-version 테스트는 .d.ts 타입 선언만 파싱).
-  '@fastify/static': '>=10.1.2 <11'
-  # 프리릴리스 유입 차단. @napi-rs/wasm-runtime@1.2.0이 peerDependencies로
-  # '^2.0.0-alpha.3'을 명시 요구하는데, 레지스트리에 emnapi 2.x 안정판이 아직 없어
-  # 그 범위의 유일한 매치가 alpha.3다. vite(rolldown 백엔드) → rolldown·oxc-transform의
-  # wasm32-wasi optional 바인딩 경로로 알파가 트리에 들어온다.
-  # peer 선언을 의도적으로 무시하는 override지만, 해당 바인딩은 cpu/os 필터로 실제
-  # 설치되지 않는 optional 경로이고 실사용처(oxc-transform·vite)는 1.11.3으로 정상 동작한다.
-  '@emnapi/core': '>=1.11.3 <2'
-  '@emnapi/runtime': '>=1.11.3 <2'
   esbuild: '>=0.28.1'
-  fast-uri: '>=3.1.2 <4'
-  fast-xml-parser: '>=5.7.0 <6'
-  fastify: '>=5.8.3 <6'
-  # GHSA(명령 인젝션) 대응. 패치는 1.11.0부터이고, @react-native-community/cli-tools@11.3.7이
-  # 취약한 1.10.0으로 해석돼 있었다. granite 빌드 툴체인(web-framework 1.x 픽스처)의 전이 의존이며
-  # SDK 산출물에 배포되지 않는다. API가 안정적인 CJS 패키지라 1.x 안에서만 올린다(상위 major 캡).
-  shell-quote: '>=1.11.0 <2'
-  # 아래 넷은 버전을 올리는 대신 트리에서 제거한다('-'). 넷 다 @apps-in-toss/* 패키지의
-  # 빌드·테스트 툴체인(jest, metro, @granite-js/mpack, @react-navigation)으로만 들어오고,
-  # 생성기는 그 패키지들의 .d.ts만 ts-morph로 파싱할 뿐 JS를 실행하지 않는다.
-  #  - braces(<=3.0.3, 패치 없음), sprintf-js(<=1.1.3, 패치 없음): jest 경유.
-  #  - image-size(패치 2.0.3): 소비자(metro, mpack)가 require('image-size')(buf)로 호출하는데
-  #    2.x CJS는 객체를 내보내 깨지고, 1.x에는 패치가 없다.
-  #  - decode-uri-component(패치 0.5.0): 0.5.0은 ESM 전용이라 query-string@7의 require()가 깨진다.
-  # 생성기가 이 패키지들의 런타임 코드를 실행하게 되면 이 항목을 다시 검토한다.
-  braces: '-'
-  sprintf-js: '-'
-  image-size: '-'
-  decode-uri-component: '-'
 
 # pnpm v11은 의존성의 build script(postinstall 등)를 기본 차단하고, 승인/무시 결정이 없으면
 # 설치 자체를 실패시킨다(ERR_PNPM_IGNORED_BUILDS — 예: @sentry/cli·@swc/core·esbuild·protobufjs).

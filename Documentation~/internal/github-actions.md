@@ -279,11 +279,11 @@ actionlint는 내장 shellcheck를 끄고 돌립니다. 그래서 워크플로 Y
 
 ### SDK 버전 기준 파일
 
-SDK·web-framework·동반 패키지·`@apps-in-toss/framework`·pnpm 버전의 기준은 `.github/sdk-versions.json`입니다. `.github/scripts/sdk-update/sync-sdk-versions.cjs`가 이 값을 읽고 씁니다.
+SDK·web-framework·동반 패키지·pnpm 버전의 기준은 `.github/sdk-versions.json`입니다. `.github/scripts/sdk-update/sync-sdk-versions.cjs`가 이 값을 읽고 씁니다.
 
 | 모드 | 동작 |
 |------|------|
-| `resolve --version X.Y.Z` | npm에서 동반 패키지 버전을 정해 기준 파일을 갱신 (`fixed`와 pnpm은 그대로) |
+| `resolve --version X.Y.Z` | npm에서 동반 패키지 버전을 정해 기준 파일을 갱신 (pnpm은 그대로) |
 | `apply` | 기준 파일을 `package.json` 3개와 `PNPM_VERSION`에 기록 |
 | `check` | 어긋난 파일·키·값을 출력하고 exit 1 |
 

@@ -1,7 +1,13 @@
 name: E2E Tests
-run-name: "E2E Tests${{ inputs.sdk_version_override && format(' (SDK {0})', inputs.sdk_version_override) || '' }}${{ inputs.target_ref && format(' - {0}', inputs.target_ref) || '' }}"
+run-name: "E2E Tests${{ inputs.sdk_version_override && format(' (SDK {0})', inputs.sdk_version_override) || '' }}${{ inputs.target_ref && format(' - {0}', inputs.target_ref) || github.event.pull_request.number && format(' - PR #{0}', github.event.pull_request.number) || '' }}"
 
 on:
+  # 생성된 SDK 코드가 바뀐 PR. 생성 C#은 Unity로 컴파일해야만 검증되는데 validate.yml은
+  # 생성기 테스트까지만 돌린다. 30분+ 걸리는 무거운 잡이라 Runtime/SDK 변경에만 건다.
+  pull_request:
+    paths:
+      - 'Runtime/SDK/**'
+
   # 수동 실행
   workflow_dispatch:
     inputs:
@@ -68,6 +74,8 @@ jobs:
   # =====================================================
   setup:
     name: Setup
+    # self-hosted Unity runner에서 돌므로 포크 PR 코드는 실행하지 않는다.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     outputs:
@@ -81,7 +89,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TARGET_REF="${{ inputs.target_ref }}"
+          TARGET_REF="${{ inputs.target_ref || github.event.pull_request.number }}"
 
           if [ -z "$TARGET_REF" ]; then
             # 입력이 없으면 현재 브랜치 사용
@@ -474,7 +482,8 @@ jobs:
     name: Test Report Summary
     runs-on: ubuntu-latest
     needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows]
-    if: always()
+    # setup이 건너뛴 포크 PR에서는 보고할 결과가 없다.
+    if: always() && needs.setup.result != 'skipped'
 
     steps:
       - name: Checkout Repository

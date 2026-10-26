@@ -31,7 +31,6 @@ updates:
       default-days: 5
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
-      - dependency-name: "@apps-in-toss/framework"
       - dependency-name: "@apps-in-toss/web-analytics"
       - dependency-name: "pnpm"
 

@@ -339,11 +339,11 @@ export function discoverInstalledVersions(): string[] {
 }
 
 /**
- * FRAMEWORK_APIS(@apps-in-toss/framework 직접 파싱 API)가 도입된 최소 버전 (1.6.0 이상)
+ * FRAMEWORK_APIS(번들 index.d.ts 직접 파싱 API)를 web-framework가 자체 선언하는 버전 (3.x 이상)
  */
 export function hasFrameworkApis(version: string): boolean {
-  const [major, minor] = version.split('.').map(Number);
-  return major > 1 || (major === 1 && minor >= 6);
+  const [major] = version.split('.').map(Number);
+  return major >= 3;
 }
 
 /**

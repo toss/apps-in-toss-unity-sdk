@@ -29,7 +29,6 @@ const SSOT = {
     '@apps-in-toss/bridge-core': '2.10.9',
     '@apps-in-toss/devtools': '3.5.0',
   },
-  fixed: { '@apps-in-toss/framework': '1.6.0' },
   pnpm: '11.6.0',
 };
 
@@ -55,7 +54,6 @@ function makeRepo(overrides = {}) {
   writeJson(root, GEN, {
     name: 'gen',
     dependencies: {
-      '@apps-in-toss/framework': '1.6.0',
       '@apps-in-toss/web-analytics': '2.10.9',
       '@apps-in-toss/web-framework': '3.5.0',
       commander: '15.0.0',
@@ -238,16 +236,6 @@ test('apply 가 정렬된 섹션에 빠진 필수 키를 넣으면 알파벳 순
   assert.ok(keys.includes('@apps-in-toss/web-analytics'));
 });
 
-test('fixed 항목(@apps-in-toss/framework)도 어긋나면 check 가 잡는다', () => {
-  const root = makeRepo();
-  const gen = readJson(root, GEN);
-  gen.dependencies['@apps-in-toss/framework'] = '1.7.0';
-  writeJson(root, GEN, gen);
-  const mismatches = sync.collectMismatches(root, SSOT);
-  assert.equal(mismatches.length, 1);
-  assert.equal(mismatches[0].ssotKey, 'fixed["@apps-in-toss/framework"]');
-});
-
 test('기준 파일의 sdkVersion 과 webFramework 가 다르면 형식 오류로 본다', () => {
   const errors = sync.validateSsot({ ...SSOT, sdkVersion: '3.6.0' });
   assert.equal(errors.length, 1);
@@ -290,7 +278,6 @@ test('resolve: 같은 번호가 있는 패키지는 그 번호, 없으면 latest
     '@apps-in-toss/bridge-core': '3.8.0',
     '@apps-in-toss/devtools': '3.8.0',
   });
-  assert.deepEqual(next.fixed, SSOT.fixed);
   assert.equal(next.pnpm, SSOT.pnpm);
   assert.deepEqual(readJson(root, sync.SSOT_REL), next);
 });

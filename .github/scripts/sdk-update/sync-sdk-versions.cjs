@@ -11,7 +11,7 @@
  *       목표 web-framework 버전을 받아 npm 에서 동반 패키지 버전을 결정하고 기준 파일을 갱신한다.
  *       동반 패키지는 "같은 번호가 npm 에 있으면 그 번호, 없으면 latest" 규칙을 따른다
  *       (3.0 부터 web-framework 와 자매 패키지는 lockstep publish 가 아니다).
- *       기준 파일의 "fixed" 항목(@apps-in-toss/framework 등 수동 핀)과 pnpm 은 건드리지 않는다.
+ *       기준 파일의 pnpm 은 건드리지 않는다.
  *   apply
  *       기준 파일을 읽어 모든 대상 파일에 쓴다. 선택(optional) 대상 키는 이미 있을 때만 갱신한다
  *       (직접 핀이 제거돼도 phantom 키를 다시 만들지 않는다).
@@ -44,7 +44,6 @@ const WEB_FRAMEWORK = '@apps-in-toss/web-framework';
 const WEB_ANALYTICS = '@apps-in-toss/web-analytics';
 const BRIDGE_CORE = '@apps-in-toss/bridge-core';
 const DEVTOOLS = '@apps-in-toss/devtools';
-const FRAMEWORK = '@apps-in-toss/framework';
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const PNPM_CONST = /(public const string PNPM_VERSION = ")([^"]*)(";)/;
@@ -55,7 +54,7 @@ const PNPM_CONST = /(public const string PNPM_VERSION = ")([^"]*)(";)/;
 
 /**
  * 기준 파일의 값이 쓰이는 모든 위치.
- *   ssot:     기준 파일 안의 위치 (kind: sdk | webFramework | companion | fixed | pnpm)
+ *   ssot:     기준 파일 안의 위치 (kind: sdk | webFramework | companion | pnpm)
  *   file:     저장소 루트 기준 대상 파일
  *   section:  package.json 의 섹션 (dependencies / devDependencies). 생략하면 최상위 키
  *   key:      섹션 안의 키
@@ -68,7 +67,6 @@ const JSON_SITES = [
 
   { ssot: { kind: 'webFramework' }, file: GENERATOR_PKG, section: 'dependencies', key: WEB_FRAMEWORK },
   { ssot: { kind: 'companion', name: WEB_ANALYTICS }, file: GENERATOR_PKG, section: 'dependencies', key: WEB_ANALYTICS },
-  { ssot: { kind: 'fixed', name: FRAMEWORK }, file: GENERATOR_PKG, section: 'dependencies', key: FRAMEWORK },
   { ssot: { kind: 'pnpm' }, file: GENERATOR_PKG, key: 'packageManager', format: (v) => `pnpm@${v}` },
 
   { ssot: { kind: 'webFramework' }, file: BUILDCONFIG_PKG, section: 'dependencies', key: WEB_FRAMEWORK },
@@ -113,14 +111,12 @@ function validateSsot(ssot) {
   for (const key of ['sdkVersion', 'webFramework', 'pnpm']) {
     if (!isVersion(ssot[key])) errors.push(`${key} 는 X.Y.Z 형식이어야 합니다 (현재: ${JSON.stringify(ssot[key])})`);
   }
-  for (const group of ['companions', 'fixed']) {
-    const entries = ssot[group];
-    if (entries === null || typeof entries !== 'object' || Array.isArray(entries)) {
-      errors.push(`${group} 는 {패키지명: 버전} 객체여야 합니다`);
-      continue;
-    }
-    for (const [name, v] of Object.entries(entries)) {
-      if (!isVersion(v)) errors.push(`${group}["${name}"] 는 X.Y.Z 형식이어야 합니다 (현재: ${JSON.stringify(v)})`);
+  const companions = ssot.companions;
+  if (companions === null || typeof companions !== 'object' || Array.isArray(companions)) {
+    errors.push('companions 는 {패키지명: 버전} 객체여야 합니다');
+  } else {
+    for (const [name, v] of Object.entries(companions)) {
+      if (!isVersion(v)) errors.push(`companions["${name}"] 는 X.Y.Z 형식이어야 합니다 (현재: ${JSON.stringify(v)})`);
     }
   }
   if (isVersion(ssot.sdkVersion) && isVersion(ssot.webFramework) && ssot.sdkVersion !== ssot.webFramework) {
@@ -128,12 +124,9 @@ function validateSsot(ssot) {
   }
 
   // 기준 파일의 항목은 반드시 쓰이는 곳이 있어야 한다. 이름만 있고 대상이 없으면 조용히 무시된다.
-  for (const group of ['companions', 'fixed']) {
-    const kind = group === 'companions' ? 'companion' : 'fixed';
-    for (const name of Object.keys(ssot[group] || {})) {
-      if (!JSON_SITES.some((s) => s.ssot.kind === kind && s.ssot.name === name)) {
-        errors.push(`${group}["${name}"] 를 쓰는 대상 파일이 ${SCRIPT_REL} 에 정의돼 있지 않습니다`);
-      }
+  for (const name of Object.keys(ssot.companions || {})) {
+    if (!JSON_SITES.some((s) => s.ssot.kind === 'companion' && s.ssot.name === name)) {
+      errors.push(`companions["${name}"] 를 쓰는 대상 파일이 ${SCRIPT_REL} 에 정의돼 있지 않습니다`);
     }
   }
   return errors;
@@ -147,7 +140,6 @@ function ssotValue(ssot, site) {
     case 'webFramework': raw = ssot.webFramework; break;
     case 'pnpm': raw = ssot.pnpm; break;
     case 'companion': raw = (ssot.companions || {})[name]; break;
-    case 'fixed': raw = (ssot.fixed || {})[name]; break;
     default: throw new Error(`알 수 없는 kind: ${kind}`);
   }
   return site.format ? site.format(raw) : raw;
@@ -159,8 +151,7 @@ function ssotLabel(site) {
     case 'sdk': return 'sdkVersion';
     case 'webFramework': return 'webFramework';
     case 'pnpm': return 'pnpm';
-    case 'companion': return `companions["${name}"]`;
-    default: return `fixed["${name}"]`;
+    default: return `companions["${name}"]`;
   }
 }
 

@@ -24,6 +24,16 @@ namespace AppsInToss
         AgreementRejected
     }
 
+    public enum IapProductListItemRenewalCycle
+    {
+        [EnumMember(Value = "WEEKLY")]
+        WEEKLY,
+        [EnumMember(Value = "MONTHLY")]
+        MONTHLY,
+        [EnumMember(Value = "YEARLY")]
+        YEARLY
+    }
+
     /// <summary>
     /// Result type for GetAnonymousKey (Discriminated Union)
     /// Success: GetAnonymousKeySuccessResponse | Error: ERROR
@@ -224,6 +234,15 @@ namespace AppsInToss
     public class IapProductListItem
     {
         [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("renewalCycle")]
+        public IapProductListItemRenewalCycle? RenewalCycle; // optional
+        [Preserve]
+        [JsonProperty("offers")]
+        public Offer[] Offers; // optional
+        [Preserve]
         [JsonProperty("sku")]
         public string Sku;
         [Preserve]
@@ -238,6 +257,28 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("description")]
         public string Description;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class Offer
+    {
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("offerId")]
+        public string OfferId;
+        [Preserve]
+        [JsonProperty("period")]
+        public string Period;
+        [Preserve]
+        [JsonProperty("displayAmount")]
+        public string DisplayAmount; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

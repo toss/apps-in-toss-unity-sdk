@@ -129,9 +129,6 @@ export async function typeCheckBridgeCode(
           '@apps-in-toss/web-framework': [
             resolvePackagePath('@apps-in-toss/web-framework'),
           ],
-          '@apps-in-toss/framework': [
-            resolvePackagePath('@apps-in-toss/framework'),
-          ],
           '@apps-in-toss/web-analytics': [
             resolvePackagePath('@apps-in-toss/web-analytics'),
           ],

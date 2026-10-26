@@ -173,9 +173,9 @@ ${functions}
           seenNamespaces.add(api.namespace);
         }
       } else if (api.isTopLevelExport) {
-        // Top-level export API (framework 패키지에서 직접 export)
+        // Top-level export API (web-framework에서 직접 export)
         if (!seenTopLevelApis.has(api.originalName)) {
-          imports.push(`import type { ${api.originalName} } from '@apps-in-toss/framework';`);
+          imports.push(`import type { ${api.originalName} } from '@apps-in-toss/web-framework';`);
           seenTopLevelApis.add(api.originalName);
         }
       } else if (!api.isEventSubscription) {
@@ -224,7 +224,7 @@ ${functions}
   }
 
   /**
-   * window top-level 타입 생성 (framework 패키지에서 직접 export되는 API)
+   * window top-level 타입 생성 (web-framework에서 직접 export되는 top-level API)
    */
   private generateWindowTopLevelType(apis: ParsedAPI[]): string {
     const members: string[] = [];

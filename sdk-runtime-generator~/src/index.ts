@@ -42,8 +42,7 @@ function generateUnityGUID(): string {
  *
  * 이 필터는 **@apps-in-toss/web-framework에서 import 될** API에 한해, 그 심볼이 실제
  * 타깃 web-framework의 public export 집합에 있는지 확인하고 없으면 제거한다.
- * - @apps-in-toss/framework(isTopLevelExport) / @apps-in-toss/web-analytics 소속 API는
- *   web-framework export와 무관하므로 게이트 대상이 아니다.
+ * - isTopLevelExport(FRAMEWORK_APIS) / @apps-in-toss/web-analytics 소속 API는 게이트 대상이 아니다.
  * - export 집합 계산 실패 시(빈 집합) 필터를 적용하지 않는다(fail-open) — 정상 동작하는
  *   기존 버전 생성이 빈 집합 때문에 전부 제거되는 사고를 방지.
  *
@@ -58,7 +57,7 @@ function filterToWebFrameworkExports(apis: ParsedAPI[], parser: TypeScriptParser
 
   const skipped: string[] = [];
   const kept = apis.filter(api => {
-    // @apps-in-toss/framework 소속(top-level export)은 framework에서 import → 게이트 제외
+    // top-level export(FRAMEWORK_APIS)는 번들에서 직접 파싱 → 게이트 제외
     if (api.isTopLevelExport) return true;
     // web-framework가 아닌 패키지(web-analytics)에서 import → 게이트 제외
     if (getApiImportSource(api) !== '@apps-in-toss/web-framework') return true;
@@ -361,17 +360,17 @@ async function generate(options: {
       if (parsedFrameworkApiCount > 0) {
         // 일부만 파싱됨 → 비정상 (부분 파싱은 버그)
         console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 일부 파싱 실패: ${missingFrameworkApis.join(', ')}`));
-        console.error(picocolors.yellow(`   findFrameworkPath()가 올바른 버전을 찾고 있는지 확인하세요.`));
-        console.error(picocolors.yellow(`   현재 framework 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
+        console.error(picocolors.yellow(`   web-framework 번들 index.d.ts에 해당 API 선언이 모두 있는지 확인하세요.`));
+        console.error(picocolors.yellow(`   현재 번들 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
         process.exit(1);
       } else if (!parser.frameworkDtsPath) {
-        // framework .d.ts를 못 찾았으면 API가 없는지조차 알 수 없다. 스킵하면 AIT.LoadFullScreenAd 등이
+        // 번들 .d.ts를 못 찾았으면 API가 없는지조차 알 수 없다. 스킵하면 AIT.LoadFullScreenAd 등이
         // 조용히 빠져 Unity 컴파일에서야 CS0117로 드러나므로 여기서 멈춘다.
-        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS를 파싱할 framework .d.ts를 찾지 못했습니다: ${missingFrameworkApis.join(', ')}`));
-        console.error(picocolors.yellow(`   node_modules/@apps-in-toss/framework 설치와 package.json 선언 버전을 확인하세요.`));
+        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS를 파싱할 web-framework 번들 index.d.ts를 찾지 못했습니다: ${missingFrameworkApis.join(', ')}`));
+        console.error(picocolors.yellow(`   node_modules/@apps-in-toss/web-framework/dist/index.d.ts 존재를 확인하세요.`));
         process.exit(1);
       } else {
-        // framework .d.ts는 찾았지만 API가 모두 없음 → 이 버전에 해당 API 없음 (정상)
+        // 번들 .d.ts는 찾았지만 API가 모두 없음 → 이 버전에 해당 API 없음 (정상)
         console.log(picocolors.yellow(`⚠️  FRAMEWORK_APIS 스킵: ${missingFrameworkApis.join(', ')} (이 web-framework 버전에 해당 API 없음)`));
       }
     }
@@ -394,8 +393,8 @@ async function generate(options: {
     console.log(picocolors.cyan('\n📦 타입 정의 파싱 중...'));
     const typeDefinitions = await parser.parseTypeDefinitions();
 
-    // @apps-in-toss/framework 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
-    // framework 패키지가 없으면 스킵 (v1.5.x에는 해당 API 없음)
+    // web-framework 번들의 FRAMEWORK_APIS 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
+    // 번들 .d.ts가 없으면 스킵
     const frameworkTypeDefinitions = parser.frameworkDtsPath
       ? parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS, parser.frameworkDtsPath)
       : [];

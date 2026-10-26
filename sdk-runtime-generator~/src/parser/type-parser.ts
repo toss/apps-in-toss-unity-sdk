@@ -715,8 +715,8 @@ export function parseTypeMembers(members: any[]): any[] {
           } else {
             parsedType = { name: propTypeText, kind: 'object', raw: propTypeText };
           }
-        } else if (propTypeText.includes('|') && propTypeText.includes("'")) {
-          // 문자열 리터럴 union: 'light' | 'dark'
+        } else if (/^(['"])[^'"]*\1(\s*\|\s*(['"])[^'"]*\3)*$/.test(propTypeText)) {
+          // 문자열 리터럴 또는 리터럴 union: 'light' | "dark" | "CONSUMABLE"
           // C#에서는 string으로 매핑 (enum은 상위 레벨에서 처리)
           parsedType = { name: 'string', kind: 'primitive', raw: propTypeText };
         } else {

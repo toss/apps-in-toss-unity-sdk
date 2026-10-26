@@ -240,7 +240,8 @@ export class CSharpTypeGenerator {
           if (!this.tracker.inlineEnums.has(enumName)) {
             this.tracker.inlineEnums.set(enumName, enumValues);
           }
-          type = enumName;
+          // optional enum은 nullable로 둔다: 값이 없을 때 첫 멤버(0)로 기본값이 잡히는 오류 방지
+          type = prop.optional ? `${enumName}?` : enumName;
         }
         // 콜백(함수 타입)의 첫 번째 파라미터가 인라인 익명 객체 리터럴인 경우
         // object로 뭉개지지 않도록 명명 클래스(...Param)를 참조하도록 치환한다.

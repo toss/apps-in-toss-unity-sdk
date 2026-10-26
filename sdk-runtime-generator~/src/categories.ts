@@ -317,8 +317,8 @@ export function resolveApiCategory(
 }
 
 /**
- * @apps-in-toss/framework 패키지에서 직접 파싱해야 하는 API 목록
- * 이 API들은 web-framework에서 re-export되지 않음
+ * web-framework 번들 index.d.ts에서 직접 파싱해야 하는 API 목록
+ * 이 API들은 web-bridge 파일별 .d.ts에 없고 3.x 번들에만 선언됨
  */
 export const FRAMEWORK_APIS: string[] = [
   'loadFullScreenAd',

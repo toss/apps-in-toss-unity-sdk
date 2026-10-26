@@ -11,7 +11,7 @@
 # 제외해도 보안 이득이 미미하고 프레임워크 릴리스마다 CI만 깨진다.
 # 주의: regen-lockfiles.yml은 CLI 플래그로 이미 세 스코프를 제외한다. 이 파일도 동일하게 맞춰
 #       validate/changelog 잡의 install(이 workspace를 읽음)과 lockfile 재생성 정책을 정합화한다.
-#       (예: @toss/tds-react-native 가 granite/framework 전이 의존으로 딸려오므로 @toss/* 필요.)
+#       (@apps-in-toss/framework 제거 후 granite 전이 의존은 사라졌지만 @toss/* 예외는 보수적으로 유지한다.)
 # 격리 기간도 regen-lockfiles.yml(7200분=5일)과 맞춘다. 이 값이 없으면 update.yml·release.yml 등의
 # `pnpm update`가 기본값(1일)으로 해석해, regen이라면 걸렀을 1~5일 된 서드파티 버전이 lockfile에 들어간다.
 minimumReleaseAge: 7200

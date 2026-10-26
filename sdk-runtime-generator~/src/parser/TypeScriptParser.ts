@@ -54,7 +54,7 @@ export class TypeScriptParser {
 
     // 의존성 타입 해결: ts-morph의 module resolution으로 자동 처리
     // node_modules 파일을 수동 추가하지 않음 (순환 참조, 불필요한 API 파싱 방지)
-    // native-modules의 비-export 타입은 parseNativeModulesType()으로 별도 처리
+    // web-framework 번들의 비-export 타입은 parseNativeModulesType()으로 별도 처리
   }
 
   /**
@@ -139,7 +139,7 @@ export class TypeScriptParser {
   }
 
   /**
-   * framework .d.ts 경로를 한 번 resolve하고 캐시
+   * web-framework 번들 .d.ts 경로(FRAMEWORK_APIS 파싱용)를 한 번 resolve하고 캐시
    */
   get frameworkDtsPath(): string | undefined {
     if (this._frameworkDtsPath === undefined) {
@@ -149,23 +149,23 @@ export class TypeScriptParser {
   }
 
   /**
-   * native-modules에서 특정 타입 정의 파싱 (on-demand)
+   * web-framework 번들에서 특정 타입 정의 파싱 (on-demand)
    * 순환 참조로 인한 스택 오버플로우를 방지하기 위해 별도 메서드로 분리
    */
   parseNativeModulesType(typeName: string): ParsedTypeDefinition | null {
-    return parseNativeModulesType(typeName);
+    return parseNativeModulesType(typeName, this.webFrameworkPath);
   }
 
   /**
-   * @apps-in-toss/framework에서 특정 API 파싱 (loadFullScreenAd, showFullScreenAd 등)
-   * 이 API들은 web-framework에서 re-export되지 않으므로 직접 파싱
+   * web-framework 번들에서 특정 API 파싱 (loadFullScreenAd, showFullScreenAd 등)
+   * 이 API들은 web-bridge 파일별 .d.ts에 없으므로 번들 index.d.ts에서 직접 파싱
    */
   parseFrameworkAPIs(apiNames: string[], frameworkDtsPath?: string): ParsedAPI[] {
     return parseFrameworkAPIs(apiNames, frameworkDtsPath, this.webFrameworkPath);
   }
 
   /**
-   * @apps-in-toss/framework에서 특정 API 관련 타입 정의 파싱
+   * web-framework 번들에서 특정 API 관련 타입 정의 파싱
    * (LoadFullScreenAdEvent, ShowFullScreenAdEvent, Options 등)
    */
   parseFrameworkTypeDefinitions(apiNames: string[], frameworkDtsPath?: string): ParsedTypeDefinition[] {
@@ -174,7 +174,7 @@ export class TypeScriptParser {
 
   /**
    * 모든 API 파싱
-   * @param frameworkApiNames @apps-in-toss/framework에서 직접 파싱할 API 이름 목록 (선택)
+   * @param frameworkApiNames web-framework 번들에서 직접 파싱할 API 이름 목록 (선택)
    * @param options parseNamespaceObjects/detectGlobalFunctions에 그대로 전달됨
    *   (includeDeprecatedGlobals, includeWrappedCallables). 기본값 둘 다 false로, C#
    *   생성 경로(index.ts)를 포함한 기존 모든 호출부의 동작을 그대로 보존한다 —
@@ -226,7 +226,7 @@ export class TypeScriptParser {
       apis.push(...bundledAPIs);
     }
 
-    // @apps-in-toss/framework에서 추가 API 파싱 (web-framework에서 re-export되지 않는 API)
+    // web-framework 번들에서 추가 API 파싱 (FRAMEWORK_APIS)
     if (frameworkApiNames && frameworkApiNames.length > 0) {
       const frameworkAPIs = this.parseFrameworkAPIs(frameworkApiNames, this.frameworkDtsPath);
       if (frameworkAPIs.length > 0) {
@@ -260,7 +260,7 @@ export class TypeScriptParser {
       const fileName = path.basename(filePath);
 
       // web-bridge의 index, bridge, types 파일은 스킵
-      // native-modules는 parseNativeModulesType으로 별도 처리
+      // 번들 타입은 parseNativeModulesType으로 별도 처리
       if (fileName === 'index.d.ts' || fileName === 'index.d.cts' || fileName === 'types.d.ts' || fileName === 'bridge.d.ts') {
         continue;
       }

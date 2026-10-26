@@ -82,6 +82,43 @@
     return mx;
   }
 
+  // ---- 프레임당 CPU 작업 시간 ----
+  // iOS WebKit 은 rAF 를 60Hz 로 묶어 프레임 간격만으로는 빌드 간 CPU 차이가 가려진다. Unity 메인 루프는 rAF 콜백에서
+  // 돌므로, 콜백 실행 시간을 같은 vsync 타임스탬프끼리 합쳐 프레임당 작업 시간으로 잰다(HUD 자신의 콜백은 뺀다).
+  var workA = [], workB = [], workTitle = [], workPlay = [];
+  var curFrameTs = null, curFrameWork = 0;
+  var hudCb = null;
+  function flushWork() {
+    if (curFrameTs === null || frameT0 === null || frameDone) return;
+    var rel = curFrameTs - frameT0;
+    if (rel < 0) return;
+    if (rel <= PHASE_A_MS) workA.push(curFrameWork);
+    else if (rel <= PHASE_A_MS + PHASE_B_MS) {
+      workB.push(curFrameWork);
+      var gs = window.__AIT_RUN && window.__AIT_RUN.state;
+      if (gs === 'playing') workPlay.push(curFrameWork); else workTitle.push(curFrameWork);
+    }
+  }
+  safe(function () {
+    var origRaf = window.requestAnimationFrame;
+    if (typeof origRaf !== 'function') return;
+    window.requestAnimationFrame = function (cb) {
+      if (cb === hudCb || typeof cb !== 'function') return origRaf.call(window, cb);
+      return origRaf.call(window, function (ts) {
+        if (ts !== curFrameTs) { flushWork(); curFrameTs = ts; curFrameWork = 0; }
+        var t0 = performance.now();
+        try { return cb(ts); } finally { curFrameWork += performance.now() - t0; }
+      });
+    };
+  });
+
+  // ---- wasm 힙 추이 (5초 간격) ----
+  var heapSamples = [];
+  setInterval(function () {
+    if (frameDone || frameT0 === null) return;
+    heapSamples.push([Math.round((performance.now() - frameT0) / 1000), wasmHeapMax()]);
+  }, 5000);
+
   // ---- 프레임 수집 ----
   var frameStarted = false;
   var frameT0 = null;
@@ -125,6 +162,7 @@
     }
     window.requestAnimationFrame(onFrame);
   }
+  hudCb = onFrame;
 
   function startFrames() {
     if (frameStarted) return;
@@ -387,11 +425,12 @@
   function onRunDone() {
     upload(true);
     if (run.seq >= AUTO_RUNS) return;
+    banner(run.seq + '/' + AUTO_RUNS + ' 회차 측정 완료\n결과를 보내고 ' + (run.seq + 1) + '회차를 위해 새로고침합니다');
     // 전송이 끝나거나 실패로 확정될 때까지 기다린 뒤 새로고침한다(최대 15초).
     var waited = 0;
     var t = setInterval(function () {
       waited += 500;
-      if (uploadState === 'sent' || uploadState === 'fail' || uploadState === 'off' || waited >= 15000) {
+      if (waited >= 2500 && (uploadState === 'sent' || uploadState === 'fail' || uploadState === 'off' || waited >= 15000)) {
         clearInterval(t);
         safe(function () { location.reload(); });
       }
@@ -413,6 +452,8 @@
         sinceFirstDrawMs: frameT0 === null ? null : r1(lastTs - frameT0),
         hiddenSkips: hiddenSkips
       },
+      work: { a: stats(workA), b: stats(workB), title: stats(workTitle), play: stats(workPlay) },
+      heapSamples: heapSamples,
       longtask: longtask ? { count: longtask.count, totalMs: r1(longtask.totalMs), maxMs: r1(longtask.maxMs) } : null,
       game: gameState()
     };
@@ -494,6 +535,16 @@
     btn.textContent = text;
     if (labelTimer) clearTimeout(labelTimer);
     labelTimer = setTimeout(function () { labelTimer = null; refreshLabel(); }, 1600);
+  }
+
+  function banner(text) {
+    safe(function () {
+      var b = document.createElement('div');
+      b.textContent = text;
+      b.style.cssText = 'position:fixed;left:8%;right:8%;top:40%;z-index:2147483647;padding:20px;border-radius:14px;' +
+        'background:rgba(0,0,0,.82);color:#fff;font:600 17px/1.5 sans-serif;text-align:center;white-space:pre-line;pointer-events:none;';
+      document.body.appendChild(b);
+    });
   }
 
   function legacyCopy(text) {

@@ -6,16 +6,16 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __partnerAddAccessoryButton_Internal: function(args_0, callbackId, typeName) {
+    __partnerAddAccessoryButton_Internal: function(params, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] partnerAddAccessoryButton called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] partnerAddAccessoryButton raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] partnerAddAccessoryButton raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.partner.addAccessoryButton(JSON.parse(UTF8ToString(args_0)));
+            var promiseResult = window.AppsInToss.partner.addAccessoryButton(JSON.parse(UTF8ToString(params)));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] addAccessoryButton returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

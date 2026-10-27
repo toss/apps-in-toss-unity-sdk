@@ -89,7 +89,7 @@ export function prepareParameters(api: ParsedAPI): PreparedParameter[] {
           param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
         const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
         const apiName = capitalize(api.name);
-        const paramName = capitalize(param.name);
+        const paramName = capitalize(param.typeNameSeed ?? param.name);
         paramType = `${apiName}${paramName}`;
       }
 

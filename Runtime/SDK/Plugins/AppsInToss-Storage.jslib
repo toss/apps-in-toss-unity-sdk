@@ -6,16 +6,16 @@
  */
 
 mergeInto(LibraryManager.library, {
-    __StorageGetItem_Internal: function(args_0, callbackId, typeName) {
+    __StorageGetItem_Internal: function(key, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItem called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItem raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItem raw param key:', UTF8ToString(key));
 
         try {
-            var promiseResult = window.AppsInToss.Storage.getItem(UTF8ToString(args_0));
+            var promiseResult = window.AppsInToss.Storage.getItem(UTF8ToString(key));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItem returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -60,17 +60,17 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __StorageSetItem_Internal: function(args_0, args_1, callbackId, typeName) {
+    __StorageSetItem_Internal: function(key, value, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageSetItem called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageSetItem raw param args_0:', UTF8ToString(args_0));
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageSetItem raw param args_1:', UTF8ToString(args_1));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageSetItem raw param key:', UTF8ToString(key));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageSetItem raw param value:', UTF8ToString(value));
 
         try {
-            var promiseResult = window.AppsInToss.Storage.setItem(UTF8ToString(args_0), UTF8ToString(args_1));
+            var promiseResult = window.AppsInToss.Storage.setItem(UTF8ToString(key), UTF8ToString(value));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] setItem returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -115,16 +115,16 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __StorageRemoveItem_Internal: function(args_0, callbackId, typeName) {
+    __StorageRemoveItem_Internal: function(key, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem raw param key:', UTF8ToString(key));
 
         try {
-            var promiseResult = window.AppsInToss.Storage.removeItem(UTF8ToString(args_0));
+            var promiseResult = window.AppsInToss.Storage.removeItem(UTF8ToString(key));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

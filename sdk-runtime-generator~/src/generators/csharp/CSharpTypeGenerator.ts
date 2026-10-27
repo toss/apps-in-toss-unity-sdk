@@ -401,17 +401,17 @@ ${JSON_EXTENSION_DATA_FIELD}
               if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
                 typeName = rawTypeName;
               } else {
-                typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
+                typeName = `${capitalize(api.name)}${capitalize(param.typeNameSeed ?? param.name)}`;
               }
             } else {
-              typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
+              typeName = `${capitalize(api.name)}${capitalize(param.typeNameSeed ?? param.name)}`;
             }
           } else if (param.optional) {
             // optional named 객체 파라미터는 API-스코프 합성명을 쓴다(예: AttachOptions →
             // TossAdsAttachOptions). prepareParameters의 시그니처 합성과 반드시 일치시켜
             // 클래스명과 참조가 어긋나 CS0246이 나지 않도록 한다. (자세한 근거는
             // api-data-preparer.ts prepareParameters 주석 참조.)
-            typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
+            typeName = `${capitalize(api.name)}${capitalize(param.typeNameSeed ?? param.name)}`;
           }
 
           // cleanName을 키로 사용 (중복 방지)

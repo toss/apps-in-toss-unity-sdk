@@ -31,7 +31,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<string> StorageGetItem(string args_0, int timeoutMs = 0)
+        public static async Awaitable<string> StorageGetItem(string key, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<string>();
@@ -41,7 +41,7 @@ namespace AppsInToss
                 timeoutMs,
                 "StorageGetItem"
             );
-            __StorageGetItem_Internal(args_0, callbackId, "string");
+            __StorageGetItem_Internal(key, callbackId, "string");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -51,7 +51,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<string> StorageGetItem(string args_0, int timeoutMs = 0)
+        public static async Task<string> StorageGetItem(string key, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<string>();
@@ -61,7 +61,7 @@ namespace AppsInToss
                 timeoutMs,
                 "StorageGetItem"
             );
-            __StorageGetItem_Internal(args_0, callbackId, "string");
+            __StorageGetItem_Internal(key, callbackId, "string");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -74,7 +74,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __StorageGetItem_Internal(string args_0, string callbackId, string typeName);
+        private static extern void __StorageGetItem_Internal(string key, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 모바일 앱의 로컬 저장소에 문자열 데이터를 저장해요. 주로 앱이 종료되었다가 다시 시작해도 데이터가 유지되어야 하는 경우에 사용해요.
@@ -85,7 +85,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageSetItem(string args_0, string args_1, int timeoutMs = 0)
+        public static async Awaitable StorageSetItem(string key, string value, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
@@ -95,7 +95,7 @@ namespace AppsInToss
                 timeoutMs,
                 "StorageSetItem"
             );
-            __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
+            __StorageSetItem_Internal(key, value, callbackId, "void");
             await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -105,7 +105,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task StorageSetItem(string args_0, string args_1, int timeoutMs = 0)
+        public static async Task StorageSetItem(string key, string value, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
@@ -115,7 +115,7 @@ namespace AppsInToss
                 timeoutMs,
                 "StorageSetItem"
             );
-            __StorageSetItem_Internal(args_0, args_1, callbackId, "void");
+            __StorageSetItem_Internal(key, value, callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -128,7 +128,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __StorageSetItem_Internal(string args_0, string args_1, string callbackId, string typeName);
+        private static extern void __StorageSetItem_Internal(string key, string value, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 모바일 앱의 로컬 저장소에서 특정 키에 해당하는 아이템을 삭제해요.
@@ -139,7 +139,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Storage")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable StorageRemoveItem(string args_0, int timeoutMs = 0)
+        public static async Awaitable StorageRemoveItem(string key, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
@@ -149,7 +149,7 @@ namespace AppsInToss
                 timeoutMs,
                 "StorageRemoveItem"
             );
-            __StorageRemoveItem_Internal(args_0, callbackId, "void");
+            __StorageRemoveItem_Internal(key, callbackId, "void");
             await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -159,7 +159,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task StorageRemoveItem(string args_0, int timeoutMs = 0)
+        public static async Task StorageRemoveItem(string key, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
@@ -169,7 +169,7 @@ namespace AppsInToss
                 timeoutMs,
                 "StorageRemoveItem"
             );
-            __StorageRemoveItem_Internal(args_0, callbackId, "void");
+            __StorageRemoveItem_Internal(key, callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -182,7 +182,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __StorageRemoveItem_Internal(string args_0, string callbackId, string typeName);
+        private static extern void __StorageRemoveItem_Internal(string key, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 모바일 앱의 로컬 저장소의 모든 아이템을 삭제해요.

@@ -30,7 +30,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Partner")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable PartnerAddAccessoryButton(AddAccessoryButtonOptions args_0, int timeoutMs = 0)
+        public static async Awaitable PartnerAddAccessoryButton(AddAccessoryButtonOptions paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource();
@@ -40,7 +40,7 @@ namespace AppsInToss
                 timeoutMs,
                 "PartnerAddAccessoryButton"
             );
-            __partnerAddAccessoryButton_Internal(AITJsonSettings.Serialize(args_0), callbackId, "void");
+            __partnerAddAccessoryButton_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -50,7 +50,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task PartnerAddAccessoryButton(AddAccessoryButtonOptions args_0, int timeoutMs = 0)
+        public static async Task PartnerAddAccessoryButton(AddAccessoryButtonOptions paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<object>();
@@ -60,7 +60,7 @@ namespace AppsInToss
                 timeoutMs,
                 "PartnerAddAccessoryButton"
             );
-            __partnerAddAccessoryButton_Internal(AITJsonSettings.Serialize(args_0), callbackId, "void");
+            __partnerAddAccessoryButton_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -73,7 +73,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __partnerAddAccessoryButton_Internal(string args_0, string callbackId, string typeName);
+        private static extern void __partnerAddAccessoryButton_Internal(string paramsParam, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 상단 네비게이션의 악세서리 버튼을 제거해요.

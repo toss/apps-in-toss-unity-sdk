@@ -62,6 +62,13 @@ export interface NestedCallback {
  */
 export interface ParsedParameter {
   name: string;
+  /**
+   * 익명 객체 파라미터의 C# 타입명(`<Api><Param>`) 합성에 쓰는 이름.
+   * 파라미터 이름 복구(param-name-recovery.ts)로 `args_0`이 실제 이름으로 바뀌어도
+   * 이미 공개된 타입명(예: IAPCompleteProductGrantArgs_0)이 바뀌지 않도록, 복구 전
+   * 이름을 보존한다. 없으면 name을 그대로 쓴다.
+   */
+  typeNameSeed?: string;
   type: ParsedType;
   optional: boolean;
   description?: string;

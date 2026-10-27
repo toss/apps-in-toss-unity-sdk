@@ -294,7 +294,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0, int timeoutMs = 0)
+        public static async Awaitable<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<bool>();
@@ -304,7 +304,7 @@ namespace AppsInToss
                 timeoutMs,
                 "IAPCompleteProductGrant"
             );
-            __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args), callbackId, "bool");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -314,7 +314,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args_0, int timeoutMs = 0)
+        public static async Task<bool> IAPCompleteProductGrant(IAPCompleteProductGrantArgs_0 args, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<bool>();
@@ -324,7 +324,7 @@ namespace AppsInToss
                 timeoutMs,
                 "IAPCompleteProductGrant"
             );
-            __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args_0), callbackId, "bool");
+            __IAPCompleteProductGrant_Internal(AITJsonSettings.Serialize(args), callbackId, "bool");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -337,7 +337,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __IAPCompleteProductGrant_Internal(string args_0, string callbackId, string typeName);
+        private static extern void __IAPCompleteProductGrant_Internal(string args, string callbackId, string typeName);
 #endif
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -345,7 +345,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0, int timeoutMs = 0)
+        public static async Awaitable<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<IapSubscriptionInfoResponse>();
@@ -355,7 +355,7 @@ namespace AppsInToss
                 timeoutMs,
                 "IAPGetSubscriptionInfo"
             );
-            __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args_0), callbackId, "IapSubscriptionInfoResponse");
+            __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args), callbackId, "IapSubscriptionInfoResponse");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -365,7 +365,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args_0, int timeoutMs = 0)
+        public static async Task<IapSubscriptionInfoResponse> IAPGetSubscriptionInfo(IAPGetSubscriptionInfoArgs_0 args, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<IapSubscriptionInfoResponse>();
@@ -375,7 +375,7 @@ namespace AppsInToss
                 timeoutMs,
                 "IAPGetSubscriptionInfo"
             );
-            __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args_0), callbackId, "IapSubscriptionInfoResponse");
+            __IAPGetSubscriptionInfo_Internal(AITJsonSettings.Serialize(args), callbackId, "IapSubscriptionInfoResponse");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -388,7 +388,7 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __IAPGetSubscriptionInfo_Internal(string args_0, string callbackId, string typeName);
+        private static extern void __IAPGetSubscriptionInfo_Internal(string args, string callbackId, string typeName);
 #endif
     }
 }

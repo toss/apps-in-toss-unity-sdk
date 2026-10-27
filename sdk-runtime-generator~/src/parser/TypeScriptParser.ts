@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ParsedAPI, ParsedTypeDefinition } from '../types.js';
 import { parseSourceFile } from './api-parser.js';
 import { parseNamespaceObjects } from './namespace-parser.js';
+import { recoverParameterNames } from './param-name-recovery.js';
 import { parseTypeDefinitionsFromFile } from './type-definition-parser.js';
 import { findFrameworkPath, parseFrameworkAPIs, parseFrameworkTypeDefinitions, parseNativeModulesType } from './framework-parser.js';
 import { resolvePackagePath } from '../generators/jslib-compiler.js';
@@ -243,6 +244,11 @@ export class TypeScriptParser {
         }
       }
       apis.push(...frameworkAPIs);
+    }
+
+    // web-bridge .d.ts의 `args_N` 파라미터 이름을 번들 선언의 실제 이름으로 복구
+    if (this.bundledNamespaceSource) {
+      recoverParameterNames(apis, this.bundledNamespaceSource);
     }
 
     return apis;

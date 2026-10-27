@@ -7,7 +7,7 @@ using UnityEngine;
 namespace AppsInToss.Editor.Package
 {
     /// <summary>
-    /// BuildConfig 파일(package.json, tsconfig.json, vite.config.ts, granite.config.ts)
+    /// BuildConfig 파일(package.json, tsconfig.json, vite.config.ts, apps-in-toss.config.ts)
     /// 병합 및 플레이스홀더 치환.
     /// 프로젝트의 BuildConfig 폴더가 있으면 SDK 기본값 위에 덮어쓴다.
     /// </summary>
@@ -439,79 +439,16 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// granite.config.ts를 마커 기반으로 업데이트합니다.
-        /// SDK 템플릿을 기반으로 하고, USER_CONFIG 영역만 프로젝트에서 보존합니다.
-        /// import 문, SDK_GENERATED는 항상 SDK 최신 버전으로 갱신됩니다.
-        /// </summary>
-        internal static void UpdateGraniteConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
-        {
-            string projectFile = Path.Combine(projectBuildConfigPath, "granite.config.ts");
-            string sdkFile = Path.Combine(sdkBuildConfigPath, "granite.config.ts");
-            string destFile = Path.Combine(destPath, "granite.config.ts");
-
-            // SDK 템플릿 로드
-            string sdkTemplate = File.ReadAllText(sdkFile);
-
-            // 플레이스홀더 치환
-            Debug.Log("[AIT] granite.config.ts placeholder 치환 중...");
-            // 템플릿에서 작은따옴표 문자열 리터럴 자리에 놓이는 토큰은 이스케이프해서 넣는다
-            // (값의 작은따옴표 하나가 granite.config.ts 전체를 깨뜨려 vite/esbuild 파싱 오류가 난다).
-            // %AIT_PERMISSIONS% / %AIT_NAVIGATION_BAR% / 불리언·포트는 값 자체가 코드로 전개되는
-            // 자리라 이스케이프하면 안 된다 — 아래 구분을 유지할 것.
-            string finalContent = sdkTemplate
-                .Replace("%AIT_APP_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.appName))
-                .Replace("%AIT_DISPLAY_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.displayName))
-                .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor))
-                .Replace("%AIT_ICON_URL%", AITJsStringEscaper.EscapeSingleQuoted(config.iconUrl))
-                .Replace("%AIT_BRIDGE_COLOR_MODE%", AITJsStringEscaper.EscapeSingleQuoted(config.GetBridgeColorModeString()))
-                .Replace("%AIT_WEBVIEW_TYPE%", AITJsStringEscaper.EscapeSingleQuoted(config.GetWebViewTypeString()))
-                .Replace("%AIT_NAVIGATION_BAR%", config.GetNavigationBarJson())
-                .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
-                .Replace("%AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%", config.mediaPlaybackRequiresUserAction.ToString().ToLower())
-                .Replace("%AIT_VITE_HOST%", AITJsStringEscaper.EscapeSingleQuoted(config.viteHost))
-                // 템플릿에서 parseInt(process.env.AIT_VITE_PORT || '%AIT_VITE_PORT%', 10) 로 따옴표 안에 놓인다.
-                .Replace("%AIT_VITE_PORT%", AITJsStringEscaper.EscapeSingleQuoted(config.vitePort.ToString()))
-                .Replace("%AIT_PERMISSIONS%", config.GetPermissionsJson())
-                .Replace("%AIT_OUTDIR%", AITJsStringEscaper.EscapeSingleQuoted(config.outdir));
-
-            // 프로젝트 파일이 있으면 USER_CONFIG 영역만 보존
-            if (File.Exists(projectFile))
-            {
-                string projectContent = File.ReadAllText(projectFile);
-
-                // 프로젝트의 USER_CONFIG 영역 추출
-                string projectUserConfig = AITTemplateManager.ExtractMarkerSection(projectContent, "USER_CONFIG");
-                if (projectUserConfig != null)
-                {
-                    // SDK 템플릿의 USER_CONFIG를 프로젝트의 USER_CONFIG로 교체
-                    finalContent = AITTemplateManager.ReplaceMarkerSection(finalContent, "USER_CONFIG", projectUserConfig);
-                    Debug.Log("[AIT]   ✓ granite.config.ts (SDK 최신 버전 + USER_CONFIG 보존)");
-                }
-                else
-                {
-                    Debug.Log("[AIT]   ✓ granite.config.ts (SDK 최신 버전으로 갱신)");
-                }
-            }
-            else
-            {
-                Debug.Log("[AIT]   ✓ granite.config.ts (SDK에서 생성)");
-            }
-
-            File.WriteAllText(destFile, finalContent, new System.Text.UTF8Encoding(false));
-        }
-
-        /// <summary>
         /// apps-in-toss.config.ts를 마커 기반으로 업데이트합니다 (web-framework 3.x ait build 전용).
         /// SDK 템플릿을 기반으로 하고, USER_CONFIG 영역만 프로젝트에서 보존합니다.
-        /// 2.x granite build는 이 파일을 탐색하지 않으므로(granite.config.ts만 사용) 항상 emit해도
-        /// stable 빌드에 영향이 없다. SDK 템플릿이 없으면(구버전 SDK) no-op.
+        /// SDK 템플릿이 없으면 no-op.
         /// </summary>
         internal static void UpdateAppsInTossConfig(string projectBuildConfigPath, string sdkBuildConfigPath, string destPath, AITEditorScriptObject config)
         {
             string sdkFile = Path.Combine(sdkBuildConfigPath, "apps-in-toss.config.ts");
             string destFile = Path.Combine(destPath, "apps-in-toss.config.ts");
 
-            // 구버전 SDK 템플릿에는 apps-in-toss.config.ts가 없을 수 있음 → 스킵 (granite.config.ts만으로 2.x 동작)
+            // SDK 템플릿에 apps-in-toss.config.ts가 없으면 스킵
             if (!File.Exists(sdkFile))
             {
                 return;
@@ -520,10 +457,10 @@ namespace AppsInToss.Editor.Package
             // SDK 템플릿 로드
             string sdkTemplate = File.ReadAllText(sdkFile);
 
-            // 플레이스홀더 치환 (granite.config.ts와 동일한 값 소스 사용 — 권한 JSON 형식이 3.x와 호환)
+            // 플레이스홀더 치환
             Debug.Log("[AIT] apps-in-toss.config.ts placeholder 치환 중...");
             string finalContent = sdkTemplate
-                // granite.config.ts 와 동일 — 문자열 리터럴 자리만 이스케이프한다.
+                // 문자열 리터럴 자리만 이스케이프한다.
                 .Replace("%AIT_APP_NAME%", AITJsStringEscaper.EscapeSingleQuoted(config.appName))
                 .Replace("%AIT_PRIMARY_COLOR%", AITJsStringEscaper.EscapeSingleQuoted(config.primaryColor))
                 .Replace("%AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%", config.allowsInlineMediaPlayback.ToString().ToLower())
@@ -533,10 +470,10 @@ namespace AppsInToss.Editor.Package
 
             // USER_CONFIG 결정:
             //  1) 프로젝트 apps-in-toss.config.ts의 USER_CONFIG에 실제 내용이 있으면 그대로 보존
-            //  2) 비어 있으면 granite.config.ts의 USER_CONFIG를 자동 이전 (2.x→3.x 마이그레이션, 수동 포팅 제거)
+            //  2) 비어 있으면 프로젝트에 남아 있는 구 granite.config.ts의 USER_CONFIG를 자동 이전 (2.x→3.x 마이그레이션, 수동 포팅 제거)
             //  3) 둘 다 비어 있으면 SDK 템플릿 기본값(빈 USER_CONFIG) 유지
             // SDK 관리 필드(brand/appName/permissions/webView 등)는 apps-in-toss.config.ts의 병합 로직에서
-            // 항상 SDK 값이 우선하므로, granite USER_CONFIG를 그대로 가져와도 안전하다.
+            // 항상 SDK 값이 우선하므로, 구 granite.config.ts의 USER_CONFIG를 그대로 가져와도 안전하다.
             string resolvedUserConfig = ResolveUserConfigForAppsInToss(projectBuildConfigPath);
             if (resolvedUserConfig != null)
             {
@@ -573,6 +510,13 @@ namespace AppsInToss.Editor.Package
             string graniteFile = Path.Combine(projectBuildConfigPath, "granite.config.ts");
             if (File.Exists(graniteFile))
             {
+                // SDK는 더 이상 granite.config.ts를 제공하지 않고 3.x 빌드도 읽지 않는다 (ait-build로 복사하지 않음).
+                // 사용자 프로젝트에 남은 파일은 건드리지 않고, 무시된다는 사실만 알린다.
+                AITLog.Warning(
+                    "[AIT]   ⚠ BuildConfig~/granite.config.ts는 web-framework 3.x에서 사용되지 않아 빌드에 반영되지 않습니다. " +
+                    "필요한 설정은 apps-in-toss.config.ts의 USER_CONFIG로 옮기고 이 파일은 삭제하세요.",
+                    sentryCapture: false);
+
                 string section = AITTemplateManager.ExtractMarkerSection(File.ReadAllText(graniteFile), "USER_CONFIG");
                 if (section != null && !IsEffectivelyEmptyUserConfig(section))
                 {

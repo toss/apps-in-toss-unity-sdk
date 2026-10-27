@@ -74,7 +74,7 @@ Tests~/E2E/
     ├── e2e-full-pipeline.test.js     Level 2 본 테스트 (진입 파일, 등록 순서와 공유 세션 훅)
     ├── lib/                          공용 헬퍼(서버 부팅·Unity 로드/재로드·PlayerPrefs 프로브·결과 집계)
     ├── suites/
-    │   ├── build-and-dev.suite.js    빌드 검증 + AIT dev 서버 테스트 등록 모듈 (1, 2, 2b)
+    │   ├── build-and-dev.suite.js    빌드 검증 + AIT dev 서버 테스트 등록 모듈 (1, 2)
     │   ├── production-core.suite.js  프로덕션 서버 + 런타임 검증 테스트 등록 모듈 (3, 3-1, 4, 5)
     │   ├── tutorials.suite.js        Build Customization 튜토리얼 테스트 등록 모듈 (6, 7)
     │   ├── nested-callback.suite.js  중첩 콜백 동기 왕복 테스트 등록 모듈 (8)

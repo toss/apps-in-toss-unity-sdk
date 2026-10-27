@@ -4,7 +4,7 @@
 //  AITJsStringEscaper.EscapeSingleQuoted 를 거쳐 치환된다"는 계약의 소스 텍스트 가드.
 //
 // 이 계약이 깨지면 사용자가 표시 이름에 아포스트로피 하나만 넣어도
-// (예: "Dave's Adventure") index.html 의 인라인 <script> 블록이나 granite.config.ts 가
+// (예: "Dave's Adventure") index.html 의 인라인 <script> 블록이나 apps-in-toss.config.ts 가
 // 문법 오류로 죽는다. UI 는 이 필드들에 아무 문자 제한을 두지 않고,
 // AITBuildValidator.FindUnsubstitutedPlaceholders 는 미치환 토큰 잔존만 검사하므로
 // (치환은 성공하고 문법만 깨지는) 이 케이스를 아무도 잡아주지 않는다.
@@ -51,7 +51,6 @@ public class AITJsStringEscaperWiringTests
             TemplatePaths = new[]
             {
                 "WebGLTemplates/AITTemplate/BuildConfig~/vite.config.ts",
-                "WebGLTemplates/AITTemplate/BuildConfig~/granite.config.ts",
                 "WebGLTemplates/AITTemplate/BuildConfig~/apps-in-toss.config.ts",
             },
         },

@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// BuildConfigMergerTemplateTests.cs - UpdateViteConfig / UpdateGraniteConfig 단위 테스트
+// BuildConfigMergerTemplateTests.cs - UpdateViteConfig 단위 테스트
 // Level 0: 임시 파일 fixture로 플레이스홀더 치환 + USER_CONFIG 마커 보존 검증
 // -----------------------------------------------------------------------
 
@@ -123,89 +123,6 @@ namespace AppsInToss.Editor.Package.Tests
             string merged = File.ReadAllText(Path.Combine(_destDir, "vite.config.ts"));
             StringAssert.Contains("// SDK only", merged);
             StringAssert.Contains("test.example.com", merged);
-        }
-
-        // ----- UpdateGraniteConfig -----
-
-        [Test]
-        public void UpdateGraniteConfig_SubstitutesAllPlaceholders_WhenAllPresent()
-        {
-            // UpdateGraniteConfig가 치환하는 13개 플레이스홀더 전부 포함
-            File.WriteAllText(Path.Combine(_sdkDir, "granite.config.ts"),
-                "export default {\n" +
-                "  name: '%AIT_APP_NAME%',\n" +
-                "  display: '%AIT_DISPLAY_NAME%',\n" +
-                "  color: '%AIT_PRIMARY_COLOR%',\n" +
-                "  icon: '%AIT_ICON_URL%',\n" +
-                "  bridgeColorMode: '%AIT_BRIDGE_COLOR_MODE%',\n" +
-                "  webViewType: '%AIT_WEBVIEW_TYPE%',\n" +
-                "  navigationBar: %AIT_NAVIGATION_BAR%,\n" +
-                "  allowsInlineMediaPlayback: %AIT_ALLOWS_INLINE_MEDIA_PLAYBACK%,\n" +
-                "  mediaPlaybackRequiresUserAction: %AIT_MEDIA_PLAYBACK_REQUIRES_USER_ACTION%,\n" +
-                "  viteHost: '%AIT_VITE_HOST%',\n" +
-                "  vitePort: %AIT_VITE_PORT%,\n" +
-                "  permissions: %AIT_PERMISSIONS%,\n" +
-                "  outdir: '%AIT_OUTDIR%'\n" +
-                "}");
-
-            BuildConfigMerger.UpdateGraniteConfig(_projectDir, _sdkDir, _destDir, _config);
-
-            string merged = File.ReadAllText(Path.Combine(_destDir, "granite.config.ts"));
-            StringAssert.Contains("test-app", merged);
-            StringAssert.Contains("Test App", merged);
-            StringAssert.Contains("#FF0000", merged);
-            StringAssert.Contains("https://example.com/icon.png", merged);
-            StringAssert.Contains("test.example.com", merged);
-            StringAssert.Contains("4242", merged);
-            StringAssert.Contains("test-dist", merged);
-            // webViewType 기본값(0=game) → navigationBar.transparentBackground emit
-            StringAssert.Contains("transparentBackground: true", merged);
-            // GetBridgeColorModeString/GetWebViewTypeString/GetPermissionsJson 호출 확인 — 결과 토큰이 사라지면 됨
-            Assert.IsFalse(Regex.IsMatch(merged, "%AIT_[A-Z_]+%"),
-                $"치환되지 않은 %AIT_*% 플레이스홀더가 남아있음:\n{merged}");
-        }
-
-        [Test]
-        public void UpdateGraniteConfig_PreservesProjectUserConfigSection_WhenMarkerPresent()
-        {
-            string sdkTemplate =
-                "// granite header\n" +
-                "//// USER_CONFIG_START ////\n" +
-                "// SDK granite user config\n" +
-                "//// USER_CONFIG_END ////\n" +
-                "// granite footer\n";
-            File.WriteAllText(Path.Combine(_sdkDir, "granite.config.ts"), sdkTemplate);
-
-            string projectContent =
-                "//// USER_CONFIG_START ////\n" +
-                "// USER GRANITE OVERRIDES\n" +
-                "//// USER_CONFIG_END ////\n";
-            File.WriteAllText(Path.Combine(_projectDir, "granite.config.ts"), projectContent);
-
-            BuildConfigMerger.UpdateGraniteConfig(_projectDir, _sdkDir, _destDir, _config);
-
-            string merged = File.ReadAllText(Path.Combine(_destDir, "granite.config.ts"));
-            StringAssert.Contains("USER GRANITE OVERRIDES", merged);
-            StringAssert.Contains("// granite header", merged);
-            StringAssert.Contains("// granite footer", merged);
-            Assert.IsFalse(merged.Contains("SDK granite user config"), "SDK 기본 USER_CONFIG가 교체되지 않음");
-        }
-
-        [Test]
-        public void UpdateGraniteConfig_FallsBackToSdkContent_WhenProjectFileMissing()
-        {
-            File.WriteAllText(Path.Combine(_sdkDir, "granite.config.ts"),
-                "// SDK granite only - app=%AIT_APP_NAME% color=%AIT_PRIMARY_COLOR% port=%AIT_VITE_PORT%");
-
-            BuildConfigMerger.UpdateGraniteConfig(_projectDir, _sdkDir, _destDir, _config);
-
-            string merged = File.ReadAllText(Path.Combine(_destDir, "granite.config.ts"));
-            StringAssert.Contains("// SDK granite only", merged);
-            StringAssert.Contains("test-app", merged);
-            StringAssert.Contains("#FF0000", merged);
-            StringAssert.Contains("4242", merged);
-            Assert.IsFalse(Regex.IsMatch(merged, "%AIT_[A-Z_]+%"),
-                "프로젝트 파일이 없을 때도 SDK 템플릿의 플레이스홀더는 모두 치환되어야 함");
         }
 
         // ----- GetNavigationBarJson -----

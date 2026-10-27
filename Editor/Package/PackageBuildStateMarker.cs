@@ -61,7 +61,7 @@ namespace AppsInToss.Editor.Package
         /// <summary>
         /// ait-build/ 직하에서 내용 해시로 추적하는 설정/스크립트/엔트리 파일 목록.
         /// package.json·pnpm-lock.yaml·pnpm-workspace.yaml은 설치될 web-framework
-        /// 버전(및 ait-patch-cli.mjs가 패치할 cli.js)을 고정하고, vite/granite/apps-in-toss
+        /// 버전(및 ait-patch-cli.mjs가 패치할 cli.js)을 고정하고, vite/apps-in-toss
         /// config·tsconfig는 빌드 동작 자체를 바꾸며, unity-bridge.ts는 번들에 포함되는 코드,
         /// ait-patch-cli.mjs는 빌드 직전 실행되는 패치 스크립트, index.html은 위 클래스 주석의
         /// 이유로 여기 포함된다. appName/version 등 Configuration 값은 이 파일들(특히
@@ -74,7 +74,6 @@ namespace AppsInToss.Editor.Package
             "pnpm-lock.yaml",
             "pnpm-workspace.yaml",
             "vite.config.ts",
-            "granite.config.ts",
             "apps-in-toss.config.ts",
             "tsconfig.json",
             "unity-bridge.ts",

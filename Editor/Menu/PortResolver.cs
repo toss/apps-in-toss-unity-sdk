@@ -315,19 +315,12 @@ namespace AppsInToss.Editor.Menu
         }
 
         /// <summary>
-        /// 서버 포트 설정 해석 및 충돌 검사.
-        /// skipGranitePortScan이 true면 granite 포트 가용성 검사를 건너뛴다
-        /// (web-framework 3.x vite 단독 모드 — granite 포트를 열지 않으므로, 8081 계열이
-        /// 다른 프로세스에 점유되어 있어도 서버 기동을 차단하면 안 된다).
+        /// 서버 포트 설정 해석 및 충돌 검사 (Vite 포트).
         /// </summary>
         internal static bool TryResolveServerPorts(
             AITEditorScriptObject config,
-            out string graniteHost, out int granitePort,
-            out string viteHost, out int vitePort,
-            bool skipGranitePortScan = false)
+            out string viteHost, out int vitePort)
         {
-            graniteHost = !string.IsNullOrEmpty(config.graniteHost) ? config.graniteHost : "0.0.0.0";
-            granitePort = config.granitePort > 0 ? config.granitePort : 8081;
             viteHost = !string.IsNullOrEmpty(config.viteHost) ? config.viteHost : "localhost";
             vitePort = config.vitePort > 0 ? config.vitePort : 5173;
 
@@ -344,23 +337,6 @@ namespace AppsInToss.Editor.Menu
                 {
                     AITLog.Error($"[AIT] 사용 가능한 포트를 찾을 수 없습니다 (시도: {vitePort}-{vitePort+9})", sentryCapture: false);
                     AITPlatformHelper.ShowInfoDialog("포트 오류", $"포트 {vitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
-                    return false;
-                }
-            }
-
-            // Granite 포트 충돌 확인 및 자동 탐지
-            if (!skipGranitePortScan && !IsPortAvailable(granitePort))
-            {
-                int availablePort = FindAvailablePort(granitePort);
-                if (availablePort > 0)
-                {
-                    Debug.Log($"[AIT] Granite 포트 {granitePort}가 사용 중, {availablePort} 사용");
-                    granitePort = availablePort;
-                }
-                else
-                {
-                    AITLog.Error($"[AIT] 사용 가능한 Granite 포트를 찾을 수 없습니다 (시도: {granitePort}-{granitePort+9})", sentryCapture: false);
-                    AITPlatformHelper.ShowInfoDialog("포트 오류", $"Granite 포트 {granitePort} 및 인근 포트가 모두 사용 중입니다.\n다른 포트를 Configuration에서 설정하거나, 사용 중인 프로세스를 종료하세요.", "확인");
                     return false;
                 }
             }

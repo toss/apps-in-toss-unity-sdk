@@ -72,9 +72,9 @@ Editor/
 ├── ErrorTracker/               Sentry 기반 Editor 에러 추적
 ├── IssueReport/                이슈 리포트 창
 ├── Menu/                       메뉴 액션 (Local Debug, 배포, 포트 해석)
-├── Package/                    granite·pnpm 실행과 설정 병합
+├── Package/                    vite·ait·pnpm 실행과 설정 병합
 │   ├── BuildConfigMerger.cs      플레이스홀더 치환과 사용자 파일 병합
-│   ├── GraniteBuildRunner.cs     granite 빌드 실행
+│   ├── GraniteBuildRunner.cs     vite build → ait build 실행
 │   ├── PnpmInstallStateMarker.cs 설치 스킵 마커
 │   ├── WebGLBuildCopier.cs             Unity WebGL 산출물을 ait-build 구조로 복사·가공 (partial: EarlyFetch/BuildFolder)
 │   ├── WebGLBuildCopier.EarlyFetch.cs  조기 fetch 스크립트 생성
@@ -93,8 +93,7 @@ WebGLTemplates/AITTemplate/
 ├── Runtime/
 │   └── ait-unity-metrics.js        웹 디버그 툴즈(vConsole)에 붙는 Unity Metrics 탭
 ├── TemplateData/             스타일과 이미지
-└── BuildConfig~/             Vite·granite 빌드 설정
-    ├── granite.config.ts
+└── BuildConfig~/             Vite·ait 빌드 설정
     ├── apps-in-toss.config.ts
     ├── vite.config.ts
     ├── unity-bridge.ts

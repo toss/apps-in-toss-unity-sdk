@@ -249,7 +249,7 @@ namespace AppsInToss.Editor.Package.Tests
             // 처음엔 존재하지 않던(=absent로 해시됨) 추적 대상 파일이 새로 생기는 경우도 감지되어야 함
             CreateValidBuiltState();
 
-            WriteFile("granite.config.ts", "export default {};\n");
+            WriteFile("tsconfig.json", "{}\n");
 
             Assert.IsFalse(PackageBuildStateMarker.ShouldSkipPackageBuild(_tempDir, out _));
         }

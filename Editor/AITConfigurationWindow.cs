@@ -215,16 +215,14 @@ namespace AppsInToss.Editor
             EditorGUILayout.LabelField("서버 설정", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical("box");
 
-            config.graniteHost = EditorGUILayout.TextField("Granite 호스트", config.graniteHost);
-            config.granitePort = EditorGUILayout.IntField("Granite 포트", config.granitePort);
             config.viteHost = EditorGUILayout.TextField("Vite 호스트", config.viteHost);
             config.vitePort = EditorGUILayout.IntField("Vite 포트", config.vitePort);
 
             EditorGUILayout.HelpBox(
-                "Granite (Metro) 서버와 Vite 서버 설정입니다.\n" +
-                "기본값: Granite 0.0.0.0:8081, Vite localhost:5173\n" +
+                "Vite 개발 서버 설정입니다.\n" +
+                "기본값: Vite localhost:5173\n" +
                 "브라우저는 Vite 포트로 열립니다.\n" +
-                "환경 변수: AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_HOST, AIT_VITE_PORT",
+                "환경 변수: AIT_VITE_HOST, AIT_VITE_PORT",
                 MessageType.Info
             );
 
@@ -291,7 +289,7 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.HelpBox(
                 "앱에서 사용할 권한을 선택하세요.\n" +
-                "선택한 권한은 granite.config.ts의 permissions에 반영됩니다.",
+                "선택한 권한은 apps-in-toss.config.ts의 permissions에 반영됩니다.",
                 MessageType.Info
             );
 

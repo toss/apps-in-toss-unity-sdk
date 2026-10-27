@@ -82,7 +82,7 @@ namespace AppsInToss.Editor
                            "2. 'Clean Build' 옵션 활성화 후 재빌드";
 
                 case AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED:
-                    return "빌드 산출물(index.html 또는 apps-in-toss.config.ts/granite.config.ts)의 필수 플레이스홀더가 치환되지 않았습니다.\n\n" +
+                    return "빌드 산출물(index.html 또는 apps-in-toss.config.ts)의 필수 플레이스홀더가 치환되지 않았습니다.\n\n" +
                            "이 상태로 배포하면 'createUnityInstance is not defined' 에러가 발생하거나 앱 설정(bundle.json)이 깨집니다.\n\n" +
                            "해결 방법:\n" +
                            "1. 'Clean Build' 옵션을 활성화하고 다시 빌드하세요.\n" +
@@ -92,14 +92,14 @@ namespace AppsInToss.Editor
                     return "granite build가 완료되었으나 dist 폴더가 생성되지 않았습니다.\n\n" +
                            "해결 방법:\n" +
                            "1. ait-build/ 폴더에서 수동으로 'npm run build' 실행하여 오류 확인\n" +
-                           "2. granite.config.ts의 플레이스홀더가 올바르게 치환되었는지 확인\n" +
+                           "2. apps-in-toss.config.ts의 플레이스홀더가 올바르게 치환되었는지 확인\n" +
                            "3. AIT > Clean 메뉴 실행 후 Clean Build 재시도";
 
                 case AITExportError.AIT_FILE_MISSING:
                     return ".ait 파일이 생성되지 않았습니다.\n\n" +
                            "해결 방법:\n" +
                            "1. ait-build/ 폴더(ait build CLI 버전에 따라 루트 또는 dist/ 하위)의 내용을 확인하세요\n" +
-                           "2. granite.config.ts 설정을 확인하세요\n" +
+                           "2. apps-in-toss.config.ts 설정을 확인하세요\n" +
                            "3. AIT > Clean 메뉴 실행 후 Clean Build 재시도";
 
                 default:
@@ -168,12 +168,12 @@ namespace AppsInToss.Editor
                     return "WebGL 빌드의 index.html 이 생성되지 않았습니다.\n" +
                            "WebGL 템플릿(AITTemplate) 설정이 올바른지 확인해주세요.";
                 case AITExportError.PLACEHOLDER_SUBSTITUTION_FAILED:
-                    return "빌드 산출물(index.html 또는 apps-in-toss.config.ts/granite.config.ts)의 필수 플레이스홀더가 치환되지 않은 채 저장되었습니다.\n" +
+                    return "빌드 산출물(index.html 또는 apps-in-toss.config.ts)의 필수 플레이스홀더가 치환되지 않은 채 저장되었습니다.\n" +
                            "이 상태로 배포하면 런타임에 'createUnityInstance is not defined' 오류가 발생하거나 앱 설정(bundle.json)이 깨집니다.\n" +
                            "Clean Build 옵션으로 재빌드해보세요.";
                 case AITExportError.DIST_FOLDER_MISSING:
                     return "granite 빌드가 완료되었지만 dist 폴더가 생성되지 않았습니다.\n" +
-                           "granite.config.ts 의 플레이스홀더가 올바르게 치환되었는지 확인해주세요.";
+                           "apps-in-toss.config.ts 의 플레이스홀더가 올바르게 치환되었는지 확인해주세요.";
                 case AITExportError.AIT_FILE_MISSING:
                     return "ait-build/ 폴더(ait build CLI 버전에 따라 루트 또는 dist/ 하위)에 .ait 파일이 생성되지 않았습니다.\n" +
                            "granite 빌드 설정을 확인한 뒤 Clean Build 로 재시도해주세요.";

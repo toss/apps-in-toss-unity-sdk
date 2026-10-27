@@ -120,6 +120,7 @@ logs/
 **/BuildConfig~/node_modules/
 # 샘플 프로젝트에 빌드 시 스캐폴드되는 SDK 템플릿 사본 (AITTemplateManager.UpdateConfigFileWithMarkers)
 Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/vite.config.ts
+# (구버전 SDK가 스캐폴드한 granite.config.ts 잔여 사본 — 현재는 생성되지 않음)
 Tests~/E2E/*UnityProject-*/Assets/WebGLTemplates/AITTemplate/BuildConfig~/granite.config.ts
 # 픽스처의 index.html — Init()이 탈 때마다 AITTemplateManager.MergeHtmlTemplates가 SDK 정본을
 # 베이스로 재작성하므로(AITTemplateManager.cs의 `result = sdkContent`) 추적하면 매번 diff가 난다.

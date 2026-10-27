@@ -1,7 +1,6 @@
 // @ts-check
 // 이 디렉터리 파일은 *.test.js 이름 금지(playwright 기본 testMatch에 잡힘)
 import { test, expect } from '@playwright/test';
-import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -18,7 +17,7 @@ import { applyMobileThrottling } from '../lib/unity.js';
 import { testResults } from '../lib/results.js';
 
 /**
- * 테스트 1, 2, 2b를 등록한다.
+ * 테스트 1, 2를 등록한다.
  * @param {{ devServer: { process: import('child_process').ChildProcess | null } }} ctx
  *   테스트 2가 띄우는 dev 서버 프로세스 핸들. 진입 파일의 외곽 afterAll이
  *   비상 정리(테스트가 중간에 실패해 killServerProcess를 못 탄 경우)에 참조한다.
@@ -83,16 +82,7 @@ export function registerBuildAndDevServerTests(ctx) {
       // package.json
       expect(fileExists(path.resolve(AIT_BUILD, 'package.json')), 'package.json should exist').toBe(true);
 
-      // granite.config.ts 플레이스홀더 (web-framework 2.x granite build 전용)
-      const graniteConfigPath = path.resolve(AIT_BUILD, 'granite.config.ts');
-      if (fileExists(graniteConfigPath)) {
-        const content = fs.readFileSync(graniteConfigPath, 'utf-8');
-        const placeholders = checkForPlaceholders(content);
-        expect(placeholders.length, 'Should have no unsubstituted placeholders in granite.config.ts').toBe(0);
-      }
-
       // apps-in-toss.config.ts 플레이스홀더 (web-framework 3.x ait build — cosmiconfig 탐색 대상)
-      // 3.x가 실제로 읽는 설정 파일. granite.config.ts만 검증하면 false green이 되므로 함께 검증한다.
       const appsInTossConfigPath = path.resolve(AIT_BUILD, 'apps-in-toss.config.ts');
       if (fileExists(appsInTossConfigPath)) {
         const content = fs.readFileSync(appsInTossConfigPath, 'utf-8');
@@ -379,79 +369,6 @@ export function registerBuildAndDevServerTests(ctx) {
     testResults.tests['2_dev_server'] = {
       passed: true,
       loadTimeMs: loadTime
-    };
-  });
-
-
-  // -------------------------------------------------------------------------
-  // Test 2b: SDK dev 서버 커맨드 스모크 (granite bin collision 회귀 방지)
-  // -------------------------------------------------------------------------
-  // Unity Editor의 Dev Server 메뉴는 vite가 아니라 web-framework의
-  // granite CLI 파일을 node로 직접 실행한다 (DevServerCommandResolver —
-  // node_modules/.bin/granite 이름 충돌 우회). test 2의 vite 경로는 이 커맨드를
-  // 전혀 거치지 않으므로, 실제 커맨드가 즉사하지 않고 리슨 포트를 여는지만
-  // 짧게 검증한다 (Unity 로드 검증은 test 2가 담당).
-  test('2b. SDK dev server command (granite bin direct) should boot', async () => {
-    test.setTimeout(90000);
-
-    expect(directoryExists(AIT_BUILD), 'ait-build/ should exist').toBe(true);
-
-    const wfPkgPath = path.resolve(AIT_BUILD, 'node_modules/@apps-in-toss/web-framework/package.json');
-    test.skip(!fs.existsSync(wfPkgPath), 'web-framework not installed in ait-build');
-
-    const wfPkg = JSON.parse(fs.readFileSync(wfPkgPath, 'utf8'));
-    const graniteBin = wfPkg.bin && wfPkg.bin.granite;
-    // 3.x: granite bin 없음 — Editor는 vite 경로를 쓰므로 test 2가 커버
-    test.skip(!graniteBin, 'web-framework has no granite bin (3.x) — vite path covered by test 2');
-
-    const binRel = path.join('node_modules/@apps-in-toss/web-framework', graniteBin.replace(/^\.\//, ''));
-    console.log(`🚀 Booting SDK dev command: node ${binRel} dev`);
-
-    // Editor 커맨드(pnpm exec -- node <bin> dev)와 동일한 실행 (pnpm exec는 PATH 추가뿐)
-    const child = spawn(process.execPath, [binRel, 'dev'], {
-      cwd: AIT_BUILD,
-      stdio: 'pipe',
-      env: { ...process.env, CI: 'true', NODE_OPTIONS: '' }
-    });
-
-    let output = '';
-    const seenPorts = new Set();
-    const result = await new Promise((resolve) => {
-      let settled = false;
-      const settle = (value) => {
-        if (!settled) {
-          settled = true;
-          resolve(value);
-        }
-      };
-      const onData = (data) => {
-        const clean = data.toString().replace(/\x1B\[[0-9;]*[mGKH]/g, '');
-        output += clean;
-        for (const m of clean.matchAll(/(?:localhost|0\.0\.0\.0|127\.0\.0\.1|\[::1?\]):(\d+)/g)) {
-          seenPorts.add(parseInt(m[1], 10));
-        }
-        if (seenPorts.size > 0) {
-          settle('listening');
-        }
-      };
-      child.stdout.on('data', onData);
-      child.stderr.on('data', onData);
-      child.on('exit', (code) => settle(`exited:${code}`));
-      setTimeout(() => settle('timeout'), 60000);
-    });
-
-    // 정리: 프로세스 트리 + 감지된 포트(Metro가 띄운 vite 자식 포함) + Metro 기본 포트
-    await killServerProcess(child, [...seenPorts, 8081]);
-
-    console.log(`SDK dev command result: ${result}, ports: ${[...seenPorts].join(',')}`);
-    expect(
-      result,
-      `SDK dev command should open a listen port, got: ${result}\n--- output tail ---\n${output.slice(-2000)}`
-    ).toBe('listening');
-
-    testResults.tests['2b_sdk_dev_command'] = {
-      passed: true,
-      ports: [...seenPorts]
     };
   });
 

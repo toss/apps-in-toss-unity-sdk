@@ -6,7 +6,7 @@ using UnityEngine;
 namespace AppsInToss.Editor.Package
 {
     /// <summary>
-    /// Granite / AIT 빌드 실행 (동기 & 비동기) + 실패 시 재시도.
+    /// AIT 빌드(vite build → ait build) 실행 (동기 & 비동기) + 실패 시 재시도.
     /// granite build 실패 시 node_modules 정리 후 pnpm install 재시도 경로로 위임.
     /// internal 멤버는 Editor/AssemblyInfo.cs 의 InternalsVisibleTo 를 통해 테스트 어셈블리에서 접근됩니다.
     /// </summary>
@@ -14,14 +14,14 @@ namespace AppsInToss.Editor.Package
     {
         /// <summary>
         /// granite build 실행 + 실패 시 1회 재시도 (동기)
-        /// ait build → granite build 순으로 시도합니다.
+        /// vite build → ait build 순으로 실행합니다.
         /// </summary>
         internal static AITConvertCore.AITExportError RunGraniteBuildSync(AITPackageBuilder.PackageContext ctx)
         {
             Debug.Log("[AIT] granite build 실행 중...");
             Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
 
-            var result = RunVersionedBuildSync(ctx, "ait build");
+            var result = Run3xBuildSync(ctx, "ait build");
             if (result == AITConvertCore.AITExportError.SUCCEED) return result;
             if (result == AITConvertCore.AITExportError.CANCELLED) return result;
 
@@ -35,7 +35,7 @@ namespace AppsInToss.Editor.Package
             if (installResult != AITConvertCore.AITExportError.SUCCEED) return installResult;
             PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(ctx.BuildProjectPath);
 
-            result = RunVersionedBuildSync(ctx, "ait build (재시도)");
+            result = Run3xBuildSync(ctx, "ait build (재시도)");
             if (result == AITConvertCore.AITExportError.SUCCEED)
             {
                 Debug.Log("[AIT] ✓ granite build 재시도 성공");
@@ -50,91 +50,57 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// ait build를 먼저 시도하고, 실패 시 granite build로 폴백합니다 (동기).
-        /// package.json scripts에 의존하지 않고 CLI를 직접 호출합니다.
-        /// </summary>
-        internal static AITConvertCore.AITExportError RunAitOrGraniteBuildSync(AITPackageBuilder.PackageContext ctx, string label)
-        {
-            Debug.Log($"[AIT] {label}: ait build 시도 중...");
-            var result = AITNpmRunner.RunNpmCommandWithCache(
-                ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
-                $"{label} (ait build)...", additionalEnvVars: ctx.UnityMetadataEnv);
-            if (result == AITConvertCore.AITExportError.SUCCEED) return result;
-            if (result == AITConvertCore.AITExportError.CANCELLED) return result;
-
-            Debug.Log($"[AIT] {label}: ait build 실패, granite build로 폴백합니다...");
-            return AITNpmRunner.RunNpmCommandWithCache(
-                ctx.BuildProjectPath, ctx.PnpmPath, "exec granite build", ctx.LocalCachePath,
-                $"{label} (granite build)...", additionalEnvVars: ctx.UnityMetadataEnv);
-        }
-
-        /// <summary>
         /// web-framework 3.x: vite build → dist/web 으로 빌드. (3.x ait build는 vite를 실행하지 않음)
         /// </summary>
         internal const string ViteOutDir = "dist/web";
 
         /// <summary>
         /// 설치될 @apps-in-toss/web-framework의 메이저 버전을 ait-build/package.json에서 파싱합니다.
-        /// 파싱 불가능한 모든 케이스(파일 없음, 파싱 실패, 비숫자 등)는 2를 반환해
-        /// 검증된 2.x(granite) 경로로 폴백합니다 (보수적 기본값 — stable 무회귀).
+        /// 파싱 불가능한 모든 케이스(파일 없음, 파싱 실패, 비숫자 등)는 0(알 수 없음)을 반환합니다.
+        /// 빌드 스킵 마커(PackageBuildStateMarker)가 메이저 변경 감지에 사용합니다.
         /// </summary>
         internal static int GetWebFrameworkMajor(string buildProjectPath)
         {
             try
             {
                 string pkgPath = Path.Combine(buildProjectPath, "package.json");
-                if (!File.Exists(pkgPath)) return 2;
+                if (!File.Exists(pkgPath)) return 0;
 
                 var pkg = MiniJson.Deserialize(File.ReadAllText(pkgPath)) as System.Collections.Generic.Dictionary<string, object>;
                 var deps = pkg != null && pkg.ContainsKey("dependencies")
                     ? pkg["dependencies"] as System.Collections.Generic.Dictionary<string, object>
                     : null;
-                if (deps == null || !deps.ContainsKey("@apps-in-toss/web-framework")) return 2;
+                if (deps == null || !deps.ContainsKey("@apps-in-toss/web-framework")) return 0;
 
                 string ver = (deps["@apps-in-toss/web-framework"] as string);
-                if (string.IsNullOrEmpty(ver)) return 2;
+                if (string.IsNullOrEmpty(ver)) return 0;
                 ver = ver.TrimStart('^', '~', '>', '=', 'v', ' ');
 
-                // 선행 숫자만 추출 (예: "3.0.0-beta.9d42c0b" → "3", "2.6.1" → "2")
+                // 선행 숫자만 추출 (예: "3.0.0-beta.9d42c0b" → "3", "4.0.1" → "4")
                 var sb = new System.Text.StringBuilder();
                 foreach (char c in ver)
                 {
                     if (char.IsDigit(c)) sb.Append(c);
                     else break;
                 }
-                if (sb.Length == 0) return 2;
+                if (sb.Length == 0) return 0;
                 return int.Parse(sb.ToString());
             }
             catch (Exception e)
             {
-                Debug.Log($"[AIT] web-framework 버전 파싱 실패 (2.x 경로로 폴백): {e.Message}");
-                return 2;
+                Debug.Log($"[AIT] web-framework 버전 파싱 실패 (알 수 없음으로 처리): {e.Message}");
+                return 0;
             }
-        }
-
-        /// <summary>
-        /// web-framework 버전에 따라 빌드 전략을 선택합니다 (동기).
-        /// - 3.x: vite build(→dist/web) → ait build (CLI가 vite를 실행하지 않으므로 2단계)
-        /// - 2.x: ait build → granite build 폴백 (기존 동작)
-        /// </summary>
-        internal static AITConvertCore.AITExportError RunVersionedBuildSync(AITPackageBuilder.PackageContext ctx, string label)
-        {
-            int major = GetWebFrameworkMajor(ctx.BuildProjectPath);
-            if (major >= 3)
-            {
-                return Run3xBuildSync(ctx, label);
-            }
-            return RunAitOrGraniteBuildSync(ctx, label);
         }
 
         /// <summary>
         /// web-framework 3.x 빌드 (동기): vite build(→dist/web) 후 ait build 패키징.
         /// 3.x ait build는 webBundleDir(=dist/web)만 패키징하고 vite를 실행하지 않으므로
-        /// vite를 먼저 직접 호출해야 한다. granite 폴백 없음(3.x엔 granite bin이 없음).
+        /// vite를 먼저 직접 호출해야 한다.
         /// </summary>
         internal static AITConvertCore.AITExportError Run3xBuildSync(AITPackageBuilder.PackageContext ctx, string label)
         {
-            Debug.Log($"[AIT] {label}: web-framework 3.x 감지 — vite build → ait build (2단계)");
+            Debug.Log($"[AIT] {label}: vite build → ait build (2단계)");
 
             var viteResult = AITNpmRunner.RunNpmCommandWithCache(
                 ctx.BuildProjectPath, ctx.PnpmPath, $"exec vite build --outDir {ViteOutDir}", ctx.LocalCachePath,
@@ -158,10 +124,10 @@ namespace AppsInToss.Editor.Package
         /// 직접 emit하도록 만든다 (3.x deploy 게이트 "runtimeVersion이 없습니다" 통과용).
         /// 빌드된 .ait 자체는 손대지 않으므로 봉인이 깨지지 않는다.
         ///
-        /// ait-patch-cli.mjs는 항상 exit 0이며 (2.x cli.js엔 setMetadata 없음/구조 변경/
+        /// ait-patch-cli.mjs는 항상 exit 0이며 (setMetadata 없음/구조 변경/
         /// 이미 설정됨 → graceful no-op), 패치 자체는 빌드를 막지 않는다. 따라서 사용자
         /// 취소(CANCELLED)만 상위로 전파하고, 그 외 비정상 종료는 경고만 남기고 ait build를
-        /// 계속 진행한다 (패치 실패가 빌드 실패로 번지지 않게 — stable 무회귀).
+        /// 계속 진행한다 (패치 실패가 빌드 실패로 번지지 않게).
         /// </summary>
         internal static AITConvertCore.AITExportError RunRuntimeVersionPatchSync(AITPackageBuilder.PackageContext ctx, string label)
         {
@@ -176,7 +142,7 @@ namespace AppsInToss.Editor.Package
 
         /// <summary>
         /// granite build 비동기 실행 + 실패 시 1회 재시도
-        /// ait build → granite build 순으로 시도합니다.
+        /// vite build → ait build 순으로 실행합니다.
         /// </summary>
         internal static void RunGraniteBuildAsync(
             AITPackageBuilder.PackageContext ctx,
@@ -188,7 +154,7 @@ namespace AppsInToss.Editor.Package
             Debug.Log("[AIT] granite build 실행 중...");
             Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
 
-            RunVersionedBuildAsync(ctx, onProgress,
+            Run3xBuildAsync(ctx, onProgress,
                 onComplete: (buildResult) =>
                 {
                     if (buildResult == AITConvertCore.AITExportError.SUCCEED)
@@ -224,86 +190,15 @@ namespace AppsInToss.Editor.Package
         }
 
         /// <summary>
-        /// ait build를 먼저 시도하고, 실패 시 granite build로 폴백합니다 (비동기).
-        /// package.json scripts에 의존하지 않고 CLI를 직접 호출합니다.
-        /// </summary>
-        internal static void RunAitOrGraniteBuildAsync(
-            AITPackageBuilder.PackageContext ctx,
-            Action<AITConvertCore.BuildPhase, float, string> onProgress,
-            Action<AITConvertCore.AITExportError> onComplete)
-        {
-            Debug.Log("[AIT] ait build 시도 중...");
-            AITNpmRunner.RunNpmCommandWithCacheAsync(
-                ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
-                onComplete: (aitResult) =>
-                {
-                    if (aitResult == AITConvertCore.AITExportError.SUCCEED)
-                    {
-                        Debug.Log("[AIT] ✓ ait build 성공");
-                        onComplete?.Invoke(aitResult);
-                        return;
-                    }
-
-                    if (aitResult == AITConvertCore.AITExportError.CANCELLED)
-                    {
-                        onComplete?.Invoke(aitResult);
-                        return;
-                    }
-
-                    // ait build 실패 → granite build 폴백
-                    Debug.Log("[AIT] ait build 실패, granite build로 폴백합니다...");
-                    AITNpmRunner.RunNpmCommandWithCacheAsync(
-                        ctx.BuildProjectPath, ctx.PnpmPath, "exec granite build", ctx.LocalCachePath,
-                        onComplete: (graniteResult) =>
-                        {
-                            if (graniteResult == AITConvertCore.AITExportError.SUCCEED)
-                                Debug.Log("[AIT] ✓ granite build 폴백 성공");
-                            onComplete?.Invoke(graniteResult);
-                        },
-                        onOutputReceived: (line) =>
-                        {
-                            onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.75f, line);
-                        },
-                        additionalEnvVars: ctx.UnityMetadataEnv
-                    );
-                },
-                onOutputReceived: (line) =>
-                {
-                    onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.6f, line);
-                },
-                additionalEnvVars: ctx.UnityMetadataEnv
-            );
-        }
-
-        /// <summary>
-        /// web-framework 버전에 따라 빌드 전략을 선택합니다 (비동기).
-        /// - 3.x: vite build(→dist/web) → ait build
-        /// - 2.x: ait build → granite build 폴백 (기존 동작)
-        /// </summary>
-        internal static void RunVersionedBuildAsync(
-            AITPackageBuilder.PackageContext ctx,
-            Action<AITConvertCore.BuildPhase, float, string> onProgress,
-            Action<AITConvertCore.AITExportError> onComplete)
-        {
-            int major = GetWebFrameworkMajor(ctx.BuildProjectPath);
-            if (major >= 3)
-            {
-                Run3xBuildAsync(ctx, onProgress, onComplete);
-                return;
-            }
-            RunAitOrGraniteBuildAsync(ctx, onProgress, onComplete);
-        }
-
-        /// <summary>
         /// web-framework 3.x 빌드 (비동기): vite build(→dist/web) 후 ait build 패키징.
-        /// granite 폴백 없음(3.x엔 granite bin이 없음).
+        ///
         /// </summary>
         internal static void Run3xBuildAsync(
             AITPackageBuilder.PackageContext ctx,
             Action<AITConvertCore.BuildPhase, float, string> onProgress,
             Action<AITConvertCore.AITExportError> onComplete)
         {
-            Debug.Log("[AIT] web-framework 3.x 감지 — vite build → ait build (2단계)");
+            Debug.Log("[AIT] vite build → ait build (2단계)");
             AITNpmRunner.RunNpmCommandWithCacheAsync(
                 ctx.BuildProjectPath, ctx.PnpmPath, $"exec vite build --outDir {ViteOutDir}", ctx.LocalCachePath,
                 onComplete: (viteResult) =>
@@ -420,7 +315,7 @@ namespace AppsInToss.Editor.Package
                     PnpmInstallStateMarker.WriteMarkerAfterSuccessfulInstall(ctx.BuildProjectPath);
                     onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.7f, "granite build 재시도 중...");
 
-                    RunVersionedBuildAsync(ctx, onProgress,
+                    Run3xBuildAsync(ctx, onProgress,
                         onComplete: (retryBuildResult) =>
                         {
                             if (retryBuildResult == AITConvertCore.AITExportError.SUCCEED)

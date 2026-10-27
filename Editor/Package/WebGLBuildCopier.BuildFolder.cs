@@ -51,7 +51,6 @@ namespace AppsInToss.Editor.Package
                     "package-lock.json",
                     "pnpm-lock.yaml",
                     "pnpm-workspace.yaml",
-                    "granite.config.ts",
                     "apps-in-toss.config.ts",
                     "vite.config.ts",
                     "tsconfig.json",

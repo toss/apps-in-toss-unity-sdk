@@ -133,9 +133,8 @@ namespace AppsInToss.Editor
                 }
             }
 
-            // vite.config.ts, granite.config.ts 마커 기반 업데이트
+            // vite.config.ts 마커 기반 업데이트
             UpdateConfigFileWithMarkers(projectTemplate, sdkTemplate, "BuildConfig~/vite.config.ts");
-            UpdateConfigFileWithMarkers(projectTemplate, sdkTemplate, "BuildConfig~/granite.config.ts");
 
             // Runtime 폴더는 SDK 버전과 다를 때만 덮어쓰기 (브릿지 코드)
             string projectRuntime = Path.Combine(projectTemplate, "Runtime");
@@ -198,7 +197,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// Config 파일 마커 기반 업데이트 (vite.config.ts, granite.config.ts)
+        /// Config 파일 마커 기반 업데이트 (vite.config.ts)
         /// SDK 템플릿을 기반으로 하고, USER_CONFIG 영역만 프로젝트에서 보존합니다.
         /// import 문, SDK_PLUGINS, SDK_GENERATED는 항상 SDK 최신 버전으로 갱신됩니다.
         /// </summary>

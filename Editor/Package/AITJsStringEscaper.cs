@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------
 // AITJsStringEscaper.cs - 작은따옴표 JS/TS 문자열 리터럴 이스케이프
 //
-// 빌드 산출물(index.html / granite.config.ts / apps-in-toss.config.ts)의 플레이스홀더
+// 빌드 산출물(index.html / apps-in-toss.config.ts)의 플레이스홀더
 // 치환은 전부 단순 문자열 Replace 다. 템플릿에서 토큰이 이미 작은따옴표 안에 놓여 있는 자리
 // (예: displayName: '%AIT_DISPLAY_NAME%')에 사용자 입력값을 그대로 끼워 넣으면, 값에 들어 있는
 // 작은따옴표 하나가 리터럴을 조기 종료시켜 그 파일 전체를 문법 오류로 만든다.
@@ -9,7 +9,7 @@
 // 실제 노출 경로: AIT Configuration 창의 "표시 이름"·"주 색상"·"아이콘 URL"·"Vite 호스트"·
 // "출력 디렉토리"는 아무 문자 제한 없는 TextField 다(appName 만 IsAppNameValid 로 영숫자+하이픈
 // 검증을 받는다). 그래서 "Dave's Adventure" 같은 흔한 이름이 저장→빌드까지 그대로 흘러가
-// index.html 의 인라인 <script> 블록과 granite.config.ts 를 동시에 깨뜨린다.
+// index.html 의 인라인 <script> 블록과 apps-in-toss.config.ts 를 동시에 깨뜨린다.
 // AITBuildValidator.FindUnsubstitutedPlaceholders 는 미치환 %AIT_*% 잔존만 검사하므로
 // (치환 자체는 성공했고 문법만 깨진) 이 케이스를 통과시켜 빌드 시점에 잡히지 않는다.
 // -----------------------------------------------------------------------

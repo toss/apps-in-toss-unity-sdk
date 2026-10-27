@@ -225,12 +225,6 @@ namespace AppsInToss
         public bool mediaPlaybackRequiresUserAction = false;
 
         [Header("서버 설정")]
-        [Tooltip("Granite (Metro) 서버 호스트. 기본값: 0.0.0.0")]
-        public string graniteHost = "0.0.0.0";
-
-        [Tooltip("Granite (Metro) 서버 포트. 기본값: 8081")]
-        public int granitePort = 8081;
-
         [Tooltip("Vite 서버 호스트. 기본값: localhost")]
         public string viteHost = "localhost";
 
@@ -394,7 +388,7 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// navigationBar 옵션을 granite.config.ts/apps-in-toss.config.ts 형식의 TS 객체 리터럴로 반환.
+        /// navigationBar 옵션을 apps-in-toss.config.ts 형식의 TS 객체 리터럴로 반환.
         /// webViewType=game일 때만 transparentBackground/theme를 emit하고(하위호환), partner면 빈 객체를
         /// 반환해 기존 동작과 USER_CONFIG의 navigationBar를 보존한다.
         /// 형식 예: { transparentBackground: true, theme: 'dark' }
@@ -418,7 +412,7 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// permissionConfig를 granite.config.ts 형식의 JSON 배열로 변환
+        /// permissionConfig를 apps-in-toss.config.ts 형식의 JSON 배열로 변환
         /// 형식: [{ name: 'geolocation', access: 'access' }, ...]
         /// </summary>
         public string GetPermissionsJson()

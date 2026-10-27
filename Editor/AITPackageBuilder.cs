@@ -491,11 +491,7 @@ namespace AppsInToss.Editor
             // 3. vite.config.ts - 마커 기반 업데이트
             Package.BuildConfigMerger.UpdateViteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
 
-            // 4. granite.config.ts - 마커 기반 업데이트 (web-framework 2.x granite build)
-            Package.BuildConfigMerger.UpdateGraniteConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
-
-            // 4.5. apps-in-toss.config.ts - 마커 기반 업데이트 (web-framework 3.x ait build)
-            // 2.x는 이 파일을 무시하므로 항상 emit해도 stable 빌드에 영향 없음 (버전 게이팅 불필요)
+            // 4. apps-in-toss.config.ts - 마커 기반 업데이트 (web-framework 3.x ait build)
             Package.BuildConfigMerger.UpdateAppsInTossConfig(projectBuildConfigPath, sdkBuildConfigPath, buildProjectPath, config);
 
             // 5. tsconfig.json - 머지 (프로젝트 옵션 + SDK 필수 옵션)
@@ -521,9 +517,8 @@ namespace AppsInToss.Editor
             // 이 스크립트를 실행한다. web-framework cli.js의 setMetadata 호출을 패치해 .ait
             // 메타데이터에 runtimeVersion("0.84.0")을 직접 emit하게 만든다 (3.x deploy 게이트
             // "runtimeVersion이 없습니다" 통과용). 빌드된 .ait는 손대지 않아 봉인이 깨지지 않는다.
-            // 스크립트는 항상 exit 0(2.x엔 setMetadata 없음/구조 변경/이미 설정됨 → graceful no-op)
-            // 이라 stable(2.x) 빌드에 무해하다. 2.x/3.x 양쪽에서 항상 복사된다(unity-build.yml
-            // 업로드 allowlist의 error-gate 충족).
+            // 스크립트는 항상 exit 0(setMetadata 없음/구조 변경/이미 설정됨 → graceful no-op)이며
+            // 항상 복사된다(unity-build.yml 업로드 allowlist의 error-gate 충족).
             string aitPatchName = "ait-patch-cli.mjs";
             string aitPatchProject = Path.Combine(projectBuildConfigPath, aitPatchName);
             string aitPatchSdk = Path.Combine(sdkBuildConfigPath, aitPatchName);

@@ -9,7 +9,7 @@
 Preview 워크플로를 workflow_dispatch로 트리거해 QR 빌드를 만듭니다. REST 호출 예시와 workflow ID는 [GitHub Actions 워크플로](github-actions.md)를 참고하세요. `targets`에는 최소 다음 두 조합을 포함합니다.
 
 ```text
-macos-6000.2   ← 현재 Unity 6 LTS, 정상 경로 대조군
+macos-6000.6   ← Unity 6.6 Supported, 정상 경로 대조군
 macos-2021.3   ← 최소 지원 버전, 순정 IDBFS 세션 노화 결함 재현 대상
 ```
 

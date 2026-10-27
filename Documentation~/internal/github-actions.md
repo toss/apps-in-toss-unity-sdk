@@ -110,7 +110,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/216269700/dispatches 
   "ref": "main",
   "inputs": {
     "target_ref": "123",
-    "targets": "macos-6000.3,macos-6000.2,macos-6000.0,macos-2022.3,macos-2021.3"
+    "targets": "macos-6000.6,macos-6000.3,macos-6000.0,macos-2022.3,macos-2021.3"
   }
 }
 EOF

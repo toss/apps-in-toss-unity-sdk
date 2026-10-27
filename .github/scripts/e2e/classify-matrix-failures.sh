@@ -24,12 +24,12 @@ declare -a TARGETS=(
   "macos:2021.3"
   "macos:2022.3"
   "macos:6000.0"
-  "macos:6000.2"
+  "macos:6000.6"
   "macos:6000.3"
   "windows:2021.3"
   "windows:2022.3"
   "windows:6000.0"
-  "windows:6000.2"
+  "windows:6000.6"
   "windows:6000.3"
 )
 

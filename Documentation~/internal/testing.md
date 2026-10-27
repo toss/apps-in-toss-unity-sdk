@@ -43,9 +43,9 @@ E2E 매트릭스는 아래 5개 버전을 macOS와 Windows 양쪽에서 돌립�
 
 | 버전 | 성격 |
 |------|------|
-| 6000.3.3f1 | Unity 6.3 |
-| 6000.2.15f1 | Unity 6 LTS |
-| 6000.0.66f2 | Unity 6 |
+| 6000.6.7f1 | Unity 6.6 (Supported) |
+| 6000.3.27f1 | Unity 6.3 LTS |
+| 6000.0.85f1 | Unity 6 LTS |
 | 2022.3.62f3 | LTS |
 | 2021.3.45f2 | LTS, 최소 지원 버전 |
 
@@ -116,11 +116,11 @@ E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 실행되어 신�
 
 ```bash
 # E2E CI와 동일한 경로(압축 비활성화)
-./run-local-tests.sh --unity-build --compression disabled --unity-version 6000.2
+./run-local-tests.sh --unity-build --compression disabled --unity-version 6000.6
 
 # Gzip / Brotli 강제 (압축 단계 flaky 재현용)
-./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.2
-./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.2
+./run-local-tests.sh --unity-build --compression gzip --unity-version 6000.6
+./run-local-tests.sh --unity-build --compression brotli --unity-version 6000.6
 
 # 동시 빌드로 리소스 경합 재현 (모든 버전 병렬)
 ./run-local-tests.sh --unity-build --parallel --compression brotli

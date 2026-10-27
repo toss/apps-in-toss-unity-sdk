@@ -11,7 +11,7 @@ inputs:
     description: 'macos | windows'
   unity-version:
     required: true
-    description: 'Unity 버전 (예: 6000.2)'
+    description: 'Unity 버전 (예: 6000.6)'
   editmode-results-path:
     required: false
     description: 'editmode-results.xml 절대 경로 (기본: Tests~/E2E/SampleUnityProject-<version>/editmode-results.xml)'

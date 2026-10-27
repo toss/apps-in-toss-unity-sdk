@@ -26,7 +26,7 @@ function findSampleProject() {
     return envPath;
   }
 
-  const versionPatterns = ['6000.2', '6000.0', '2022.3', '2021.3'];
+  const versionPatterns = ['6000.6', '6000.0', '2022.3', '2021.3'];
   for (const version of versionPatterns) {
     const projectPath = path.resolve(TESTS_DIR, `../SampleUnityProject-${version}`);
     const distPath = path.resolve(projectPath, 'ait-build/dist/web');

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Apps in Toss 배포 스크립트
 # 사용법: ./deploy.sh [unity-version]
-# 예: ./deploy.sh 6000.2
+# 예: ./deploy.sh 6000.6
 # 인자 없이 실행하면 모든 버전 배포
 
 set -e

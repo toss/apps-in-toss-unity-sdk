@@ -26,9 +26,9 @@ EDITMODE_FAILED_VERSIONS=()  # 병렬 EditMode 실패 버전 (빌드 스킵용)
 
 # 지원하는 Unity 버전 패턴 (우선순위 순)
 UNITY_VERSION_PATTERNS=(
-    "6000.3"    # Unity 6000.3.x (Unity 6.3)
-    "6000.2"    # Unity 6000.2.x (Unity 6 LTS)
-    "6000.0"    # Unity 6000.0.x (Unity 6)
+    "6000.6"    # Unity 6000.6.x (Unity 6.6 Supported)
+    "6000.3"    # Unity 6000.3.x (Unity 6.3 LTS)
+    "6000.0"    # Unity 6000.0.x (Unity 6 LTS)
     "2022.3"    # Unity 2022.3.x LTS
     "2021.3"    # Unity 2021.3.x LTS (최소 지원 버전)
 )

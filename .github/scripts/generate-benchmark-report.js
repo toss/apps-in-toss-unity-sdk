@@ -9,7 +9,7 @@
 import fs from "fs";
 import path from "path";
 
-const UNITY_VERSIONS = ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"];
+const UNITY_VERSIONS = ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"];
 const OS_LIST = ["macos"];
 
 // 벤치마크 기준값

@@ -6,7 +6,7 @@
  * runtimeVersion을 setMetadata 호출에 주입해 3.x deploy 게이트를 통과시킨다.
  *
  * Unity E2E는 3.x 빌드를 실제로 돌리지 않으므로(비용·fixture 제약), 패치 변환의
- * 정확성(삽입 위치·중첩 brace/문자열 안전·멱등·2.x no-op)을 여기서 단위로 못 박는다.
+ * 정확성(삽입 위치·중첩 brace/문자열 안전·멱등·setMetadata 없는 입력 no-op)을 여기서 단위로 못 박는다.
  *
  * 대상 파일은 SDK 패키지 밖(WebGLTemplates/.../BuildConfig~)에 있으므로 상대경로로
  * 직접 import한다. 스크립트는 `import.meta.url === argv[1]`일 때만 main()을 돌리므로
@@ -122,7 +122,7 @@ describe('injectRuntimeVersion — 멱등 / no-op (안전 규칙)', () => {
     expect(second.source).toBe(first.source);
   });
 
-  test('setMetadata 호출이 없으면 no-op (2.x cli.js 안전)', () => {
+  test('setMetadata 호출이 없으면 no-op (구형 cli.js 안전)', () => {
     const src = 'function build() { return granite.build(); }';
     const { changed, source } = injectRuntimeVersion(src);
     expect(changed).toBe(false);

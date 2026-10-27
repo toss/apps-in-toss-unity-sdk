@@ -183,8 +183,8 @@ function isCallableArrowType(typeText: string): boolean {
  *    인자로 보고 안쪽이 화살표 타입인지 재귀 확인한다. (예:
  *    `PermissionFunctionWithDialog<(options?: X) => Promise<Y>>`)
  *
- * ⚠️ 스코프: 이 두 형태는 2.x sibling(web-bridge)의 index.d.ts에도 동일 이름·동일
- * 형태로 존재하는 API가 있고(getServerTime, fetchAlbumPhotos 등), 2.x에서는 그 API가
+ * ⚠️ 스코프: 이 두 형태는 generate() 입력인 web-bridge(pnpm store)의 index.d.ts에도 동일 이름·동일
+ * 형태로 존재하는 API가 있고(getServerTime, fetchAlbumPhotos 등), 그 경로에서는 그 API가
  * *같은 이름의 개별 .d.ts 파일*(file-per-API, parseSourceFile 경로)로도 파싱되므로,
  * 여기서 무조건 켜면 같은 이름이 두 경로에서 중복 파싱된다(C# 생성 경로 포함 —
  * Runtime/SDK 변경으로 이어짐). 그래서 이 판정은 호출부가 명시적으로 opt-in할 때만
@@ -233,8 +233,8 @@ function isWrappedCallableType(typeText: string): boolean {
  *   changelog 파이프라인의 self-bundle(3.x) 경로에서만 true로 호출해 deprecated
  *   최상위 함수가 "제거"가 아니라 "변경(deprecated 전환)"으로 잡히게 한다.
  * @param options.includeWrappedCallables true면 isWrappedCallableType(intersection/
- *   제네릭 wrapper 화살표 타입)도 감지 대상에 포함한다. 기본값 false — 2.x sibling에서
- *   이 형태는 같은 이름이 file-per-API 경로에서 이미 파싱되므로 여기서까지 켜면
+ *   제네릭 wrapper 화살표 타입)도 감지 대상에 포함한다. 기본값 false — generate()의
+ *   web-bridge 입력에서 이 형태는 같은 이름이 file-per-API 경로에서 이미 파싱되므로 여기서까지 켜면
  *   중복이 생긴다(isWrappedCallableType 문서 참고). self-bundle(3.x)에서만 opt-in.
  */
 export function detectGlobalFunctions(

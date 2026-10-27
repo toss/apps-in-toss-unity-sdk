@@ -16,7 +16,6 @@ import { FRAMEWORK_APIS, CATEGORY_ORDER } from '../../../src/categories.js';
 import type { ParsedAPI } from '../../../src/types.js';
 import {
   discoverInstalledVersions,
-  hasFrameworkApis,
   resolveVersionPaths,
   createParserForVersion,
   assertWebFrameworkAliasInvariant,
@@ -49,7 +48,7 @@ async function main() {
   console.log(`  대상 버전: ${installedVersions.map(v => `v${v}`).join(', ')}\n`);
 
   const versionApis = new Map<string, ParsedAPI[]>();
-  // dtsSource가 'sibling'이 아닌(=pnpm store 폴백 등으로 API 표면을 근사한) 버전 목록.
+  // dtsSource가 'self-bundle'이 아닌(=pnpm store 폴백 등으로 API 표면을 근사한) 버전 목록.
   // 마크다운 리포트 인트로에 명시해, 해당 버전의 diff가 비어 있어도 이유를 알 수 있게 한다.
   const approximatedVersions: string[] = [];
   for (const version of installedVersions) {
@@ -57,24 +56,22 @@ async function main() {
     // resolveVersionPaths는 dtsDir을 못 찾으면 명확한 한국어 메시지로 throw한다 —
     // 과거처럼 "if (!paths.dtsDir) continue"로 조용히 스킵하지 않는다.
     const paths = await resolveVersionPaths(version);
-    // 'sibling'과 'self-bundle' 모두 그 버전 자신의 실제 .d.ts를 정확히 반영한다
-    // (self-bundle: web-framework 3.x+가 별도 web-bridge sibling 없이 자체
-    // dist/index.d.ts에 전체 API 표면을 번들링 — discovery.ts detectSelfContainedDts
-    // 참고). "근사(폴백)"로 표시해야 하는 건 stale 버전을 근사로 사용하는
-    // pnpm-store/package-dir뿐이다.
-    if (paths.dtsSource !== 'sibling' && paths.dtsSource !== 'self-bundle') {
+    // 'self-bundle'은 그 버전 자신의 실제 .d.ts를 정확히 반영한다
+    // (web-framework 3.x+가 별도 web-bridge 없이 자체 dist/index.d.ts에 전체 API
+    // 표면을 번들링 — discovery.ts detectSelfContainedDts 참고). "근사(폴백)"로
+    // 표시해야 하는 건 stale 버전을 근사로 사용하는 pnpm-store/package-dir뿐이다.
+    if (paths.dtsSource !== 'self-bundle') {
       approximatedVersions.push(version);
     }
-    const frameworkApiNames = hasFrameworkApis(version) ? FRAMEWORK_APIS : [];
     // self-bundle(3.x+) index.d.ts는 deprecated 최상위 함수(checkoutPayment 등)를 여전히
     // export하고, getServerTime/fetchAlbumPhotos 류는 intersection/제네릭 wrapper
     // 화살표 타입(예: `(() => X) & { isSupported }`, `PermissionFunctionWithDialog<...>`)
     // 으로 선언되어 있다 — includeDeprecatedGlobals/includeWrappedCallables로 둘 다
     // 감지해 diff가 "제거"가 아니라 "변경(deprecated 전환)"으로 잡히게 한다.
-    // sibling(2.x)은 opt-in하지 않는다 — 같은 이름이 file-per-API 경로에서 이미
+    // web-bridge 파일별 .d.ts 입력은 opt-in하지 않는다 — 같은 이름이 file-per-API 경로에서 이미
     // 파싱되므로 여기서 켜면 중복이 생긴다(detection.ts isWrappedCallableType 참고).
     const isSelfBundle = paths.dtsSource === 'self-bundle';
-    const apis = await createParserForVersion(paths).parseAPIs(frameworkApiNames, {
+    const apis = await createParserForVersion(paths).parseAPIs(FRAMEWORK_APIS, {
       includeDeprecatedGlobals: isSelfBundle,
       includeWrappedCallables: isSelfBundle,
     });

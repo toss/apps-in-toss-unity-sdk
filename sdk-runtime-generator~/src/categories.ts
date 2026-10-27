@@ -219,8 +219,8 @@ export const CHANGELOG_ONLY_CATEGORIES: Record<string, string[]> = {
   ],
   GameCenter: [
     'GameGetUserProfile',
-    // 구버전(2.x 이전) @apps-in-toss/web-bridge에 존재하던, getUserKeyForGame과는
-    // 별개의 독립 심볼. 실제 존재가 실측 확인됨(생성 경로의 2.10.8 fallback dist에는
+    // 구버전 @apps-in-toss/web-bridge 배포물에 존재하던, getUserKeyForGame과는
+    // 별개의 독립 심볼. 실제 존재가 실측 확인됨(생성 경로의 pnpm store web-bridge dist에는
     // 없음 — 있었다면 이 맵이 아니라 API_CATEGORIES에 직접 추가했을 것).
     'getUserKey',
   ],

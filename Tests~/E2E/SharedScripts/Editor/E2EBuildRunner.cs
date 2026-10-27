@@ -92,12 +92,10 @@ public class E2EBuildRunner
         // Unity 버전별 고유 포트 사용 (동시 실행 시 충돌 방지)
         // 환경 변수가 설정된 경우 해당 값 사용 (CI 제어용)
         int portOffset = GetPortOffsetForUnityVersion();
-        config.graniteHost = GetEnvString("AIT_GRANITE_HOST", "0.0.0.0");
-        config.granitePort = GetEnvInt("AIT_GRANITE_PORT", 8081 + portOffset);
         config.viteHost = GetEnvString("AIT_VITE_HOST", "localhost");
         config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
-        Debug.Log($"✓ Server config: Granite={config.graniteHost}:{config.granitePort}, Vite={config.viteHost}:{config.vitePort}");
-        // 권한 전체 활성화 - granite.config.ts / bundle.json 의 permissions 배열 생성 경로를 E2E에서 태운다.
+        Debug.Log($"✓ Server config: Vite={config.viteHost}:{config.vitePort}");
+        // 권한 전체 활성화 - apps-in-toss.config.ts / bundle.json 의 permissions 배열 생성 경로를 E2E에서 태운다.
         // AITConfig.asset은 추적하지 않으므로(루트 .gitignore) fresh clone에서는 기본값(전부 false)으로
         // 생성된다. 여기서 코드로 지정해야 산출물이 픽스처 유무와 무관하게 동일해진다.
         config.permissionConfig = new AITPermissionConfig

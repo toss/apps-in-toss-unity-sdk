@@ -1035,7 +1035,6 @@ jobs:
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-workspace.yaml
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/ait-patch-cli.mjs
-            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/granite.config.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/vite.config.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/unity-bridge.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/tsconfig.json

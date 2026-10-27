@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------
 // AITBuildValidatorConfigGuardTests.cs - ValidateGeneratedBuildConfigs(①) 단위 테스트
-// Level 0: 생성된 apps-in-toss.config.ts/granite.config.ts의 미치환 플레이스홀더 가드 검증
+// Level 0: 생성된 apps-in-toss.config.ts의 미치환 플레이스홀더 가드 검증
 //   - SDK_GENERATED 미치환 → 치명적(PLACEHOLDER_SUBSTITUTION_FAILED)
 //   - USER_CONFIG 미치환/2.x deprecated 키 → 경고만(SUCCEED)
 // -----------------------------------------------------------------------

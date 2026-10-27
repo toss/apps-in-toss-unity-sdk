@@ -239,13 +239,9 @@ namespace AppsInToss
             string logPrefix = GetProfileName(type);
             string suffix = openBrowser ? "" : " (서버만)";
 
-            // vite 단독 모드(web-framework 3.x) 여부 — granite 포트를 열지 않으므로
-            // 포트 가용성 검사와 Granite 관련 로그를 건너뛴다
-            bool viteOnly = DevServerCommandResolver.IsViteOnly(buildPath);
-
-            // devtools(mock SDK) 활성화 여부 — config.devtools.enabled + viteOnly + 설치 확인을
+            // devtools(mock SDK) 활성화 여부 — config.devtools.enabled + 설치 확인을
             // 모두 통과해야 활성화되며, 실패해도 throw하지 않고 reason과 함께 비활성으로 계속 진행한다
-            bool devtoolsOn = DevtoolsSupport.ShouldEnable(config, buildPath, viteOnly, out string devtoolsReason);
+            bool devtoolsOn = DevtoolsSupport.ShouldEnable(config, buildPath, out string devtoolsReason);
             if (!devtoolsOn)
             {
                 Debug.LogWarning($"AIT: Devtools 비활성화 — {devtoolsReason}");
@@ -253,40 +249,31 @@ namespace AppsInToss
 
             // 서버 포트 해석 및 충돌 검사
             if (!PortResolver.TryResolveServerPorts(config,
-                out string graniteHost, out int granitePort,
-                out string viteHost, out int vitePort,
-                skipGranitePortScan: viteOnly))
+                out string viteHost, out int vitePort))
             {
                 return;
             }
 
             Debug.Log($"AIT: {label} 서버 시작 중{suffix}... ({buildPath})");
-            if (!viteOnly)
-                Debug.Log($"AIT:   Granite: {graniteHost}:{granitePort}");
             Debug.Log($"AIT:   Vite: {viteHost}:{vitePort}");
             Debug.Log($"AIT:   Devtools: {(devtoolsOn ? "활성화" : "비활성화")}");
 
             // 캡처용 로컬 변수
             int finalVitePort = vitePort;
-            int finalGranitePort = granitePort;
 
             try
             {
-                // 환경 변수로 Vite 설정 전달 (granite.config.ts, vite.config.ts에서 사용)
+                // 환경 변수로 Vite 설정 전달 (vite.config.ts에서 사용)
                 var envVars = new Dictionary<string, string>
                 {
-                    { "AIT_GRANITE_HOST", graniteHost },
-                    { "AIT_GRANITE_PORT", finalGranitePort.ToString() },
                     { "AIT_VITE_HOST", viteHost },
                     { "AIT_VITE_PORT", finalVitePort.ToString() }
                 };
                 DevtoolsSupport.AddEnvVars(envVars, config, devtoolsOn);
 
-                // web-framework 버전에 맞는 dev 서버 커맨드 해석
-                // (2.x: granite bin 파일을 node로 직접 실행 — .bin/granite 이름 충돌 우회,
-                //  3.x: vite bin을 node로 직접 실행 — resolve된 경우 pnpm CLI 기동 자체를 생략)
-                string devCommand = DevServerCommandResolver.Resolve(buildPath, finalVitePort, out viteOnly, out string directExecutablePath);
-                int expectedPort = viteOnly ? finalVitePort : finalGranitePort;
+                // dev 서버 커맨드 해석 (vite bin을 node로 직접 실행 — resolve된 경우 pnpm CLI 기동 자체를 생략)
+                string devCommand = DevServerCommandResolver.Resolve(buildPath, finalVitePort, out string directExecutablePath);
+                int expectedPort = finalVitePort;
 
                 // directExecutablePath가 있으면 pnpm을 거치지 않고 node를 직접 실행 (5b), 없으면 기존처럼 pnpm 경유
                 string executablePath = directExecutablePath ?? npmPath;
@@ -306,8 +293,6 @@ namespace AppsInToss
                         // 감지된 포트를 저장하여 ValidateState에서 올바르게 확인할 수 있도록 함
                         stateManager.OnServerStarted(detectedPort);
                         Debug.Log($"AIT: {label} 서버가 시작되었습니다{suffix}");
-                        if (!viteOnly)
-                            Debug.Log($"AIT:   Granite (Metro): http://{graniteHost}:{finalGranitePort}");
                         Debug.Log($"AIT:   Vite: http://{viteHost}:{finalVitePort}");
                         if (openBrowser)
                             AITBrowserLauncher.OpenBrowser(finalVitePort);
@@ -362,7 +347,7 @@ namespace AppsInToss
         /// </summary>
         /// <param name="manager">프로세스 트리 관리자</param>
         /// <param name="npmPath">실행할 바이너리의 절대 경로. pnpm(기존 exec 경로) 또는 node(직접 실행 경로 — 5b)</param>
-        /// <param name="envVars">환경 변수 (AIT_GRANITE_HOST, AIT_GRANITE_PORT, AIT_VITE_PORT 등)</param>
+        /// <param name="envVars">환경 변수 (AIT_VITE_HOST, AIT_VITE_PORT 등)</param>
         /// <param name="expectedPort">예상 포트 (타임아웃 시 확인용)</param>
         /// <param name="onServerStarted">서버가 성공적으로 시작되면 호출되는 콜백 (메인 스레드에서 실행)</param>
         /// <param name="onServerFailed">서버 시작에 실패하면 호출되는 콜백 (메인 스레드에서 실행)</param>

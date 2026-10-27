@@ -111,7 +111,7 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 생성된 빌드 설정 파일(apps-in-toss.config.ts / granite.config.ts)을 검증합니다.
+        /// 생성된 빌드 설정 파일(apps-in-toss.config.ts)를 검증합니다.
         /// (① 마이그레이션 가드 — 잘못 포팅된 USER_CONFIG로 인한 bundle.json 손상을 빌드 단계에서 차단)
         ///  • SDK_GENERATED 영역에 미치환 %AIT_*%/%UNITY_*% 플레이스홀더가 있으면 치명적 → 빌드 중단
         ///    (실제 치환 실패. 이대로 배포하면 bundle.json에 플레이스홀더 문자열이 그대로 들어감)
@@ -126,7 +126,7 @@ namespace AppsInToss.Editor
             {
                 bool hardError = false;
 
-                foreach (var fileName in new[] { "apps-in-toss.config.ts", "granite.config.ts" })
+                foreach (var fileName in new[] { "apps-in-toss.config.ts" })
                 {
                     string path = Path.Combine(buildProjectPath, fileName);
                     if (!File.Exists(path)) continue;
@@ -148,11 +148,7 @@ namespace AppsInToss.Editor
 
                     // 경고: USER_CONFIG 영역의 SDK 플레이스홀더/2.x deprecated 키
                     // (병합 시 SDK 값이 우선하므로 빌드 결과는 정상 — 사용자에게 정리만 권고)
-                    // 3.x 파일(apps-in-toss.config.ts)에만 적용. granite.config.ts는 2.x 레거시라
-                    // USER_CONFIG에 webViewProps 등 2.x 키가 정상적으로 존재할 수 있어 오탐을 만든다.
-                    string userSection = fileName == "apps-in-toss.config.ts"
-                        ? AITTemplateManager.ExtractMarkerSection(content, "USER_CONFIG")
-                        : null;
+                    string userSection = AITTemplateManager.ExtractMarkerSection(content, "USER_CONFIG");
                     if (userSection != null)
                     {
                         var userPlaceholders = FindUnsubstitutedPlaceholders(userSection);

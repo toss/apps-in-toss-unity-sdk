@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "ait build || granite build",
+    "build": "vite build --outDir dist/web && node ait-patch-cli.mjs && ait build",
     "start": "vite",
     "deploy": "ait deploy"
   },

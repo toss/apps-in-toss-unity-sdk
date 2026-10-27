@@ -2,8 +2,6 @@ import { defineConfig } from '@apps-in-toss/web-framework/config';
 
 //// SDK_GENERATED_START - DO NOT EDIT THIS SECTION ////
 // web-framework 3.x 빌드 설정 (ait build CLI가 cosmiconfig로 이 파일을 탐색).
-// 2.x granite build는 이 파일을 무시하고 granite.config.ts만 사용하므로
-// 두 파일을 함께 emit해도 stable(2.x) 빌드에는 영향이 없다.
 // 웹 번들은 vite build --outDir dist/web 결과물(= dist/web)을 패키징한다.
 const sdkConfig = {
   appName: '%AIT_APP_NAME%',

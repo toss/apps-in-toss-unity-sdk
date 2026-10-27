@@ -40,13 +40,13 @@ namespace AppsInToss.Editor.Menu
         /// <summary>
         /// devtools mock 활성화 여부를 게이트 순서대로 판단합니다.
         /// 게이트: 환경변수 AIT_DEVTOOLS 오버라이드 → config.devtools.enabled →
-        /// vite 단독(viteOnly) 모드만(2.x는 granite CLI 경로라 vite.config가 적용되지 않음) → devtools 설치 확인.
+        /// devtools 설치 확인.
         /// 전부 통과하면 true. reason은 항상 사용자 대상 한국어 문장으로 채워지며, 절대 throw하지 않습니다
         /// (판단 실패는 fail-safe로 비활성 처리). (Production Server 제거로 단일 서버 구조가 되어
         /// "Dev 서버만" 게이트는 더 이상 필요하지 않습니다 — type 매개변수 제거.)
         /// </summary>
         internal static bool ShouldEnable(
-            AITEditorScriptObject config, string buildProjectPath, bool viteOnly,
+            AITEditorScriptObject config, string buildProjectPath,
             out string reason)
         {
             try
@@ -65,12 +65,6 @@ namespace AppsInToss.Editor.Menu
                 if (config == null || config.devtools == null || !config.devtools.enabled)
                 {
                     reason = "AIT Configuration의 Devtools 설정이 꺼져 있습니다.";
-                    return false;
-                }
-
-                if (!viteOnly)
-                {
-                    reason = "web-framework 2.x(granite CLI 경로)에서는 vite.config.ts가 적용되지 않아 devtools를 사용할 수 없습니다.";
                     return false;
                 }
 

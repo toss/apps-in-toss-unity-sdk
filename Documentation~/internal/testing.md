@@ -146,7 +146,7 @@ E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 실행되어 신�
 
 ### 러너 라우팅
 
-self-hosted 러너는 `unity-<version>` 라벨로 잡을 라우팅합니다(`runs-on: [self-hosted, unity-${{ inputs.unity-version }}]`). 다만 macOS·Windows 모두 라벨 5개가 실제로는 물리 머신 한 대를 공유하므로(`actions-runner-N` 작업 디렉토리·계정만 다름) "한 머신 = 한 버전"은 아니고, 라이선싱 IPC 채널도 머신에 하나뿐입니다. 라벨이 빠진 머신이 생기면 매트릭스 잡이 큐에 남고, 채널 공유로 인한 라이선스 에러는 `fix-licensing-client.sh`(`.github/scripts/unity-build/`)가 서명/버전을 비교해 자동 완화합니다.
+self-hosted 러너는 슬롯 라벨 `ait-slot-<N>`으로 잡을 라우팅하고, 버전→슬롯 매핑은 `unity-build.yml`의 `runs-on`에 있습니다. 같은 슬롯이 늘 같은 버전만 빌드해 `Library` 캐시가 유지됩니다. 다만 macOS·Windows 모두 슬롯 5개가 실제로는 물리 머신 한 대를 공유하므로(`actions-runner-N` 작업 디렉토리·계정만 다름) "한 머신 = 한 버전"은 아니고, 라이선싱 IPC 채널도 머신에 하나뿐입니다. 매핑에 없는 버전이나 라벨이 빠진 슬롯은 매트릭스 잡이 큐에 남고, 채널 공유로 인한 라이선스 에러는 `fix-licensing-client.sh`(`.github/scripts/unity-build/`)가 서명/버전을 비교해 자동 완화합니다.
 
 ## 관련 문서
 

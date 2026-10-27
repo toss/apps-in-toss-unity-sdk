@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# macOS self-hosted 러너는 버전별 라벨(unity-2021.3 등)이 붙어있지만 실제로는
+# macOS self-hosted 러너는 버전별 슬롯 라벨(ait-slot-<N>)로 나뉘어 있지만 실제로는
 # 여러 라벨이 한 물리 머신을 공유하고, Unity 라이선싱 IPC 채널
 # ("LicenseClient-<host>")도 그 머신에 하나뿐이다. 어떤 잡이든 먼저 뜬 에디터가
 # 채널을 만들면 이후 잡은 자기 번들 클라이언트를 새로 띄우지 않고 기존 채널에

@@ -52,7 +52,7 @@ console.log('=== Syncing BuildConfig web-framework version ===');
 
 // 3. SDK 코드 재생성 (러너별 영속 pnpm store)
 // self-hosted 러너는 잡을 하나씩만 돌리므로 RUNNER_NAME별 store는 동시 쓰기가 없다.
-// 빌드 레그는 unity-<version> 라벨로 러너에 1:1 고정돼 있어, 한 번 채운 store를 다음 실행이 그대로 쓴다.
+// 빌드 레그는 버전마다 ait-slot-<N> 라벨 러너 하나로 고정돼 있어, 한 번 채운 store를 다음 실행이 그대로 쓴다.
 // 매번 빈 store로 ~2,100개 패키지를 받던 때는 install 단계 TimeoutError가 반복됐다
 // (2026-09-29 override 런 두 번의 빌드 레그 20개 중 16개).
 // fetch 타임아웃은 tarball 하나를 다 받는 데 주는 시간이다. 레그 10개가 동시에 받으면

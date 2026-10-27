@@ -129,24 +129,21 @@ on:
 jobs:
   build:
     name: Build (${{ inputs.os }}, Unity ${{ inputs.unity-version }})
-    # Unity 버전별 머신 핀: 매트릭스 잡을 unity-<version> 라벨이 붙은 러너로만
-    # 라우팅해 같은 러너 슬롯이 여러 버전의 Unity를 번갈아 띄우는 것을 막는다
-    # (run #683의 Code 10 등). 다만 macOS·Windows 모두 라벨 5개가 실제로는
-    # 물리 머신 한 대를 공유한다(동일 사용자 계정, actions-runner-N 작업 디렉토리만
-    # 다름) — 라이선싱 IPC 채널도 머신에 하나뿐이라 "1머신=1버전"은 아니다. 이 핀은
-    # "같은 슬롯의 버전 교차"만 막을 뿐이고, 채널을 먼저 만든 에디터의 클라이언트가
-    # 오래된 버전이라 겪는 라이선스 실패는 fix-licensing-client.sh(버전 비교 후
-    # 최신 클라이언트로 자동 교체)가 따로 방어한다.
+    # Unity 버전별 슬롯 핀: 매트릭스 잡을 버전마다 정해진 ait-slot-<N> 라벨 러너로만
+    # 라우팅한다. 같은 슬롯은 늘 같은 버전만 빌드하므로 작업 디렉토리의
+    # Library/Bee 캐시가 버전 하나로 warm하게 유지되고, 같은 버전 잡은 슬롯 하나에서
+    # 차례로 돈다. macOS·Windows 모두 슬롯 5개가 실제로는 물리 머신 한 대를
+    # 공유한다(동일 사용자 계정, actions-runner-N 작업 디렉토리만 다름) — 라이선싱
+    # IPC 채널도 머신에 하나뿐이라 이 핀은 라이선스 충돌을 막지 못한다. 채널을 먼저
+    # 만든 에디터의 클라이언트가 오래된 버전이라 겪는 라이선스 실패는
+    # fix-licensing-client.sh(버전 비교 후 최신 클라이언트로 자동 교체)가 따로 방어한다.
     #
-    # 운영 측 라벨 매핑(필수 선결 조건):
-    #   macos-1-1 / windows-2-1 → unity-2021.3
-    #   macos-1-2 / windows-2-2 → unity-2022.3
-    #   macos-1-3 / windows-2-3 → unity-6000.0
-    #   macos-1-4 / windows-2-4 → unity-6000.2
-    #   macos-1-5 / windows-2-5 → unity-6000.3
-    # 라벨이 누락된 머신/버전이 있으면 해당 매트릭스 잡은 영원히 큐에 남으므로
-    # 즉시 발견된다(silent fallback 없음).
-    runs-on: ${{ inputs.os == 'macos' && fromJSON(format('["self-hosted", "macOS", "ARM64", "enabled", "unity-{0}"]', inputs.unity-version)) || fromJSON(format('["self-hosted", "Windows", "X64", "enabled", "unity-{0}"]', inputs.unity-version)) }}
+    # 버전→슬롯 매핑은 아래 runs-on의 JSON 한 곳이다. 러너 라벨은 슬롯 번호라
+    # 버전을 바꿀 때 러너 설정은 건드리지 않는다(새 버전 에디터 설치만 필요).
+    # 운영 측 라벨: macos-1-N / windows-2-N → ait-slot-N (N=1..5)
+    # 매핑에 없는 버전은 라벨이 "ait-slot-"가 되어 잡이 큐에 남으므로 즉시
+    # 발견된다(silent fallback 없음).
+    runs-on: ${{ fromJSON(format('["self-hosted", "{0}", "{1}", "enabled", "ait-slot-{2}"]', inputs.os == 'macos' && 'macOS' || 'Windows', inputs.os == 'macos' && 'ARM64' || 'X64', fromJSON('{"2021.3":"1","2022.3":"2","6000.0":"3","6000.2":"4","6000.3":"5"}')[inputs.unity-version])) }}
     timeout-minutes: 90
     # 동시성 정책: 호출자(test-e2e / preview / release)의 잡 concurrency가 ref
     # 기반 cancel을 담당하므로 reusable workflow는 (os, unity-version) 단위로만

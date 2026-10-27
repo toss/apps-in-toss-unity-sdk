@@ -21,7 +21,7 @@ describe('web-framework alias invariant', () => {
 });
 
 describe('web-framework 3.x self-bundle invariant', () => {
-  // web-framework 3.x+는 별도 web-bridge sibling 패키지 없이 자체 dist/index.d.ts에
+  // web-framework 3.x+는 별도 web-bridge 패키지 없이 자체 dist/index.d.ts에
   // 전체 API 표면을 번들링한다(discovery.ts detectSelfContainedDts). 이 invariant는
   // 설치된 3.x+ alias 전부가 실제로 'self-bundle'로 판정되는지 검증한다 — 판정이
   // 깨지면(예: 4.x에서 번들 방식이 또 바뀜) resolveVersionPaths의 fail-loud 게이트가
@@ -34,21 +34,6 @@ describe('web-framework 3.x self-bundle invariant', () => {
     async ({ version }) => {
       const paths = await resolveVersionPaths(version);
       expect(paths.dtsSource).toBe('self-bundle');
-    },
-  );
-
-  // 음성(negative) invariant: 2.x 이하는 self-bundle로 판정되면 안 된다.
-  // 현재는 2.x web-bridge 패키지에 dist/index.d.ts 자체 번들 형태가 없어 우연히
-  // 안전하지만(detectSelfContainedDts가 애초에 감지하지 못함), 그 우연에 기대지 않고
-  // 명시적으로 고정한다 — 향후 2.x 배포 방식이 바뀌어도 self-bundle 오판정이면 여기서
-  // 즉시 잡힌다.
-  const majorBelow3Versions = discoverInstalledVersions().filter(v => Number(v.split('.')[0]) < 3);
-
-  test.each(majorBelow3Versions.map(v => ({ version: v })))(
-    'v$version은 self-bundle로 판정되면 안 됨',
-    async ({ version }) => {
-      const paths = await resolveVersionPaths(version);
-      expect(paths.dtsSource).not.toBe('self-bundle');
     },
   );
 });

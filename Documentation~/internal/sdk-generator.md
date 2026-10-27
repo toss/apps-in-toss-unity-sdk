@@ -43,6 +43,10 @@
 
 > **중요**: API 설명을 마크다운 문서에 복사하지 마세요. 상위는 SDK 업데이트마다 재생성되지만 마크다운은 아니라서 확정적으로 어긋납니다. 공개 문서는 상위에 없는 것만 다룹니다 — [API 사용 패턴](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/api-usage-patterns) 참조.
 
+## 파라미터 이름 복구
+
+web-bridge의 파일별 `.d.ts`는 일부 API(Storage 단일 항목, IAP, 파트너 등)를 `(args_0: string)`처럼 이름이 사라진 형태로 선언합니다. `src/parser/param-name-recovery.ts`가 파싱 직후 web-framework 번들 `dist/index.d.ts`의 같은 API 선언에서 실제 이름(`key`, `value`, 레이블드 튜플 rest의 레이블 등)을 되살립니다. 개수가 다르거나 번들에도 실제 이름이 없으면 `args_N`을 그대로 둡니다. 익명 객체 파라미터의 `<Api><Param>` 타입명(예: `IAPCompleteProductGrantArgs_0`)은 공개 타입이라 바뀌지 않도록 복구 전 이름(`typeNameSeed`)으로 합성합니다.
+
 ## 문서 링크가 생성물로 들어가는 지점
 
 `src/generators/csharp/field-docs.ts`가 공개 문서의 경로와 헤딩을 리터럴로 인용해 `Runtime/SDK/AIT.Types.IAP.cs`의 XML 주석으로 내보냅니다. 그 헤딩을 바꾸면 생성물의 앵커가 깨지므로 공개 문서와 생성기 소스를 항상 함께 고쳐야 합니다.

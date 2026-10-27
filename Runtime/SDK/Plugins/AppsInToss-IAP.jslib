@@ -319,16 +319,16 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __IAPCompleteProductGrant_Internal: function(args_0, callbackId, typeName) {
+    __IAPCompleteProductGrant_Internal: function(args, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPCompleteProductGrant called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPCompleteProductGrant raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPCompleteProductGrant raw param args:', UTF8ToString(args));
 
         try {
-            var promiseResult = window.AppsInToss.IAP.completeProductGrant(JSON.parse(UTF8ToString(args_0)));
+            var promiseResult = window.AppsInToss.IAP.completeProductGrant(JSON.parse(UTF8ToString(args)));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] completeProductGrant returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -373,16 +373,16 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __IAPGetSubscriptionInfo_Internal: function(args_0, callbackId, typeName) {
+    __IAPGetSubscriptionInfo_Internal: function(args, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPGetSubscriptionInfo called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPGetSubscriptionInfo raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPGetSubscriptionInfo raw param args:', UTF8ToString(args));
 
         try {
-            var promiseResult = window.AppsInToss.IAP.getSubscriptionInfo(JSON.parse(UTF8ToString(args_0)));
+            var promiseResult = window.AppsInToss.IAP.getSubscriptionInfo(JSON.parse(UTF8ToString(args)));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getSubscriptionInfo returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

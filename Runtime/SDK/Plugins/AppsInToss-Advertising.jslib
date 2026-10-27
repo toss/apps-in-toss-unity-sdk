@@ -126,16 +126,16 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __GoogleAdMobIsAppsInTossAdMobLoaded_Internal: function(args_0, callbackId, typeName) {
+    __GoogleAdMobIsAppsInTossAdMobLoaded_Internal: function(options, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded raw param args_0:', UTF8ToString(args_0));
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobIsAppsInTossAdMobLoaded raw param options:', UTF8ToString(options));
 
         try {
-            var promiseResult = window.AppsInToss.GoogleAdMob.isAppsInTossAdMobLoaded(JSON.parse(UTF8ToString(args_0)));
+            var promiseResult = window.AppsInToss.GoogleAdMob.isAppsInTossAdMobLoaded(JSON.parse(UTF8ToString(options)));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] isAppsInTossAdMobLoaded returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {

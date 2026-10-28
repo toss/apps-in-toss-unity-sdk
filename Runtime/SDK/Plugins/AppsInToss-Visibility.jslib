@@ -9,7 +9,8 @@ mergeInto(LibraryManager.library, {
     __onVisibilityChangedByTransparentServiceWeb_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : undefined;
+        if (optionsObj === null) optionsObj = undefined;
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] onVisibilityChangedByTransparentServiceWeb called, id:', subId, 'options:', optionsObj);
 
@@ -38,7 +39,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -59,7 +61,8 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);

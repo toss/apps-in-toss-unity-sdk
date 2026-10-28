@@ -8,7 +8,7 @@ export { TypeScriptParser } from './TypeScriptParser.js';
 // Bundle parsing
 export { parseBundle, findDeprecationReplacement } from './bundle-parser.js';
 export type { BundleExportRecord, BundleParseResult } from './bundle-parser.js';
-export { detectCallbackBasedPattern, detectNestedCallbacks } from './callback-patterns.js';
+export { detectCallbackBasedPattern, detectNestedCallbacks, detectCallbackBag } from './callback-patterns.js';
 
 // Type parser utilities
 export { parseType, parseTypeMembers } from './type-parser.js';

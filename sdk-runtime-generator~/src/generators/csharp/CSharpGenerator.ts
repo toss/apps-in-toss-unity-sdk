@@ -215,6 +215,11 @@ export class CSharpGenerator {
     const eventDataTypes = new Set<string>();
 
     for (const api of apis) {
+      // options.callbacks 묶음 API는 콜백 호출을 AITCallbackBagEvent 구독 이벤트로 받는다
+      if (api.callbackBag) {
+        eventDataTypes.add('AITCallbackBagEvent');
+      }
+
       // 이벤트 구독 API에서 이벤트 데이터 타입 수집
       if (api.isEventSubscription && api.eventDataType) {
         const dataType = mapToCSharpType(api.eventDataType);

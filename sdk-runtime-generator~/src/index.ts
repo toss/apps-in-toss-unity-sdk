@@ -358,11 +358,10 @@ async function generate(options: {
       ...typeGenerator.applyEnumAliasesTo(parsedTypesResult.units),
     ]);
 
-    // 임시로 지은 이름의 클래스 중 어디에도 쓰이지 않는 것은 지운다 (d.ts가 선언한 타입은 남긴다)
-    const declaredTypeNames = new Set([
-      ...typeDefinitions.map(def => applyTypeNamePins(def.name)),
-      ...PUBLIC_TYPE_NAMES,
-    ]);
+    // 어디에도 쓰이지 않는 타입은 지운다. d.ts가 선언했더라도 API 시그니처가 따라가지 않는 타입
+    // (Environment$1 -> System.Environment와 충돌하는 enum, 번들 별칭이 만든 중복 클래스 등)은
+    // 공개 표면에 둘 이유가 없다. 이전 SDK가 공개하던 이름(PUBLIC_TYPE_NAMES)만 참조 없이도 남긴다.
+    const declaredTypeNames = new Set<string>(PUBLIC_TYPE_NAMES);
     const pruneResult = pruneUnreferencedSyntheticTypes(
       allTypeUnits,
       declaredTypeNames,

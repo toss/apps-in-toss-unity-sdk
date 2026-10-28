@@ -33,6 +33,8 @@ interface JslibFunction {
   file: string;
   hasSendMessage: boolean;
   sendMessageTarget: string | null;
+  /** OnAITCallback과 OnAITEventCallback을 모두 보내는지 (options.callbacks 묶음 API) */
+  sendsBothTargets: boolean;
   /** 에러 경로의 SendMessage가 모두 setTimeout으로 감싸져 있는지 */
   errorPathsUseSetTimeout: boolean;
   /** 에러 경로에서 setTimeout 없이 직접 호출하는 SendMessage 수 */
@@ -134,7 +136,8 @@ function extractJslibFunctions(jslibContent: string, fileName: string): JslibFun
 
     const errorPathsUseSetTimeout = bareErrorSendMessageCount === 0;
 
-    functions.push({ name: funcName, parameters, file: fileName, hasSendMessage, sendMessageTarget, errorPathsUseSetTimeout, bareErrorSendMessageCount });
+    const sendsBothTargets = funcBody.includes("'OnAITEventCallback'") && funcBody.includes("'OnAITCallback'");
+    functions.push({ name: funcName, parameters, file: fileName, hasSendMessage, sendMessageTarget, sendsBothTargets, errorPathsUseSetTimeout, bareErrorSendMessageCount });
   }
 
   return functions;
@@ -344,6 +347,15 @@ describe('C# ↔ jslib 일관성 검증', () => {
         if (!method || method.parameters.length < 2) continue;
 
         const secondLast = method.parameters[method.parameters.length - 2];
+
+        // options.callbacks 묶음 API(TossAds 등)는 호출 결과(OnAITCallback)와 콜백 이벤트(OnAITEventCallback)를
+        // 둘 다 보내므로 구독 ID와 콜백 ID를 모두 받고, 콜백 ID가 typeName 바로 앞에 온다.
+        if (func.sendsBothTargets) {
+          if (secondLast !== 'callbackId' || !method.parameters.includes('subscriptionId')) {
+            violations.push(`${name}: 이벤트와 결과를 모두 보내지만 C#에 subscriptionId/callbackId가 없음 (got ${method.parameters.join(', ')})`);
+          }
+          continue;
+        }
 
         if (func.sendMessageTarget === 'OnAITEventCallback' && secondLast !== 'subscriptionId') {
           violations.push(`${name}: OnAITEventCallback이지만 C#에 subscriptionId 없음 (got ${secondLast})`);

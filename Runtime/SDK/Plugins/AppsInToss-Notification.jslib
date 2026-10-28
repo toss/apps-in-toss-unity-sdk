@@ -9,7 +9,8 @@ mergeInto(LibraryManager.library, {
     __NotificationRequestAgreement_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : undefined;
+        if (optionsObj === null) optionsObj = undefined;
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] NotificationRequestAgreement called, id:', subId, 'options:', optionsObj);
 
@@ -38,7 +39,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -59,7 +61,8 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -83,7 +86,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -92,7 +95,8 @@ mergeInto(LibraryManager.library, {
     __requestNotificationAgreement_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : undefined;
+        if (optionsObj === null) optionsObj = undefined;
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] requestNotificationAgreement called, id:', subId, 'options:', optionsObj);
 
@@ -121,7 +125,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -142,7 +147,8 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -166,7 +172,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }

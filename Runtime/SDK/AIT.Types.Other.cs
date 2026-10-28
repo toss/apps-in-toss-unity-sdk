@@ -24,14 +24,6 @@ namespace AppsInToss
         YEARLY
     }
 
-    public enum PermissionParamsAccess
-    {
-        [EnumMember(Value = "read")]
-        Read,
-        [EnumMember(Value = "write")]
-        Write
-    }
-
     public enum CompletedOrRefundedOrdersResultOrderStatus
     {
         [EnumMember(Value = "COMPLETED")]
@@ -252,22 +244,6 @@ namespace AppsInToss
         VIDEO
     }
 
-    [Serializable]
-    [Preserve]
-    public class PermissionParams
-    {
-        [Preserve]
-        [JsonProperty("name")]
-        public string Name;
-        [Preserve]
-        [JsonProperty("access")]
-        public PermissionParamsAccess Access;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
     public enum PermissionName
     {
         [EnumMember(Value = "clipboard")]
@@ -310,74 +286,6 @@ namespace AppsInToss
         Allowed,
         [EnumMember(Value = "denied")]
         Denied
-    }
-
-    public enum Environment
-    {
-        [EnumMember(Value = "alpha")]
-        Alpha,
-        [EnumMember(Value = "live")]
-        Live
-    }
-
-    public enum DeviceOS
-    {
-        [EnumMember(Value = "IOS")]
-        IOS,
-        [EnumMember(Value = "ANDROID")]
-        ANDROID
-    }
-
-    public enum DeviceAttStatus
-    {
-        [EnumMember(Value = "NOT_DETERMINED")]
-        NOT_DETERMINED,
-        [EnumMember(Value = "RESTRICTED")]
-        RESTRICTED,
-        [EnumMember(Value = "DENIED")]
-        DENIED,
-        [EnumMember(Value = "AUTHORIZED")]
-        AUTHORIZED
-    }
-
-    public enum DeviceCarrier
-    {
-        [EnumMember(Value = "SKT")]
-        SKT,
-        [EnumMember(Value = "KT")]
-        KT,
-        [EnumMember(Value = "LGU")]
-        LGU,
-        [EnumMember(Value = "SKT_MVNO")]
-        SKT_MVNO,
-        [EnumMember(Value = "KT_MVNO")]
-        KT_MVNO,
-        [EnumMember(Value = "LG_MVNO")]
-        LG_MVNO
-    }
-
-    public enum AdResponseStatus
-    {
-        [EnumMember(Value = "OK")]
-        OK,
-        [EnumMember(Value = "NO_AD")]
-        NO_AD,
-        [EnumMember(Value = "BLOCKED")]
-        BLOCKED,
-        [EnumMember(Value = "ERROR")]
-        ERROR,
-        [EnumMember(Value = "TIMEOUT")]
-        TIMEOUT,
-        [EnumMember(Value = "INVALID_SPACE")]
-        INVALID_SPACE,
-        [EnumMember(Value = "INVALID_REQUEST")]
-        INVALID_REQUEST,
-        [EnumMember(Value = "LIMITED_AD")]
-        LIMITED_AD,
-        [EnumMember(Value = "CONSENT_REQUIRED")]
-        CONSENT_REQUIRED,
-        [EnumMember(Value = "TEST_MODE")]
-        TEST_MODE
     }
 
     /// <summary>
@@ -439,22 +347,6 @@ namespace AppsInToss
         Dark
     }
 
-    public enum PermissionFunctionName
-    {
-        [EnumMember(Value = "getClipboardText")]
-        GetClipboardText,
-        [EnumMember(Value = "setClipboardText")]
-        SetClipboardText,
-        [EnumMember(Value = "fetchContacts")]
-        FetchContacts,
-        [EnumMember(Value = "fetchAlbumPhotos")]
-        FetchAlbumPhotos,
-        [EnumMember(Value = "getCurrentLocation")]
-        GetCurrentLocation,
-        [EnumMember(Value = "openCamera")]
-        OpenCamera
-    }
-
     public enum ConsentedUserDataKey
     {
         [EnumMember(Value = "USER_NAME")]
@@ -477,19 +369,6 @@ namespace AppsInToss
         USER_EMAIL,
         [EnumMember(Value = "USER_CONSUMPTION_HISTORY")]
         USER_CONSUMPTION_HISTORY
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AdMobFullScreenEvent
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
     [Serializable]
@@ -599,31 +478,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class BasicProductListItem
-    {
-        [Preserve]
-        [JsonProperty("sku")]
-        public string Sku;
-        [Preserve]
-        [JsonProperty("displayAmount")]
-        public string DisplayAmount;
-        [Preserve]
-        [JsonProperty("displayName")]
-        public string DisplayName;
-        [Preserve]
-        [JsonProperty("iconUrl")]
-        public string IconUrl;
-        [Preserve]
-        [JsonProperty("description")]
-        public string Description;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class CompletedOrRefundedOrdersResultOrder
     {
         [Preserve]
@@ -657,34 +511,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("orders")]
         public CompletedOrRefundedOrdersResultOrder[] Orders;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ConsumableProductListItem
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("sku")]
-        public string Sku;
-        [Preserve]
-        [JsonProperty("displayAmount")]
-        public string DisplayAmount;
-        [Preserve]
-        [JsonProperty("displayName")]
-        public string DisplayName;
-        [Preserve]
-        [JsonProperty("iconUrl")]
-        public string IconUrl;
-        [Preserve]
-        [JsonProperty("description")]
-        public string Description;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -764,82 +590,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("errorCode")]
         public string ErrorCode; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class FetchTossAdOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("sdkId")]
-        public string SdkId;
-        [Preserve]
-        [JsonProperty("availableStyleIds")]
-        public string[] AvailableStyleIds;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GetCompletedOrRefundedOrdersParams
-    {
-        [Preserve]
-        [JsonProperty("key")]
-        public string Key; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GraniteEvent
-    {
-        [Preserve]
-        [JsonProperty("backEvent")]
-        public GraniteEventBackEvent BackEvent;
-        [Preserve]
-        [JsonProperty("homeEvent")]
-        public GraniteEventHomeEvent HomeEvent;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GraniteEventBackEvent
-    {
-        [JsonIgnore]
-        public System.Action OnEvent;
-        [JsonIgnore]
-        public System.Action<Error> OnError; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class GraniteEventHomeEvent
-    {
-        [JsonIgnore]
-        public System.Action OnEvent;
-        [JsonIgnore]
-        public System.Action<Error> OnError; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -968,22 +718,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class InterstitialAd
-    {
-        [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
-        [Preserve]
-        [JsonProperty("responseInfo")]
-        public ResponseInfo ResponseInfo;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class LoadAdMobEvent
     {
         [Preserve]
@@ -1047,34 +781,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class NonConsumableProductListItem
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("sku")]
-        public string Sku;
-        [Preserve]
-        [JsonProperty("displayAmount")]
-        public string DisplayAmount;
-        [Preserve]
-        [JsonProperty("displayName")]
-        public string DisplayName;
-        [Preserve]
-        [JsonProperty("iconUrl")]
-        public string IconUrl;
-        [Preserve]
-        [JsonProperty("description")]
-        public string Description;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class OriginStorageDump
     {
         [Preserve]
@@ -1116,60 +822,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class PermissionErrorConstructorParams
-    {
-        [Preserve]
-        [JsonProperty("methodName")]
-        public PermissionFunctionName MethodName;
-        [Preserve]
-        [JsonProperty("message")]
-        public string Message;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class PermissionErrorType
-    {
-        [Preserve]
-        [JsonProperty("name")]
-        public string Name;
-        [Preserve]
-        [JsonProperty("message")]
-        public string Message;
-        [Preserve]
-        [JsonProperty("stack")]
-        public string Stack; // optional
-        [Preserve]
-        [JsonProperty("cause")]
-        public object Cause; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class RewardedAd
-    {
-        [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
-        [Preserve]
-        [JsonProperty("responseInfo")]
-        public ResponseInfo ResponseInfo;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class SetNavigationBarOptions
     {
         [Preserve]
@@ -1190,138 +842,6 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("theme")]
         public NavigationBarTheme Theme; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class SubscriptionProductListItem
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("renewalCycle")]
-        public IapProductListItemRenewalCycle RenewalCycle;
-        [Preserve]
-        [JsonProperty("offers")]
-        public Offer[] Offers; // optional
-        [Preserve]
-        [JsonProperty("sku")]
-        public string Sku;
-        [Preserve]
-        [JsonProperty("displayAmount")]
-        public string DisplayAmount;
-        [Preserve]
-        [JsonProperty("displayName")]
-        public string DisplayName;
-        [Preserve]
-        [JsonProperty("iconUrl")]
-        public string IconUrl;
-        [Preserve]
-        [JsonProperty("description")]
-        public string Description;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdEventLogParams
-    {
-        [Preserve]
-        [JsonProperty("log_name")]
-        public string Log_name;
-        [Preserve]
-        [JsonProperty("log_type")]
-        public string Log_type;
-        [Preserve]
-        [JsonProperty("params")]
-        public Dictionary<string, object> Params;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsBannerSlotErrorPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public Dictionary<string, object> AdMetadata;
-        [Preserve]
-        [JsonProperty("error")]
-        public TossAdsBannerSlotErrorPayloadError Error;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsBannerSlotErrorPayloadError
-    {
-        [Preserve]
-        [JsonProperty("code")]
-        public double Code;
-        [Preserve]
-        [JsonProperty("message")]
-        public string Message;
-        [Preserve]
-        [JsonProperty("domain")]
-        public string Domain; // optional
-        [Preserve]
-        [JsonProperty("mediationId")]
-        public string MediationId; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsBannerSlotEventPayload
-    {
-        [Preserve]
-        [JsonProperty("slotId")]
-        public string SlotId;
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-        [Preserve]
-        [JsonProperty("adMetadata")]
-        public TossAdsBannerSlotEventPayloadAdMetadata AdMetadata;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsBannerSlotEventPayloadAdMetadata
-    {
-        [Preserve]
-        [JsonProperty("creativeId")]
-        public string CreativeId;
-        [Preserve]
-        [JsonProperty("requestId")]
-        public string RequestId;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

@@ -43,32 +43,4 @@ namespace AppsInToss
         [Newtonsoft.Json.JsonExtensionData]
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
-
-    [Serializable]
-    [Preserve]
-    public class OnVisibilityChangedByTransparentServiceWebEventEmitter
-    {
-        [Preserve]
-        [JsonProperty("name")]
-        public string Name;
-        [Preserve]
-        [JsonProperty("params")]
-        public bool[] Params;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class OnVisibilityChangedByTransparentServiceWebSubscription
-    {
-        [JsonIgnore]
-        public System.Action Remove;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
 }

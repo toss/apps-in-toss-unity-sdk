@@ -29,7 +29,7 @@ import { parseType } from './type-parser.js';
 import { recordDomViolation } from './dom-violations.js';
 import { extractParamDescriptions, extractReturnsDescription, extractExamples } from './jsdoc-extractor.js';
 import { parseEventNamespace } from './event-parser.js';
-import { detectCallbackBasedPattern, detectNestedCallbacks } from './callback-patterns.js';
+import { detectCallbackBasedPattern, detectNestedCallbacks, detectCallbackBag } from './callback-patterns.js';
 
 /** 함수 export에 붙는 하위 멤버 중 별도 API로 노출하는 것 */
 const SUB_MEMBER_NAMES = ['isSupported', 'getPermission', 'openPermissionDialog'] as const;
@@ -488,6 +488,9 @@ class BundleParser {
 
     const isCallbackBased = detectCallbackBasedPattern(parameters, returnType);
     const nestedCallbacks = detectNestedCallbacks(parameters);
+    const callbackBag = isCallbackBased || nestedCallbacks.length > 0
+      ? undefined
+      : detectCallbackBag(parameters, returnType);
     const api: ParsedAPI = {
       name: opts.name,
       pascalName: toPascalCase(opts.name),
@@ -505,6 +508,7 @@ class BundleParser {
       callPath: opts.callPath,
       isCallbackBased,
       nestedCallbacks: nestedCallbacks.length > 0 ? nestedCallbacks : undefined,
+      callbackBag,
     };
     if (opts.docs.isDeprecated) {
       const message = this.deprecationMessage(api, opts.docs.deprecatedText);

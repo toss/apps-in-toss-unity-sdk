@@ -54,7 +54,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -76,7 +77,8 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -100,7 +102,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -154,7 +156,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -176,7 +179,8 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -200,7 +204,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -244,7 +248,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -253,7 +257,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -276,7 +280,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -320,7 +324,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -329,7 +333,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -352,7 +356,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -367,7 +371,7 @@ mergeInto(LibraryManager.library, {
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPGetCompletedOrRefundedOrders raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.IAP.getCompletedOrRefundedOrders(JSON.parse(UTF8ToString(params)));
+            var promiseResult = window.AppsInToss.IAP.getCompletedOrRefundedOrders((function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(params));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getCompletedOrRefundedOrders returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -397,7 +401,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -406,7 +410,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -429,7 +433,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -474,7 +478,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -483,7 +487,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -506,7 +510,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -551,7 +555,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -560,7 +564,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -583,7 +587,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }

@@ -44,6 +44,8 @@ export interface ParsedAPI {
   callbackEventType?: string; // 콜백 이벤트 타입 (예: LoadAdMobEvent)
   // 중첩 콜백 지원 (options.processProductGrant 등)
   nestedCallbacks?: NestedCallback[];
+  // 호출에 넘기는 options.callbacks 묶음 (TossAds.initialize/attach/attachBanner)
+  callbackBag?: CallbackBag;
   /**
    * window.AppsInToss 기준 호출 경로 (예: 'Device.getContacts.getPermission').
    * 없으면 namespace/originalName으로 유도한다 (getApiCallPath 참고).
@@ -73,6 +75,30 @@ export interface ParsedAPI {
 export function getApiCallPath(api: Pick<ParsedAPI, 'callPath' | 'namespace' | 'originalName'>): string {
   if (api.callPath) return api.callPath;
   return api.namespace ? `${api.namespace}.${api.originalName}` : api.originalName;
+}
+
+/**
+ * options 안의 `callbacks: { onX?: (payload) => void, ... }` 묶음.
+ * 응답을 기다리는 콜백(NestedCallback)과 달리 JS가 C#으로 알리기만 하는 이벤트이고,
+ * 호출이 끝난 뒤에도 계속 올 수 있다. C# 쪽 `Callbacks` 클래스의 Action 필드가 받는다.
+ */
+export interface CallbackBag {
+  /** 묶음을 가진 파라미터 이름 (예: options) */
+  paramName: string;
+  /** 파라미터 안의 프로퍼티 이름 (예: callbacks) */
+  property: string;
+  members: CallbackBagMember[];
+  /** 호출 결과가 `{ destroy }` 핸들이면 그 프로퍼티 이름. 없으면 undefined */
+  handleProperty?: string;
+}
+
+export interface CallbackBagMember {
+  /** JS 콜백 이름 (예: onAdRendered) */
+  name: string;
+  /** C# 필드 이름 (예: OnAdRendered) */
+  pascalName: string;
+  /** 인자를 받는지 (Action<T> vs Action) */
+  hasPayload: boolean;
 }
 
 /**

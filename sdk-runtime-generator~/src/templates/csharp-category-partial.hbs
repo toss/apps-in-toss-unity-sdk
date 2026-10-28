@@ -128,6 +128,144 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __{{{this.name}}}_Internal(string options, string subscriptionId, string typeName);
 #endif
+{{else if this.hasCallbackBag}}
+{{!-- options.callbacks 묶음 API (TossAds.initialize/attach/attachBanner): JS가 콜백을 만들어 AITCallbackBagEvent로 돌려보낸다 --}}
+{{#if this.description}}
+        /// <summary>
+        /// {{docSummary this.description}}
+        /// </summary>
+{{/if}}
+{{#each this.parameters}}
+{{#if this.description}}
+        /// <param name="{{this.paramName}}">{{xmlSafe this.description}}</param>
+{{/if}}
+{{/each}}
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+{{#if this.callbackBag.handlePascal}}
+        /// <returns>{{this.callbackBag.handlePascal}}를 부르면 붙여 둔 JS 쪽 자원과 콜백 구독을 함께 해제한다.</returns>
+{{/if}}
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+{{#if this.isDeprecated}}
+        [Obsolete("{{{this.deprecatedMessage}}}")]
+{{/if}}
+        [Preserve]
+        [APICategory("{{../categoryName}}")]
+#if UNITY_6000_0_OR_NEWER
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __{{{this.name}}}_Subscribe({{this.callbackBag.paramName}});
+{{#if (eq this.callbackType "void")}}
+            var acs = new AwaitableCompletionSource();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => acs.SetResult(),
+{{else}}
+            var acs = new AwaitableCompletionSource<{{{this.callbackType}}}>();
+            string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
+                result =>
+                {
+                    var handle = result ?? new {{{this.callbackType}}}();
+                    handle.{{this.callbackBag.handlePascal}} = () => AITCore.Instance.Unsubscribe(subscriptionId);
+                    acs.SetResult(handle);
+                },
+{{/if}}
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    acs.SetException(error);
+                },
+                timeoutMs,
+                "{{{this.pascalName}}}"
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}subscriptionId, callbackId, "{{{this.callbackType}}}");
+{{#if (eq this.callbackType "void")}}
+            await acs.Awaitable;
+{{else}}
+            return await acs.Awaitable;
+{{/if}}
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            await Awaitable.NextFrameAsync();
+{{#if (eq this.callbackType "void")}}
+            // void return - nothing to return
+{{else}}
+            return new {{{this.callbackType}}} { {{this.callbackBag.handlePascal}} = () => UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} destroyed") };
+{{/if}}
+#endif
+        }
+#else
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __{{{this.name}}}_Subscribe({{this.callbackBag.paramName}});
+{{#if (eq this.callbackType "void")}}
+            var tcs = new TaskCompletionSource<object>();
+            string callbackId = AITCore.Instance.RegisterCallback<object>(
+                result => tcs.TrySetResult(null),
+{{else}}
+            var tcs = new TaskCompletionSource<{{{this.callbackType}}}>();
+            string callbackId = AITCore.Instance.RegisterCallback<{{{this.callbackType}}}>(
+                result =>
+                {
+                    var handle = result ?? new {{{this.callbackType}}}();
+                    handle.{{this.callbackBag.handlePascal}} = () => AITCore.Instance.Unsubscribe(subscriptionId);
+                    tcs.TrySetResult(handle);
+                },
+{{/if}}
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    tcs.TrySetException(error);
+                },
+                timeoutMs,
+                "{{{this.pascalName}}}"
+            );
+            __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}subscriptionId, callbackId, "{{{this.callbackType}}}");
+{{#if (eq this.callbackType "void")}}
+            await tcs.Task;
+{{else}}
+            return await tcs.Task;
+{{/if}}
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} called");
+            await Task.CompletedTask;
+{{#if (eq this.callbackType "void")}}
+            // void return - nothing to return
+{{else}}
+            return new {{{this.callbackType}}} { {{this.callbackBag.handlePascal}} = () => UnityEngine.Debug.Log($"[AIT Mock] {{{this.pascalName}}} destroyed") };
+{{/if}}
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>options.{{this.callbackBag.propertyPascal}}의 콜백을 JS 이벤트(AITCallbackBagEvent)에 연결하고 구독 ID를 돌려준다.</summary>
+        private static string __{{{this.name}}}_Subscribe({{{this.callbackBag.paramType}}} {{this.callbackBag.paramName}})
+        {
+            var bagCallbacks = {{this.callbackBag.paramName}}?.{{this.callbackBag.propertyPascal}};
+            return AITCore.Instance.RegisterSubscriptionCallback<AITCallbackBagEvent>(
+                evt =>
+                {
+                    if (bagCallbacks == null || evt == null) return;
+                    switch (evt.Event)
+                    {
+{{#each this.callbackBag.members}}
+                        case "{{this.name}}":
+                            AITCore.InvokeCallbackBag(bagCallbacks.{{this.pascalName}}{{#if this.hasPayload}}, evt.Payload{{/if}});
+                            break;
+{{/each}}
+                    }
+                },
+                null
+            );
+        }
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __{{{this.name}}}_Internal({{#each this.parameters}}string {{this.paramName}}, {{/each}}string subscriptionId, string callbackId, string typeName);
+#endif
 {{else if this.isNamespaceCallbackBased}}
 {{!-- Namespace callback-based API (GoogleAdMob.loadAppsInTossAdMob pattern) --}}
 {{!-- options 객체를 JSON으로 직렬화하여 전달 --}}

@@ -398,84 +398,11 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadFullScreenAdParams
-    {
-        [Preserve]
-        [JsonProperty("options")]
-        public LoadFullScreenAdOptions Options;
-        [JsonIgnore]
-        public System.Action<LoadFullScreenAdEvent> OnEvent;
-        [JsonIgnore]
-        public System.Action<object> OnError;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class ShowFullScreenAdOptions
     {
         [Preserve]
         [JsonProperty("adGroupId")]
         public string AdGroupId;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowFullScreenAdParams
-    {
-        [Preserve]
-        [JsonProperty("options")]
-        public ShowFullScreenAdOptions Options;
-        [JsonIgnore]
-        public System.Action<ShowFullScreenAdEvent> OnEvent;
-        [JsonIgnore]
-        public System.Action<object> OnError;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsAttachBannerResult
-    {
-        [JsonIgnore]
-        public System.Action Destroy;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsInitializeOptions
-    {
-        [Preserve]
-        [JsonProperty("callbacks")]
-        public TossAdsInitializeOptionsCallbacks Callbacks; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class TossAdsInitializeOptionsCallbacks
-    {
-        [JsonIgnore]
-        public System.Action OnInitialized; // optional
-        [JsonIgnore]
-        public System.Action<Error> OnInitializationFailed; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

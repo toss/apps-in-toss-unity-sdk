@@ -45,7 +45,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -54,7 +54,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -69,7 +69,7 @@ mergeInto(LibraryManager.library, {
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] AnalyticsScreen raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.Analytics.screen(params);
+            var promiseResult = window.AppsInToss.Analytics.screen((function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(params));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] screen returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -99,7 +99,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -108,7 +108,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -123,7 +123,7 @@ mergeInto(LibraryManager.library, {
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] AnalyticsImpression raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.Analytics.impression(params);
+            var promiseResult = window.AppsInToss.Analytics.impression((function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(params));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] impression returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -153,7 +153,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -162,7 +162,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -177,7 +177,7 @@ mergeInto(LibraryManager.library, {
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] AnalyticsClick raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.Analytics.click(params);
+            var promiseResult = window.AppsInToss.Analytics.click((function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(params));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] click returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -207,7 +207,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -216,7 +216,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }

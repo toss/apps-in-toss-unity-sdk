@@ -50,6 +50,18 @@ export interface PreparedApiData {
   nestedCallbackParamType?: string;
   nestedCallbackOptionsType?: string;
   nestedCallbackEventType?: string;
+  /** options.callbacks 묶음을 받는 API (TossAds.initialize/attach/attachBanner) */
+  hasCallbackBag?: boolean;
+  callbackBag?: {
+    /** 묶음을 가진 파라미터 이름과 C# 타입 */
+    paramName: string;
+    paramType: string;
+    /** 묶음 필드의 C# 이름 (options.Callbacks) */
+    propertyPascal: string;
+    members: Array<{ name: string; pascalName: string; hasPayload: boolean }>;
+    /** 결과 핸들의 C# 멤버 이름 (예: Destroy). 핸들이 없으면 undefined */
+    handlePascal?: string;
+  };
 }
 
 /**
@@ -430,5 +442,19 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     nestedCallbackParamType: getNestedCallbackParamType(api),
     nestedCallbackOptionsType: getNestedCallbackOptionsType(api),
     nestedCallbackEventType: getNestedCallbackEventType(api),
+    // options.callbacks 묶음 API 지원
+    hasCallbackBag: !!api.callbackBag,
+    callbackBag: api.callbackBag
+      ? (() => {
+          const bagParam = parameters.find(p => p.paramName === escapeCSharpKeyword(api.callbackBag!.paramName));
+          return {
+            paramName: bagParam?.paramName ?? api.callbackBag!.paramName,
+            paramType: bagParam?.paramType ?? 'object',
+            propertyPascal: toPascalCase(api.callbackBag!.property),
+            members: api.callbackBag!.members,
+            handlePascal: api.callbackBag!.handleProperty ? toPascalCase(api.callbackBag!.handleProperty) : undefined,
+          };
+        })()
+      : undefined,
   };
 }

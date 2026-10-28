@@ -1,4 +1,5 @@
-import { ParsedParameter, ParsedType, NestedCallback } from '../types.js';
+import { ParsedParameter, ParsedType, NestedCallback, CallbackBag } from '../types.js';
+import { toPascalCase } from './utils.js';
 
 /**
  * 콜백 기반 API 패턴 감지
@@ -76,4 +77,39 @@ export function detectNestedCallbacks(parameters: ParsedParameter[]): NestedCall
   }
 
   return nestedCallbacks;
+}
+
+
+/**
+ * options 파라미터 안의 `callbacks` 묶음 감지 (TossAds.initialize / attach / attachBanner).
+ *
+ * 조건: 객체 파라미터 하나가 `callbacks` 프로퍼티를 갖고, 그 값이 함수 프로퍼티만으로 이뤄진 객체.
+ * onEvent/onError 구독 API(detectCallbackBasedPattern)와 중첩 콜백 API(detectNestedCallbacks)는 제외한다.
+ * 결과가 `{ destroy: () => void }` 핸들이면 handleProperty에 그 이름을 담는다.
+ */
+export function detectCallbackBag(parameters: ParsedParameter[], returnType: ParsedType): CallbackBag | undefined {
+  for (const param of parameters) {
+    const type = param.type;
+    if (type.kind !== 'object' || !type.properties) continue;
+    const callbacksProp = type.properties.find(p => p.name === 'callbacks');
+    const bag = callbacksProp?.type;
+    if (!bag || bag.kind !== 'object' || !bag.properties || bag.properties.length === 0) continue;
+    if (!bag.properties.every(p => p.type.kind === 'function')) continue;
+
+    const handle = returnType.kind === 'object'
+      ? returnType.properties?.find(p => p.type.kind === 'function')
+      : undefined;
+
+    return {
+      paramName: param.name,
+      property: 'callbacks',
+      members: bag.properties.map(p => ({
+        name: p.name,
+        pascalName: toPascalCase(p.name),
+        hasPayload: (p.type.functionParams?.length ?? 0) > 0,
+      })),
+      handleProperty: handle?.name,
+    };
+  }
+  return undefined;
 }

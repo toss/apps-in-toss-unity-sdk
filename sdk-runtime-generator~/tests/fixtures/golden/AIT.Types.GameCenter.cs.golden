@@ -177,19 +177,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameErrorResponse
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class SubmitGameCenterLeaderBoardScoreResponse
     {
         [Preserve]

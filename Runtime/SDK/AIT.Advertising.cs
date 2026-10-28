@@ -308,14 +308,19 @@ namespace AppsInToss
         public static async Awaitable TossAdsInitialize(InitializeOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __TossAdsInitialize_Subscribe(options);
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error),
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    acs.SetException(error);
+                },
                 timeoutMs,
                 "TossAdsInitialize"
             );
-            __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), subscriptionId, callbackId, "void");
             await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -328,14 +333,19 @@ namespace AppsInToss
         public static async Task TossAdsInitialize(InitializeOptions options, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __TossAdsInitialize_Subscribe(options);
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error),
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    tcs.TrySetException(error);
+                },
                 timeoutMs,
                 "TossAdsInitialize"
             );
-            __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), callbackId, "void");
+            __TossAdsInitialize_Internal(AITJsonSettings.Serialize(options), subscriptionId, callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -347,8 +357,30 @@ namespace AppsInToss
 #endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>options.Callbacks의 콜백을 JS 이벤트(AITCallbackBagEvent)에 연결하고 구독 ID를 돌려준다.</summary>
+        private static string __TossAdsInitialize_Subscribe(InitializeOptions options)
+        {
+            var bagCallbacks = options?.Callbacks;
+            return AITCore.Instance.RegisterSubscriptionCallback<AITCallbackBagEvent>(
+                evt =>
+                {
+                    if (bagCallbacks == null || evt == null) return;
+                    switch (evt.Event)
+                    {
+                        case "onInitialized":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnInitialized);
+                            break;
+                        case "onInitializationFailed":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnInitializationFailed, evt.Payload);
+                            break;
+                    }
+                },
+                null
+            );
+        }
+
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __TossAdsInitialize_Internal(string options, string callbackId, string typeName);
+        private static extern void __TossAdsInitialize_Internal(string options, string subscriptionId, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 현재 앱 버전과 환경에서 `TossAds.initialize`를 사용할 수 있는지 확인해요.
@@ -414,14 +446,19 @@ namespace AppsInToss
         public static async Awaitable TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __TossAdsAttach_Subscribe(options);
             var acs = new AwaitableCompletionSource();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => acs.SetResult(),
-                error => acs.SetException(error),
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    acs.SetException(error);
+                },
                 timeoutMs,
                 "TossAdsAttach"
             );
-            __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
+            __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), subscriptionId, callbackId, "void");
             await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -434,14 +471,19 @@ namespace AppsInToss
         public static async Task TossAdsAttach(string adGroupId, string target, TossAdsAttachOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __TossAdsAttach_Subscribe(options);
             var tcs = new TaskCompletionSource<object>();
             string callbackId = AITCore.Instance.RegisterCallback<object>(
                 result => tcs.TrySetResult(null),
-                error => tcs.TrySetException(error),
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    tcs.TrySetException(error);
+                },
                 timeoutMs,
                 "TossAdsAttach"
             );
-            __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "void");
+            __TossAdsAttach_Internal(adGroupId, target, AITJsonSettings.Serialize(options), subscriptionId, callbackId, "void");
             await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -453,8 +495,42 @@ namespace AppsInToss
 #endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>options.Callbacks의 콜백을 JS 이벤트(AITCallbackBagEvent)에 연결하고 구독 ID를 돌려준다.</summary>
+        private static string __TossAdsAttach_Subscribe(TossAdsAttachOptions options)
+        {
+            var bagCallbacks = options?.Callbacks;
+            return AITCore.Instance.RegisterSubscriptionCallback<AITCallbackBagEvent>(
+                evt =>
+                {
+                    if (bagCallbacks == null || evt == null) return;
+                    switch (evt.Event)
+                    {
+                        case "onAdRendered":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdRendered, evt.Payload);
+                            break;
+                        case "onAdViewable":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdViewable, evt.Payload);
+                            break;
+                        case "onAdClicked":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdClicked, evt.Payload);
+                            break;
+                        case "onAdImpression":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdImpression, evt.Payload);
+                            break;
+                        case "onAdFailedToRender":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdFailedToRender, evt.Payload);
+                            break;
+                        case "onNoFill":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnNoFill, evt.Payload);
+                            break;
+                    }
+                },
+                null
+            );
+        }
+
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __TossAdsAttach_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
+        private static extern void __TossAdsAttach_Internal(string adGroupId, string target, string options, string subscriptionId, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 현재 앱 버전과 환경에서 `TossAds.attach`를 사용할 수 있는지 확인해요.
@@ -512,6 +588,7 @@ namespace AppsInToss
         private static extern void __TossAdsAttachIsSupported_Internal(string callbackId, string typeName);
 #endif
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <returns>Destroy를 부르면 붙여 둔 JS 쪽 자원과 콜백 구독을 함께 해제한다.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Obsolete("CSS 셀렉터 기반 attachBanner는 더 이상 권장되지 않습니다. AITBannerAdView 컴포넌트 또는 AITBannerAd.Show를 사용해주세요.")]
@@ -521,47 +598,101 @@ namespace AppsInToss
         public static async Awaitable<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __TossAdsAttachBanner_Subscribe(options);
             var acs = new AwaitableCompletionSource<AttachBannerResult>();
             string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
-                result => acs.SetResult(result),
-                error => acs.SetException(error),
+                result =>
+                {
+                    var handle = result ?? new AttachBannerResult();
+                    handle.Destroy = () => AITCore.Instance.Unsubscribe(subscriptionId);
+                    acs.SetResult(handle);
+                },
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    acs.SetException(error);
+                },
                 timeoutMs,
                 "TossAdsAttachBanner"
             );
-            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
+            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), subscriptionId, callbackId, "AttachBannerResult");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
             UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner called");
             await Awaitable.NextFrameAsync();
-            return default(AttachBannerResult);
+            return new AttachBannerResult { Destroy = () => UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner destroyed") };
 #endif
         }
 #else
         public static async Task<AttachBannerResult> TossAdsAttachBanner(string adGroupId, string target, TossAdsAttachBannerOptions options = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = __TossAdsAttachBanner_Subscribe(options);
             var tcs = new TaskCompletionSource<AttachBannerResult>();
             string callbackId = AITCore.Instance.RegisterCallback<AttachBannerResult>(
-                result => tcs.TrySetResult(result),
-                error => tcs.TrySetException(error),
+                result =>
+                {
+                    var handle = result ?? new AttachBannerResult();
+                    handle.Destroy = () => AITCore.Instance.Unsubscribe(subscriptionId);
+                    tcs.TrySetResult(handle);
+                },
+                error =>
+                {
+                    AITCore.Instance.Unsubscribe(subscriptionId);
+                    tcs.TrySetException(error);
+                },
                 timeoutMs,
                 "TossAdsAttachBanner"
             );
-            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), callbackId, "AttachBannerResult");
+            __TossAdsAttachBanner_Internal(adGroupId, target, AITJsonSettings.Serialize(options), subscriptionId, callbackId, "AttachBannerResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
             UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner called");
             await Task.CompletedTask;
-            return default(AttachBannerResult);
+            return new AttachBannerResult { Destroy = () => UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBanner destroyed") };
 #endif
         }
 #endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>options.Callbacks의 콜백을 JS 이벤트(AITCallbackBagEvent)에 연결하고 구독 ID를 돌려준다.</summary>
+        private static string __TossAdsAttachBanner_Subscribe(TossAdsAttachBannerOptions options)
+        {
+            var bagCallbacks = options?.Callbacks;
+            return AITCore.Instance.RegisterSubscriptionCallback<AITCallbackBagEvent>(
+                evt =>
+                {
+                    if (bagCallbacks == null || evt == null) return;
+                    switch (evt.Event)
+                    {
+                        case "onAdRendered":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdRendered, evt.Payload);
+                            break;
+                        case "onAdViewable":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdViewable, evt.Payload);
+                            break;
+                        case "onAdClicked":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdClicked, evt.Payload);
+                            break;
+                        case "onAdImpression":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdImpression, evt.Payload);
+                            break;
+                        case "onAdFailedToRender":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnAdFailedToRender, evt.Payload);
+                            break;
+                        case "onNoFill":
+                            AITCore.InvokeCallbackBag(bagCallbacks.OnNoFill, evt.Payload);
+                            break;
+                    }
+                },
+                null
+            );
+        }
+
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __TossAdsAttachBanner_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
+        private static extern void __TossAdsAttachBanner_Internal(string adGroupId, string target, string options, string subscriptionId, string callbackId, string typeName);
 #endif
         /// <summary>
         /// 현재 앱 버전과 환경에서 `TossAds.attachBanner`를 사용할 수 있는지 확인해요.

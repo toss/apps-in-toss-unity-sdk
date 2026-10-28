@@ -190,7 +190,7 @@ describe('API 메서드 표', () => {
   test('getApiCompat: Typed 이름과 래퍼 데이터를 돌려준다', () => {
     expect(getApiCompat('OpenPermissionDialog')).toMatchObject({
       methodName: 'OpenPermissionDialogTyped',
-      returnTypeCompat: { legacyReturnType: 'string', typedName: 'OpenPermissionDialogTyped' },
+      returnTypeCompat: { api: 'OpenPermissionDialog', legacyReturnType: 'string', typedName: 'OpenPermissionDialogTyped' },
     });
     expect(getApiCompat('SafeAreaInsetsSubscribe').legacySubscribe?.paramType).toBe('SafeAreaInsetsSubscribe__0');
     expect(getApiCompat('GrantPromotionRewardForGame').legacyParamOverload?.legacyParamType).toBe('GrantPromotionRewardForGameParams');
@@ -268,14 +268,19 @@ describe('생성된 Runtime/SDK 에 반영', () => {
       expect(apiText).toMatch(new RegExp(`public static async ${wrapper}<(?!${legacyReturnType}>)[\\w.]+> ${api}Typed\\(`));
     }
     expect(apiText).toContain(`[Obsolete("Use ${api}Typed")]`);
-    // extern 선언은 하나뿐이다 (래퍼가 Typed 를 부르므로 DllImport 가 겹치지 않는다)
-    expect(apiText.match(new RegExp(`static extern void __\\w+_Internal\\([^)]*\\);`, 'g'))).not.toBeNull();
+    // 옛 멤버는 이전 SDK와 같은 경로(typeName "string")로 값을 받고, Typed 는 새 타입 이름으로 받는다
+    const legacy = apiText.slice(apiText.indexOf(`[Obsolete("Use ${api}Typed")]`));
+    expect(legacy).toMatch(/RegisterCallback<string>\([\s\S]*?"string"\);/);
+    expect(legacy).not.toContain(`await ${api}Typed(`);
   });
 
   test('SafeAreaInsetsSubscribe: 새 구독 오버로드와 옛 시그니처가 함께 있다', () => {
     expect(apiText).toContain('public static Action SafeAreaInsetsSubscribe(\n            Action<SafeAreaInsets> onEvent,');
     expect(apiText).toContain('public static async Awaitable<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)');
     expect(apiText).toContain('public static async Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)');
+    // 인자 하나만 넘기는 옛 호출(null 포함)이 새 오버로드와 모호하지 않도록 기본값 없는 오버로드가 있다
+    expect(apiText).toContain('public static Awaitable<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)');
+    expect(apiText).toContain('public static Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)');
   });
 
   test('IAPGetCompletedOrRefundedOrders: 옛 (int timeoutMs = 0) 시그니처가 기본값까지 그대로고 새 시그니처의 첫 인자는 필수다', () => {

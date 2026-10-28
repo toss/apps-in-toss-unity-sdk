@@ -6,6 +6,7 @@
  */
 
 import { ParsedAPI, ParsedType, getApiCallPath } from '../types.js';
+import { hasLegacyStringReturn } from './csharp/compat.js';
 
 /**
  * jslib 생성 결과
@@ -1264,6 +1265,20 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                         Result: JSON.stringify({ success: true, data: JSON.stringify(result${api.returnsBinary ? ', ' + BINARY_TO_BASE64_REPLACER : ''}), error: '' })
                     });`;
 
+    // 옛 string 반환 멤버(compat.ts RETURN_TYPE_COMPAT)는 typeName "string"으로 불러 온다.
+    // 이전 SDK와 같은 인코딩(`data: JSON.stringify(result)`)으로 보내야 AITCore의 string 처리가 같은 문자열을 만든다.
+    const legacyStringHandling = hasLegacyStringReturn(api.name)
+      ? `                    if (typeNameStr === 'string') {
+                        // 하위 호환: 이전 SDK(string 반환)와 같은 인코딩
+                        SendMessage('AITCore', 'OnAITCallback', JSON.stringify({
+                            CallbackId: callback,
+                            TypeName: typeNameStr,
+                            Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                        }));
+                        return;
+                    }
+`
+      : '';
     return `    __${api.name}_Internal: function(${paramList}) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
@@ -1290,7 +1305,7 @@ ${paramLogs ? paramLogs + '\n' : ''}
             promiseResult
                 .then(function(result) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} resolved:', result);
-${resultHandling}
+${legacyStringHandling}${resultHandling}
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {

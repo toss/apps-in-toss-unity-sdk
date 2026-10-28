@@ -430,20 +430,29 @@ export function applyTypeCompat(
 // ---------------------------------------------------------------------------
 
 /**
- * 3.x에서 반환 타입이 바뀐 API. 새 반환 타입은 `<이름>Typed`로 두고, 원래 이름은 옛 반환 타입으로 남겨
- * `[Obsolete]` 래퍼가 Typed를 부른 뒤 `convert`로 옛 값으로 바꾼다. (C#은 반환 타입만 다른 오버로드를 허용하지 않는다.)
+ * 3.x에서 반환 타입이 바뀐 API. 새 반환 타입은 `<이름>Typed`로 두고, 원래 이름은 옛 반환 타입으로 남긴다.
+ * (C#은 반환 타입만 다른 오버로드를 허용하지 않는다.)
+ *
+ * 옛 멤버는 Typed 결과를 다시 해석하지 않고, main과 같은 경로(같은 extern을 typeName "string"으로 호출)로
+ * 값을 받는다. 그래서 `AITCore`의 string 처리가 만드는 문자열이 main과 바이트까지 같다.
+ * jslib는 typeName "string"을 받으면 main의 인코딩(`data: JSON.stringify(result)`)으로 보낸다
+ * (`hasLegacyStringReturn`).
  */
 export interface ReturnTypeCompat {
   api: string;
-  legacyReturnType: string;
-  /** Typed 결과 `result`를 옛 반환 값으로 바꾸는 C# 식 */
-  convert: string;
+  legacyReturnType: 'string';
 }
 
 export const RETURN_TYPE_COMPAT: readonly ReturnTypeCompat[] = [
-  { api: 'OpenPermissionDialog', legacyReturnType: 'string', convert: 'AITCompat.ToWire<PermissionDialogResult>(result)' },
-  { api: 'GetUserKeyForGame', legacyReturnType: 'string', convert: 'AITCompat.LegacyUserKey(result)' },
+  { api: 'OpenPermissionDialog', legacyReturnType: 'string' },
+  { api: 'GetUserKeyForGame', legacyReturnType: 'string' },
 ];
+
+/** jslib 생성기용: 이 API(camelCase 또는 PascalCase 이름)가 옛 string 반환 경로를 함께 지원해야 하는지 */
+export function hasLegacyStringReturn(apiName: string): boolean {
+  const lower = apiName.charAt(0).toLowerCase() + apiName.slice(1);
+  return RETURN_TYPE_COMPAT.some(c => c.api.charAt(0).toLowerCase() + c.api.slice(1) === lower);
+}
 
 /**
  * 3.x에서 매개변수가 묶음 객체에서 콜백으로 바뀐 구독 API. 옛 시그니처를 `[Obsolete]` 오버로드로 남기고

@@ -544,6 +544,7 @@ namespace AppsInToss
 
         /// <summary>
         /// 이전 SDK의 반환 타입(<c>string</c>)을 그대로 돌려주는 옛 시그니처다.
+        /// 이전 SDK와 같은 경로(typeName "string")로 값을 받으므로 문자열이 같다.
         /// 새 코드는 <see cref="GetUserKeyForGameTyped"/>를 쓴다.
         /// </summary>
         [Obsolete("Use GetUserKeyForGameTyped")]
@@ -552,14 +553,42 @@ namespace AppsInToss
 #if UNITY_6000_0_OR_NEWER
         public static async Awaitable<string> GetUserKeyForGame(int timeoutMs = 0)
         {
-            var result = await GetUserKeyForGameTyped(timeoutMs);
-            return AITCompat.LegacyUserKey(result);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "GetUserKeyForGame"
+            );
+            __getUserKeyForGame_Internal(callbackId, "string");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GetUserKeyForGame called");
+            await Awaitable.NextFrameAsync();
+            return "";
+#endif
         }
 #else
         public static async Task<string> GetUserKeyForGame(int timeoutMs = 0)
         {
-            var result = await GetUserKeyForGameTyped(timeoutMs);
-            return AITCompat.LegacyUserKey(result);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<string>();
+            string callbackId = AITCore.Instance.RegisterCallback<string>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GetUserKeyForGame"
+            );
+            __getUserKeyForGame_Internal(callbackId, "string");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GetUserKeyForGame called");
+            await Task.CompletedTask;
+            return "";
+#endif
         }
 #endif
 

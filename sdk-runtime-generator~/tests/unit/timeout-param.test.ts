@@ -20,7 +20,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import * as fs from 'fs/promises';
 import { glob } from 'glob';
-import { RETURN_TYPE_COMPAT, LEGACY_SUBSCRIBE_COMPAT } from '../../src/generators/csharp/compat.js';
+import { LEGACY_SUBSCRIBE_COMPAT } from '../../src/generators/csharp/compat.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -196,16 +196,13 @@ describe('cs-waits-js async API의 timeoutMs 파라미터 (csharp-category-parti
   });
 
   test('RegisterCallback을 직접 부르지 않는 async 메서드는 compat.ts에 적힌 하위 호환 래퍼뿐이다', () => {
-    const allowed = new Set<string>([
-      ...RETURN_TYPE_COMPAT.map(c => c.api),
-      ...LEGACY_SUBSCRIBE_COMPAT.map(c => c.api),
-    ]);
+    // 반환 타입 호환 멤버(RETURN_TYPE_COMPAT)는 이전 SDK와 같은 경로로 RegisterCallback<string>을 직접 부른다
+    const allowed = new Set<string>(LEGACY_SUBSCRIBE_COMPAT.map(c => c.api));
     expect(compatWrappers.filter(m => !allowed.has(m.name)).map(m => `${m.file}:${m.name}`)).toEqual([]);
     // Awaitable/Task 두 브랜치
     expect(compatWrappers.length).toBe(allowed.size * 2);
     for (const wrapper of compatWrappers) {
-      const typed = RETURN_TYPE_COMPAT.find(c => c.api === wrapper.name);
-      if (typed) expect(wrapper.body).toContain(`await ${typed.api}Typed(`);
+      expect(wrapper.body).toContain('OnEvent');
     }
   });
 });

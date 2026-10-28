@@ -143,13 +143,6 @@ namespace AppsInToss
             if (!value.HasValue) return null;
             return EnumWireMap<T>.ToWireValue.TryGetValue(value.Value, out var wire) ? wire : null;
         }
-
-        /// <summary>이전 SDK의 GetUserKeyForGame 문자열: 성공이면 해시, 실패면 에러 코드.</summary>
-        internal static string LegacyUserKey(GetUserKeyForGameResult result)
-        {
-            if (result == null) return null;
-            return result.IsSuccess ? result.GetSuccess()?.Hash : result.GetErrorCode();
-        }
     }
 
     /// <summary>

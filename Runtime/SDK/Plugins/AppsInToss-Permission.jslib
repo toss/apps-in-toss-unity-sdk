@@ -87,6 +87,15 @@ mergeInto(LibraryManager.library, {
             promiseResult
                 .then(function(result) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] openPermissionDialog resolved:', result);
+                    if (typeNameStr === 'string') {
+                        // 하위 호환: 이전 SDK(string 반환)와 같은 인코딩
+                        SendMessage('AITCore', 'OnAITCallback', JSON.stringify({
+                            CallbackId: callback,
+                            TypeName: typeNameStr,
+                            Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                        }));
+                        return;
+                    }
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,

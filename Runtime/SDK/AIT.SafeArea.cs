@@ -207,6 +207,21 @@ namespace AppsInToss
             return unsubscribe;
         }
 #endif
+
+        /// <summary>
+        /// <c>SafeAreaInsetsSubscribe(null)</c>처럼 인자 하나만 넘기는 옛 호출이 새 오버로드(<c>onError</c> 기본값)와 모호해지지 않도록 두는 오버로드다.
+        /// 기본값 없이 인자가 모두 맞는 쪽이 우선하므로 옛 호출은 항상 이쪽에 묶인다.
+        /// </summary>
+        [Obsolete("Use SafeAreaInsetsSubscribe(Action<SafeAreaInsets> onEvent, Action<AITException> onError = null)")]
+        [Preserve]
+        [APICategory("SafeArea")]
+#if UNITY_6000_0_OR_NEWER
+        public static Awaitable<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)
+            => SafeAreaInsetsSubscribe(__0, 0);
+#else
+        public static Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0)
+            => SafeAreaInsetsSubscribe(__0, 0);
+#endif
         /// <summary>
         /// Safe Area insets 값을 가져와요.
         /// </summary>

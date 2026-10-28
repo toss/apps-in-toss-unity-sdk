@@ -248,13 +248,11 @@ jobs:
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ANALYTICS_VERSION=$(jq -r '.companions["@apps-in-toss/web-analytics"]' ../.github/sdk-versions.json)
-
-          echo "=== web-framework v${VERSION}, web-analytics v${ANALYTICS_VERSION} 업데이트 ==="
+          echo "=== web-framework v${VERSION} 업데이트 ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
-          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${ANALYTICS_VERSION}" --force --registry https://registry.npmjs.org
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
@@ -341,7 +339,7 @@ jobs:
             echo ""
             echo "- @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성"
             echo "- main 브랜치 최신 상태 기반 리베이스"
-            echo "- .github/sdk-versions.json 갱신 (web-framework/web-analytics/bridge-core/devtools)"
+            echo "- .github/sdk-versions.json 갱신 (web-framework/devtools)"
             echo "- package.json·BuildConfig package.json 버전 동기화"
             echo ""
             echo "자동 생성: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

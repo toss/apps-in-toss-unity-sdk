@@ -419,11 +419,8 @@ jobs:
 
           console.log(`Updating @apps-in-toss/web-framework to ${version}`);
 
-          // web-framework 버전만 동기화한다. @apps-in-toss/web-analytics는 별도 버전
-          // 라인(latest=2.6.1)이라 web-framework의 prerelease 버전(예: 3.0.0-beta.<hash>)이
-          // npm에 존재하지 않으며, web-framework 3.x는 web-analytics에 의존하지도 않는다(검증됨).
-          // web-analytics까지 덮으면 아래 pnpm install이 ERR_PNPM_NO_MATCHING_VERSION으로
-          // 실패하므로, bridge-core와 동일하게 BuildConfig 기본 핀을 그대로 둔다.
+          // web-framework 버전만 동기화한다. devtools 등 다른 @apps-in-toss/* 핀은
+          // BuildConfig 기본 핀을 그대로 둔다(prerelease 버전이 npm에 없을 수 있다).
           // (override-sdk-version.cjs의 BuildConfig 동기화 로직과 동일 정책.)
           const pkg = JSON.parse(fs.readFileSync(buildConfig, 'utf8'));
           for (const section of ['dependencies', 'devDependencies']) {

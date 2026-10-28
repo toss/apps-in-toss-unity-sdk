@@ -297,7 +297,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 동반 패키지(web-analytics/bridge-core/devtools) 버전을 npm에서 결정해 기준 파일
+      # 동반 패키지(devtools) 버전을 npm에서 결정해 기준 파일
       # (.github/sdk-versions.json)에 기록한다. 규칙과 근거는 스크립트 머리말 참고.
       # 다음 단계(SDK 재생성)와 "버전 파일 동기화" 단계가 이 기준 파일을 읽는다.
       - name: 동반 패키지 버전 결정
@@ -313,13 +313,11 @@ jobs:
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ANALYTICS_VERSION=$(jq -r '.companions["@apps-in-toss/web-analytics"]' ../.github/sdk-versions.json)
-
-          echo "=== web-framework v${VERSION}, web-analytics v${ANALYTICS_VERSION} 업데이트 ==="
+          echo "=== web-framework v${VERSION} 업데이트 ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
-          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${ANALYTICS_VERSION}" --force --registry https://registry.npmjs.org
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
@@ -429,7 +427,7 @@ jobs:
             echo "기능: SDK v${VERSION} 업데이트"
             echo ""
             echo "- @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성"
-            echo "- .github/sdk-versions.json 갱신 (web-framework/web-analytics/bridge-core/devtools)"
+            echo "- .github/sdk-versions.json 갱신 (web-framework/devtools)"
             echo "- package.json·BuildConfig package.json 버전 동기화"
             echo "- unity-bridge.ts 자동 생성"
             echo ""

@@ -136,7 +136,7 @@ EOF
 
 `version`을 비우면 누락된 버전을 감지해 가장 높은 버전 하나만 PR로 만듭니다. 중간 버전은 건너뜁니다(`skipped_versions`). 그 버전의 열린 `update/` PR이 이미 있으면 새로 만들지 않습니다. PR을 만든 뒤(또는 이미 있을 때) `supersede` 잡이 `close-superseded-prs.sh`로 더 낮은 버전의 bot `update/` PR을 코멘트와 함께 닫고 브랜치를 지웁니다. 사람이 만든 브랜치와 fork PR은 건드리지 않습니다.
 
-동반 패키지(web-analytics, bridge-core, devtools) 버전은 `sync-sdk-versions.cjs resolve`가 정합니다. 같은 번호가 npm에 있으면 그 번호, 없으면 latest를 쓰고, 결과를 `.github/sdk-versions.json`에 기록한 뒤 `apply`와 `check`로 모든 파일에 반영합니다.
+동반 패키지(devtools) 버전은 `sync-sdk-versions.cjs resolve`가 정합니다. 같은 번호가 npm에 있으면 그 번호, 없으면 latest를 쓰고, 결과를 `.github/sdk-versions.json`에 기록한 뒤 `apply`와 `check`로 모든 파일에 반영합니다.
 
 ```bash
 gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/214934319/dispatches \

@@ -133,7 +133,8 @@ public class PerformanceBenchmark : MonoBehaviour
 
     private int GetBatchCount()
     {
-#if UNITY_EDITOR
+        // Unity 6.6에서 UnityStats.batches가 제거됐다.
+#if UNITY_EDITOR && !UNITY_6000_6_OR_NEWER
         return UnityEditor.UnityStats.batches;
 #else
         return 0;

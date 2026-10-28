@@ -69,6 +69,17 @@ version_lt() {
   [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" = "$a" ]
 }
 
+# Unity 6000.6부터 에디터에 번들된 LicensingClient는 버전 번호를 새로 매긴다
+# (6000.6.7f1은 1.2.0, 같은 날 나온 6000.3.27f1은 1.18.3+d7ffd15). 숫자로는
+# 낮아 보여도 오래된 클라이언트가 아니어서 6000.6 에디터는 자기 클라이언트로
+# 라이선스 인증까지 정상 동작한다. 이 계열은 기존 계열과 버전을 비교할 수 없으므로
+# 교체 대상에서도, 교체 후보에서도 뺀다.
+is_new_lc_line_editor() {
+  local v="$1"
+  [ -n "$v" ] || return 1
+  [ "$(printf '%s\n%s\n' "$v" "6000.6" | sort -V | head -1)" = "6000.6" ]
+}
+
 TARGET_SIG_VALID=false
 if codesign --verify --deep --strict "$TARGET_APP" 2>/dev/null; then
   TARGET_SIG_VALID=true
@@ -78,6 +89,11 @@ TARGET_LC_VERSION=$(read_lc_version "$TARGET_APP")
 echo "Current editor LicensingClient: ${TARGET_APP}"
 echo "  signature valid: ${TARGET_SIG_VALID}"
 echo "  version: ${TARGET_LC_VERSION:-unknown}"
+
+if is_new_lc_line_editor "$CURRENT_VERSION" && [ "$TARGET_SIG_VALID" = true ]; then
+  echo "Unity ${CURRENT_VERSION} uses the new LicensingClient version line; keeping bundled client"
+  exit 0
+fi
 
 if [ "$TARGET_SIG_VALID" = false ]; then
   VERIFY_MSG=$(codesign --verify --deep --strict "$TARGET_APP" 2>&1 || true)
@@ -127,6 +143,7 @@ if [ -d "$UNITY_BASE" ]; then
   for dir in $(ls -d "${UNITY_BASE}"/*/ 2>/dev/null | sort -rV); do
     version_dir=$(basename "$dir")
     [ "$version_dir" = "$CURRENT_VERSION" ] && continue
+    is_new_lc_line_editor "$version_dir" && continue
 
     for candidate in \
       "${dir}Unity.app/Contents/Frameworks/UnityLicensingClient.app" \

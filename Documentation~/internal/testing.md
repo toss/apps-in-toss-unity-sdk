@@ -43,13 +43,15 @@ E2E 매트릭스는 아래 5개 버전을 macOS와 Windows 양쪽에서 돌립�
 
 | 버전 | 성격 |
 |------|------|
-| 6000.6.7f1 | Unity 6.6 (Supported) |
-| 6000.3.27f1 | Unity 6.3 LTS |
-| 6000.0.85f1 | Unity 6 LTS |
-| 2022.3.62f3 | LTS |
-| 2021.3.45f2 | LTS, 최소 지원 버전 |
+| 6000.3.27f1 | Unity 6.3 LTS, 집중 관리(권장) |
+| 6000.0.85f1 | Unity 6 LTS, 집중 관리(권장) |
+| 2022.3.62f3 | Unity 2022 LTS, 집중 관리 |
+| 2021.3.45f2 | Unity 2021 LTS, 집중 관리, 최소 지원 버전 |
+| 6000.6.7f1 | Unity 6.6 Supported, 최신 Supported 호환 확인용 |
 
-각 버전의 정확한 패치는 `Tests~/E2E/SampleUnityProject-<버전>/ProjectSettings/ProjectVersion.txt`가 단일 출처입니다. 버전을 올리면 `README.md`의 테스트 버전 표도 같이 고칩니다. Tuanjie 엔진도 지원 대상이며, SDK는 2021.3 이상 모든 버전에서 컴파일되어야 합니다.
+LTS 4개는 README에 패치까지 적은 집중 관리 버전입니다. LTS 패치를 올리거나 새 LTS가 나오면 매트릭스와 README 표를 함께 바꿉니다. 최신 Supported 슬롯은 새 Supported 버전이 나오면 그 버전으로 옮깁니다.
+
+각 버전의 정확한 패치는 `Tests~/E2E/SampleUnityProject-<버전>/ProjectSettings/ProjectVersion.txt`가 단일 출처입니다. Tuanjie 엔진도 지원 대상이며, SDK는 2021.3 이상 모든 버전에서 컴파일되어야 합니다.
 
 ## 디렉터리
 

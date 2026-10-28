@@ -3,10 +3,12 @@ import { mapToCSharpType } from '../../validators/types.js';
 import { escapeCSharpKeyword, escapeObsoleteMessage, toPascalCase, xmlSafe,functionParamTypeName, extractCleanName } from './utils.js';
 import { isInlineAnonymousObjectParam } from './type-collector.js';
 import { PRIMITIVE_TYPES } from './constants.js';
+import { getApiCompat, ApiCompatData } from './compat.js';
 
 /**
  * 이전 SDK에서 `(int timeoutMs = 0)`만 받다가 선택 파라미터가 앞에 붙은 API.
- * 첫 파라미터가 선택(null 허용)이어야 한다. 새 시그니처만 두면 `Api(5000)`이 컴파일되지 않는다.
+ * 옛 시그니처 `Api(int timeoutMs = 0)`를 그대로 오버로드로 두고, 새 시그니처는 첫 파라미터를 필수로 받는다
+ * (둘 다 기본값이 있으면 `Api()`가 모호해진다). 첫 파라미터는 null을 넘길 수 있어야 한다.
  */
 const COMPAT_TIMEOUT_ONLY_OVERLOADS = new Set<string>(['IAPGetCompletedOrRefundedOrders']);
 
@@ -59,6 +61,12 @@ export interface PreparedApiData {
   /** options.callbacks 묶음을 받는 API (TossAds.initialize/attach/attachBanner) */
   /** 예전에 `(int timeoutMs)`만 받던 API: 같은 호출이 계속 컴파일되도록 오버로드를 하나 더 낸다 */
   compatTimeoutOnlyOverload?: boolean;
+  /** 메서드의 C# 이름 (반환 타입 하위 호환으로 `...Typed`가 되면 pascalName과 다르다) */
+  methodName: string;
+  /** 하위 호환 래퍼 (compat.ts) */
+  returnTypeCompat?: ApiCompatData['returnTypeCompat'];
+  legacySubscribe?: ApiCompatData['legacySubscribe'];
+  legacyParamOverload?: ApiCompatData['legacyParamOverload'];
   hasCallbackBag?: boolean;
   callbackBag?: {
     /** 묶음을 가진 파라미터 이름과 C# 타입 */
@@ -410,6 +418,8 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     api.parameters[0].type.properties?.some(p => p.name === 'options');
   const isNamespaceCallbackBased = api.isCallbackBased && hasArgsObjectPattern;
 
+  const apiCompat = getApiCompat(api.pascalName);
+
   return {
     name: api.name,
     pascalName: api.pascalName,
@@ -417,7 +427,9 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     description: api.description,
     returnDescription: api.returnDescription,
     examples: api.examples,
-    parameters: api.isCallbackBased ? callbackApiParameters : parameters,
+    // `(int timeoutMs = 0)` 오버로드와 인자 없는 호출이 겹치지 않도록, 그 오버로드를 두는 API는 첫 매개변수를 필수로 둔다
+    parameters: (api.isCallbackBased ? callbackApiParameters : parameters).map((p, i) =>
+      i === 0 && COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) ? { ...p, optional: false } : p),
     returnType,
     isAsync: api.isAsync,
     callbackType,
@@ -448,6 +460,10 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     nestedCallbackEventType: getNestedCallbackEventType(api),
     // options.callbacks 묶음 API 지원
     compatTimeoutOnlyOverload: COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) || undefined,
+    methodName: apiCompat.methodName ?? api.pascalName,
+    returnTypeCompat: apiCompat.returnTypeCompat,
+    legacySubscribe: apiCompat.legacySubscribe,
+    legacyParamOverload: apiCompat.legacyParamOverload,
     hasCallbackBag: !!api.callbackBag,
     callbackBag: api.callbackBag
       ? (() => {

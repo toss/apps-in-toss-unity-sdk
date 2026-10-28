@@ -46,7 +46,19 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("log_type")]
-        public EventLogParamsLog_type Log_type;
+        [Obsolete("Use Log_typeTyped")]
+        public string Log_type;
+
+        /// <summary>
+        /// <see cref="Log_type"/>를 <see cref="EventLogParamsLog_type"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Log_type"/>에 그대로 남는다. 값을 쓰면 <see cref="Log_type"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public EventLogParamsLog_type? Log_typeTyped
+        {
+            get => AITCompat.ParseEnum<EventLogParamsLog_type>(Log_type);
+            set => Log_type = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("log_name")]
         public string Log_name;

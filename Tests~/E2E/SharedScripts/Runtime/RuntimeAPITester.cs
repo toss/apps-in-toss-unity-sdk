@@ -187,7 +187,7 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("FetchContacts", async () => { await AIT.FetchContacts(new FetchContactsOptions { Size = 10, Offset = 0 }); });
 
         // Event API
-        TestAPICall("EventLog", async () => { await AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = EventLogParamsLog_type.Debug }); });
+        TestAPICall("EventLog", async () => { await AIT.EventLog(new EventLogParams { Log_name = "test", Log_typeTyped = EventLogParamsLog_type.Debug }); });
 
         // Permission APIs (class 타입 파라미터) - PermissionName/PermissionAccess named enum 사용
         TestAPICall("GetPermission", async () => { await AIT.GetPermission(new GetPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }); });

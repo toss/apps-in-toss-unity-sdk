@@ -74,24 +74,28 @@ C#의 `using X = Y;` 별칭은 선언한 파일 안에서만 보입니다. 라�
 
 - `src/generators/csharp/type-name-pins.ts`의 `TYPE_NAME_PINS`는 생성된 이름을 이전 공개 이름으로 되돌립니다(예: `AppLoginResponse` -> `AppLoginResult`). 카테고리 파일, `AITCore`, 타입 단위에 식별자 단위로 적용합니다. 되돌린 이름이 이미 있는 타입과 같으면 `///` 주석을 뺀 본문이 같을 때만 합치고, 다르면 생성을 중단합니다.
 - `DEPRECATED_TYPE_SHIMS`는 3.x가 같은 모양의 새 타입으로 대체한 이전 이름을 `[Obsolete]` 하위 클래스로 남깁니다(`GrantPromotionRewardForGameParams : GrantPromotionRewardParams` 등). `new`, 필드 초기화, 새 API 인자로 넘기기는 그대로 되고, 반환값을 받는 쪽만 새 타입으로 받으면 됩니다. 기반 타입이 생성되지 않으면 생성을 중단합니다.
-- `REMOVED_PUBLIC_TYPE_NAMES`는 어떤 3.x 타입으로도 이을 수 없어 의도적으로 사라진 이전 이름입니다(`SafeAreaInsetsSubscribe__0`, `number`).
+- `REMOVED_PUBLIC_TYPE_NAMES`는 어떤 방법으로도 이을 수 없어 의도적으로 사라진 이전 이름 목록이고, 지금은 비어 있습니다. `SafeAreaInsetsSubscribe__0`과 `number`는 `LEGACY_TYPES`(`compat.ts`)가 `[Obsolete]` 타입으로 남깁니다.
 - `public-type-names.ts`의 `PUBLIC_TYPE_NAMES`는 이전 공개 이름 전체이고, `tests/unit/type-name-pins.test.ts`가 "생성됐거나 제거 목록에 있을 것", "하위 클래스의 기반이 있을 것", "System/UnityEngine 타입과 이름이 겹치지 않을 것", "참조되지 않는 공개 타입이 없을 것"을 검사합니다.
 - `prune-synthetic-types.ts`는 생성기가 만들어 낸 클래스와 d.ts에 선언만 되고 아무도 참조하지 않는 타입(`Environment` enum은 `System.Environment`와 이름이 충돌합니다)을 지웁니다. `PUBLIC_TYPE_NAMES`는 남깁니다.
 - 예전에 `(int timeoutMs)`만 받던 API가 선택 파라미터를 앞에 얻으면 `COMPAT_TIMEOUT_ONLY_OVERLOADS`(`api-data-preparer.ts`)에 올려 `Api(int timeoutMs)` 오버로드를 함께 생성합니다(`IAPGetCompletedOrRefundedOrders`).
 
 새 타입의 이름은 3.x d.ts를 따릅니다. 문자열 리터럴 유니온은 enum이 되고, 값 집합이 같은 인라인 enum은 `enum-dedup.ts`가 합칩니다(핀 대상 이름은 합치지 않습니다). enum 멤버는 `[EnumMember(Value = ...)]`로 원래 문자열 값을 유지하므로 직렬화 형식은 바뀌지 않습니다.
 
-## origin/main 대비 C# 호환성 변경
+## origin/main 대비 C# 호환성
 
-web-framework 3.x d.ts를 유일한 입력으로 쓰면서 생긴, 소스 수준에서 호환되지 않는 변경입니다. 이 목록 밖의 공개 메서드와 타입은 이름과 시그니처가 그대로입니다.
+깨지는 변경은 없습니다. origin/main의 공개 타입과 멤버는 이름과 시그니처가 그대로 있고, 3.x가 더 좋은 타입을 주는 곳은 이전 멤버를 `[Obsolete("Use <X>Typed")]`로 남긴 채 `Typed` 접미사를 붙인 새 멤버를 나란히 둡니다. 선언은 `src/generators/csharp/compat.ts` 한 곳에 있고, 생성이 끝난 뒤 대상이 없으면 생성을 중단합니다. 단위 테스트는 `tests/unit/compat.test.ts`입니다.
 
-- `SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0)` 가 `SafeAreaInsetsSubscribe(Action<SafeAreaInsets> onEvent, Action<AITException> onError = null)` 로 바뀌었고 반환이 `Awaitable<Action>` 에서 `Action` 으로 바뀌었습니다. `SafeAreaInsetsSubscribe__0` 와 `number` 타입은 없어졌습니다.
-- `OpenPermissionDialog` 의 반환이 `string` 에서 `PermissionDialogResult` enum 으로, `GetUserKeyForGame` 의 반환이 `string` 에서 `GetUserKeyForGameResult` 로 바뀌었습니다.
-- 문자열 리터럴 유니온 필드가 enum 으로 바뀌었습니다: `EventLogParams.Log_type`, `DeclaredAgeRange.Status`, `Location.AccessLocation`(nullable), `SubmitGameCenterLeaderBoardScoreResponse.StatusCode`, `TossAdsAttachBannerOptions.Theme`/`Tone`/`Variant`, `TossAdsAttachOptions.Theme`. `ContactsViralEventData.RewardAmount` 는 `double?` 입니다. 직렬화되는 문자열 값은 그대로입니다.
-- 결과 클래스에서 예전 생성기가 붙이던 `error` 필드가 없어졌습니다(`AppLoginResult`, `AppsInTossGlobals`, `AttachBannerResult`, `CompletedOrRefundedOrdersResult`, `IAPGetPendingOrdersResult`, `IAPGetProductItemListResult`, `IapSubscriptionInfoResponse`, `Location`, `SafeAreaInsets`, `SetScreenAwakeModeResult`, `SetSecureScreenResult`). 실패는 `AITException` 으로 오고, 앱 버전이 낮아 `undefined` 를 돌려주는 호출은 `null` 이 됩니다.
-- 결제 타입이 3.x 모양으로 바뀌었습니다: `CheckoutPaymentOptions.PayToken` 은 `CheckoutPaymentOptions.Params.PayToken`, `RequestTossPayPaysBillingOptions.WrappedToken` 은 `Params` 아래로 옮겨졌습니다. `GrantPromotionRewardResult.Code` 는 없어졌고 실패는 `ErrorCode`/`Message` 입니다.
-- `APICategory` 는 예전에 `Other` 였던 API 9개가 도메인 카테고리(Media, Notification, Payment, Promotion, Review, SystemInfo, User)로 옮겨졌습니다. 카테고리를 읽는 코드는 `Tests~/E2E` 의 `APIParameterInspector` 뿐이고 매핑 가드 테스트가 있습니다.
-- API 143개가 추가됐고, 3.x에서 deprecated 인 API 90여 개는 `[Obsolete]` 입니다. 이 목록은 `[Obsolete]` 경고일 뿐 컴파일을 막지 않습니다.
+- 반환 타입이 바뀐 API(`RETURN_TYPE_COMPAT`): `OpenPermissionDialog`와 `GetUserKeyForGame`은 이전 이름이 `string`을 돌려주는 `[Obsolete]` 래퍼이고(Awaitable과 Task 둘 다), 새 반환 타입은 `OpenPermissionDialogTyped`, `GetUserKeyForGameTyped`입니다. 변환은 `AITCompat`(`csharp-core.hbs`)가 합니다.
+- `SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)`와 `SafeAreaInsetsSubscribe__0` 타입은 `[Obsolete]` 오버로드로 남고 런타임에도 동작합니다. 새 `(Action<SafeAreaInsets> onEvent, Action<AITException> onError = null)` 오버로드가 함께 있습니다.
+- 문자열 필드가 enum이 된 곳(`STRING_ENUM_COMPAT`)은 이전 이름의 `string` 필드가 직렬화를 맡고(알 수 없는 값도 잃지 않음), `<Name>Typed`는 `[JsonIgnore]` nullable enum 계산 프로퍼티입니다. 대상은 `EventLogParams.Log_type`, `DeclaredAgeRange.Status`, `Location.AccessLocation`, `SubmitGameCenterLeaderBoardScoreResponse.StatusCode`, `TossAdsAttachBannerOptions.Theme`/`Tone`/`Variant`, `TossAdsAttachOptions.Theme`입니다.
+- `ContactsViralEventData.RewardAmount`는 `double`(`[Obsolete]`)이고, `RewardAmountSpecified`로 존재 여부를 추적하며 `double? RewardAmountTyped`가 짝입니다.
+- `CheckoutPaymentOptions.PayToken`과 `RequestTossPayPaysBillingOptions.WrappedToken`은 `[JsonIgnore] [Obsolete("Use Params.X")]` 프로퍼티로 `Params`(없으면 생성)에 전달합니다. 필드에서 프로퍼티가 되므로 `ref`/`out`으로 넘기는 코드만 바이너리·소스 호환이 아닙니다.
+- 이전 생성기가 붙이던 `error` 필드(`AppLoginResult`, `AppsInTossGlobals`, `AttachBannerResult`, `CompletedOrRefundedOrdersResult`, `IAPGetPendingOrdersResult`, `IAPGetProductItemListResult`, `IapSubscriptionInfoResponse`, `Location`, `SafeAreaInsets`, `SetScreenAwakeModeResult`, `SetSecureScreenResult`)와 `GrantPromotionRewardResult.Code`는 이전 타입과 직렬화 그대로 `[Obsolete]`로 남습니다. 실제 실패는 `AITException`으로 옵니다.
+- `PermissionName`, `ConsentedUserDataKey` enum은 멤버 순서를 이전 SDK에 맞추고 새 멤버를 뒤에 붙입니다. 정수 값이 바뀌지 않습니다.
+- `IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)`는 기본값까지 그대로이고, 새 시그니처는 첫 인자를 필수로 둬 모호하지 않습니다. `GrantPromotionRewardForGame`은 옛 매개변수 타입을 받는 `[Obsolete]` 오버로드가 있습니다.
+- 검증은 main과 새 빌드의 DLL을 리플렉션으로 비교해 제거와 변경이 0건인지 보는 방식으로 합니다(추가와 `[Obsolete]` 추가만 허용). 알려진 예외는 위 필드에서 프로퍼티가 된 2건입니다.
+- `APICategory`는 예전에 `Other`였던 API 9개가 도메인 카테고리(Media, Notification, Payment, Promotion, Review, SystemInfo, User)로 옮겨졌습니다. 카테고리를 읽는 코드는 `Tests~/E2E`의 `APIParameterInspector`뿐이고 매핑 가드 테스트가 있습니다.
+- API 143개가 추가됐고, 3.x에서 deprecated인 API 90여 개는 `[Obsolete]`입니다. 경고일 뿐 컴파일을 막지 않습니다.
 
 ## 문서 링크가 생성물로 들어가는 지점
 

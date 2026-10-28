@@ -140,6 +140,11 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("message")]
         public string Message;
+        [Preserve]
+        [JsonProperty("code")]
+        [Obsolete("오류 코드는 ErrorCode로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string Code;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -181,7 +186,19 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("statusCode")]
-        public SubmitGameCenterLeaderBoardScoreResponseStatusCode StatusCode;
+        [Obsolete("Use StatusCodeTyped")]
+        public string StatusCode;
+
+        /// <summary>
+        /// <see cref="StatusCode"/>를 <see cref="SubmitGameCenterLeaderBoardScoreResponseStatusCode"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="StatusCode"/>에 그대로 남는다. 값을 쓰면 <see cref="StatusCode"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public SubmitGameCenterLeaderBoardScoreResponseStatusCode? StatusCodeTyped
+        {
+            get => AITCompat.ParseEnum<SubmitGameCenterLeaderBoardScoreResponseStatusCode>(StatusCode);
+            set => StatusCode = AITCompat.ToWire(value);
+        }
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -196,6 +213,9 @@ namespace AppsInToss
     [Obsolete("GrantPromotionRewardParams를 사용하세요.")]
     public class GrantPromotionRewardForGameParams : GrantPromotionRewardParams
     {
+        [Preserve]
+        [JsonProperty("params")]
+        public new GrantPromotionRewardForGameParamsParams Params;
     }
 
     /// <summary>

@@ -252,11 +252,13 @@ public static class APIParameterInspector
         // Permission
         { "GetPermission", "Permission" },
         { "OpenPermissionDialog", "Permission" },
+        { "OpenPermissionDialogTyped", "Permission" },
         { "RequestPermission", "Permission" },
 
         // GameCenter (GrantPromotionReward 편입: GrantPromotionRewardForGame과 같은 도메인)
         { "GetGameCenterGameProfile", "GameCenter" },
         { "GetUserKeyForGame", "GameCenter" },
+        { "GetUserKeyForGameTyped", "GameCenter" },
         { "GrantPromotionRewardForGame", "GameCenter" },
         { "OpenGameCenterLeaderboard", "GameCenter" },
         { "SubmitGameCenterLeaderBoardScore", "GameCenter" },

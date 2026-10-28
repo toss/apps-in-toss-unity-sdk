@@ -70,11 +70,7 @@ export const TYPE_NAME_PINS: Readonly<Record<string, string>> = {
  * 의도적으로 제거한다 (`tests/fixtures/public-type-names.json` 검증에서 이 목록은 건너뛴다).
  */
 export const REMOVED_PUBLIC_TYPE_NAMES: readonly string[] = [
-  // 3.x 에서 구독이 직접 콜백을 받는 형태로 바뀌어 매개변수 묶음이 없어졌다.
-  // 이 이름을 받던 SafeAreaInsetsSubscribe 는 반환 타입도 바뀌어 하위 클래스로 이을 수 없다.
-  'SafeAreaInsetsSubscribe__0',
-  // 과거 생성기가 `number` 라는 이름으로 잘못 만든 빈 클래스
-  'number',
+  // 비어 있다: 공개 타입은 하나도 지우지 않는다. 3.x 에서 사라진 타입도 compat.ts 의 LEGACY_TYPES 가 `[Obsolete]` 로 남긴다.
 ];
 
 /**
@@ -91,7 +87,15 @@ export interface DeprecatedTypeShim {
 }
 
 export const DEPRECATED_TYPE_SHIMS: readonly DeprecatedTypeShim[] = [
-  { name: 'GrantPromotionRewardForGameParams', base: 'GrantPromotionRewardParams' },
+  {
+    name: 'GrantPromotionRewardForGameParams',
+    base: 'GrantPromotionRewardParams',
+    // 옛 Params 필드의 타입(옛 이름 하위 클래스)을 그대로 유지한다. 기반 클래스의 같은 이름 필드를 가린다.
+    extraMembers: `        [Preserve]
+        [JsonProperty("params")]
+        public new GrantPromotionRewardForGameParamsParams Params;
+`,
+  },
   { name: 'GrantPromotionRewardForGameParamsParams', base: 'GrantPromotionRewardParamsParams' },
   { name: 'GrantPromotionRewardForGameSuccessResponse', base: 'GrantPromotionRewardResponse' },
   { name: 'GrantPromotionRewardForGameErrorResponse', base: 'GrantPromotionRewardErrorResponse' },

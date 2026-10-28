@@ -459,7 +459,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(IAPGetCompletedOrRefundedOrdersParams paramsParam = null, int timeoutMs = 0)
+        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(IAPGetCompletedOrRefundedOrdersParams paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<CompletedOrRefundedOrdersResult>();
@@ -479,7 +479,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(IAPGetCompletedOrRefundedOrdersParams paramsParam = null, int timeoutMs = 0)
+        public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(IAPGetCompletedOrRefundedOrdersParams paramsParam, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<CompletedOrRefundedOrdersResult>();
@@ -501,16 +501,16 @@ namespace AppsInToss
 #endif
 
         /// <summary>
-        /// 이전 버전 호출 <c>IAPGetCompletedOrRefundedOrders(timeoutMs)</c>를 그대로 컴파일하기 위한 오버로드다.
-        /// 새 코드는 <c>IAPGetCompletedOrRefundedOrders(null, timeoutMs)</c> 형태를 쓴다.
+        /// 매개변수 객체 없이 <c>IAPGetCompletedOrRefundedOrders(timeoutMs)</c>만 넘기는 호출용 오버로드다.
+        /// 객체를 넘기려면 <c>IAPGetCompletedOrRefundedOrders(null, timeoutMs)</c>처럼 첫 인자를 적는다.
         /// </summary>
         [Preserve]
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs)
+        public static Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)
             => IAPGetCompletedOrRefundedOrders(null, timeoutMs);
 #else
-        public static Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs)
+        public static Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)
             => IAPGetCompletedOrRefundedOrders(null, timeoutMs);
 #endif
 

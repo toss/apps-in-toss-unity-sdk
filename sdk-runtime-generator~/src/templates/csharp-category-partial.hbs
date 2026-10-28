@@ -70,6 +70,31 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __{{{this.name}}}_Internal(string subscriptionId, string typeName);
 #endif
+{{#if this.legacySubscribe}}
+
+        /// <summary>
+        /// 이전 SDK의 시그니처다. 매개변수 묶음의 <c>OnEvent</c>로 구독을 시작하고 해제 Action을 돌려준다.
+        /// 새 코드는 <c>{{{this.pascalName}}}(onEvent, onError)</c>를 쓴다.
+        /// </summary>
+        [Obsolete("Use {{{this.pascalName}}}(Action<{{{this.legacySubscribe.eventType}}}> onEvent, Action<AITException> onError = null)")]
+        [Preserve]
+        [APICategory("{{../categoryName}}")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<System.Action> {{{this.pascalName}}}({{{this.legacySubscribe.paramType}}} {{this.legacySubscribe.paramName}}, int timeoutMs = 0)
+        {
+            var unsubscribe = {{{this.pascalName}}}({{this.legacySubscribe.paramName}}?.OnEvent ?? (_ => { }), null);
+            await Awaitable.NextFrameAsync();
+            return unsubscribe;
+        }
+#else
+        public static async Task<System.Action> {{{this.pascalName}}}({{{this.legacySubscribe.paramType}}} {{this.legacySubscribe.paramName}}, int timeoutMs = 0)
+        {
+            var unsubscribe = {{{this.pascalName}}}({{this.legacySubscribe.paramName}}?.OnEvent ?? (_ => { }), null);
+            await Task.CompletedTask;
+            return unsubscribe;
+        }
+#endif
+{{/if}}
 {{else if this.hasNestedCallbacks}}
 {{!-- Nested callback API (IAPCreateOneTimePurchaseOrder with processProductGrant pattern) --}}
 {{!-- 기존 시그니처 유지: (onEvent, options, onError) --}}
@@ -152,7 +177,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("{{../categoryName}}")]
 #if UNITY_6000_0_OR_NEWER
-        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.methodName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             string subscriptionId = __{{{this.name}}}_Subscribe({{this.callbackBag.paramName}});
@@ -176,7 +201,7 @@ namespace AppsInToss
                     acs.SetException(error);
                 },
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}subscriptionId, callbackId, "{{{this.callbackType}}}");
 {{#if (eq this.callbackType "void")}}
@@ -196,7 +221,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.methodName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             string subscriptionId = __{{{this.name}}}_Subscribe({{this.callbackBag.paramName}});
@@ -220,7 +245,7 @@ namespace AppsInToss
                     tcs.TrySetException(error);
                 },
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}subscriptionId, callbackId, "{{{this.callbackType}}}");
 {{#if (eq this.callbackType "void")}}
@@ -381,7 +406,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("{{../categoryName}}")]
 #if UNITY_6000_0_OR_NEWER
-        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.methodName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
@@ -390,7 +415,7 @@ namespace AppsInToss
                 result => acs.SetResult(),
                 error => acs.SetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await acs.Awaitable;
@@ -400,7 +425,7 @@ namespace AppsInToss
                 result => acs.SetResult(result),
                 error => acs.SetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await acs.Awaitable;
@@ -427,7 +452,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.methodName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
@@ -436,7 +461,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await tcs.Task;
@@ -446,7 +471,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;
@@ -473,19 +498,59 @@ namespace AppsInToss
 #endif
         }
 #endif
+{{#if this.returnTypeCompat}}
+
+        /// <summary>
+        /// 이전 SDK의 반환 타입(<c>{{{this.returnTypeCompat.legacyReturnType}}}</c>)을 그대로 돌려주는 옛 시그니처다.
+        /// 새 코드는 <see cref="{{{this.returnTypeCompat.typedName}}}"/>를 쓴다.
+        /// </summary>
+        [Obsolete("Use {{{this.returnTypeCompat.typedName}}}")]
+        [Preserve]
+        [APICategory("{{../categoryName}}")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<{{{this.returnTypeCompat.legacyReturnType}}}> {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        {
+            var result = await {{{this.returnTypeCompat.typedName}}}({{#each this.parameters}}{{this.paramName}}, {{/each}}timeoutMs);
+            return {{{this.returnTypeCompat.convert}}};
+        }
+#else
+        public static async Task<{{{this.returnTypeCompat.legacyReturnType}}}> {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        {
+            var result = await {{{this.returnTypeCompat.typedName}}}({{#each this.parameters}}{{this.paramName}}, {{/each}}timeoutMs);
+            return {{{this.returnTypeCompat.convert}}};
+        }
+#endif
+{{/if}}
+{{#if this.legacyParamOverload}}
+
+        /// <summary>
+        /// 이전 SDK의 매개변수 타입(<see cref="{{{this.legacyParamOverload.legacyParamType}}}"/>)을 받는 옛 시그니처다.
+        /// 새 코드는 <see cref="{{{this.legacyParamOverload.paramType}}}"/>를 넘긴다.
+        /// </summary>
+        [Obsolete("{{{this.legacyParamOverload.paramType}}}를 사용하세요.")]
+        [Preserve]
+        [APICategory("{{../categoryName}}")]
+#if UNITY_6000_0_OR_NEWER
+        public static Awaitable<{{{this.callbackType}}}> {{{this.pascalName}}}({{{this.legacyParamOverload.legacyParamType}}} {{this.legacyParamOverload.paramName}}, int timeoutMs = 0)
+            => {{{this.pascalName}}}({{{this.legacyParamOverload.convert}}}, timeoutMs);
+#else
+        public static Task<{{{this.callbackType}}}> {{{this.pascalName}}}({{{this.legacyParamOverload.legacyParamType}}} {{this.legacyParamOverload.paramName}}, int timeoutMs = 0)
+            => {{{this.pascalName}}}({{{this.legacyParamOverload.convert}}}, timeoutMs);
+#endif
+{{/if}}
 {{#if this.compatTimeoutOnlyOverload}}
 
         /// <summary>
-        /// 이전 버전 호출 <c>{{{this.pascalName}}}(timeoutMs)</c>를 그대로 컴파일하기 위한 오버로드다.
-        /// 새 코드는 <c>{{{this.pascalName}}}(null, timeoutMs)</c> 형태를 쓴다.
+        /// 매개변수 객체 없이 <c>{{{this.pascalName}}}(timeoutMs)</c>만 넘기는 호출용 오버로드다.
+        /// 객체를 넘기려면 <c>{{{this.pascalName}}}(null, timeoutMs)</c>처럼 첫 인자를 적는다.
         /// </summary>
         [Preserve]
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [APICategory("{{../categoryName}}")]
 #if UNITY_6000_0_OR_NEWER
-        public static Awaitable{{#unless (eq this.callbackType "void")}}<{{{this.callbackType}}}>{{/unless}} {{{this.pascalName}}}(int timeoutMs)
+        public static Awaitable{{#unless (eq this.callbackType "void")}}<{{{this.callbackType}}}>{{/unless}} {{{this.pascalName}}}(int timeoutMs = 0)
             => {{{this.pascalName}}}(null, timeoutMs);
 #else
-        public static Task{{#unless (eq this.callbackType "void")}}<{{{this.callbackType}}}>{{/unless}} {{{this.pascalName}}}(int timeoutMs)
+        public static Task{{#unless (eq this.callbackType "void")}}<{{{this.callbackType}}}>{{/unless}} {{{this.pascalName}}}(int timeoutMs = 0)
             => {{{this.pascalName}}}(null, timeoutMs);
 #endif
 {{/if}}
@@ -503,7 +568,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("{{../categoryName}}")]
 #if UNITY_6000_0_OR_NEWER
-        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        public static async {{#if (eq this.callbackType "void")}}Awaitable{{else}}Awaitable<{{{this.callbackType}}}>{{/if}} {{{this.methodName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
@@ -512,7 +577,7 @@ namespace AppsInToss
                 result => acs.SetResult(),
                 error => acs.SetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await acs.Awaitable;
@@ -522,7 +587,7 @@ namespace AppsInToss
                 result => acs.SetResult(result),
                 error => acs.SetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await acs.Awaitable;
@@ -547,7 +612,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.pascalName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
+        public static async {{#if (eq this.callbackType "void")}}Task{{else}}Task<{{{this.callbackType}}}>{{/if}} {{{this.methodName}}}({{#each this.parameters}}{{{this.paramType}}} {{this.paramName}}{{#if this.optional}} = null{{/if}}, {{/each}}int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
 {{#if (eq this.callbackType "void")}}
@@ -556,7 +621,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(null),
                 error => tcs.TrySetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             await tcs.Task;
@@ -566,7 +631,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error),
                 timeoutMs,
-                "{{{this.pascalName}}}"
+                "{{{this.methodName}}}"
             );
             __{{{this.name}}}_Internal({{#each this.parameters}}{{#if this.isPrimitive}}{{this.paramName}}{{else}}AITJsonSettings.Serialize({{this.paramName}}){{/if}}, {{/each}}callbackId, "{{{this.callbackType}}}");
             return await tcs.Task;

@@ -279,6 +279,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("orders")]
         public IAPGetPendingOrdersResultOrder[] Orders;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -292,6 +296,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("products")]
         public IapProductListItem[] Products;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

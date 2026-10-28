@@ -20,6 +20,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import * as fs from 'fs/promises';
 import { glob } from 'glob';
+import { RETURN_TYPE_COMPAT, LEGACY_SUBSCRIBE_COMPAT } from '../../src/generators/csharp/compat.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +87,8 @@ function extractRegisterCallbackArgs(body: string): string | null {
 let coreContent = '';
 let apiFiles: { name: string; content: string }[] = [];
 let asyncMethods: AsyncMethod[] = [];
+/** 하위 호환 래퍼(compat.ts): Typed 메서드나 새 구독을 불러 쓰므로 RegisterCallback을 직접 호출하지 않는다 */
+let compatWrappers: AsyncMethod[] = [];
 
 beforeAll(async () => {
   try {
@@ -104,7 +107,9 @@ beforeAll(async () => {
     if (fileName.startsWith('AIT.Types') || fileName === 'AIT.cs') continue;
     const content = await fs.readFile(path.join(runtimeSDKPath, fileName), 'utf-8');
     apiFiles.push({ name: fileName, content });
-    asyncMethods.push(...extractAsyncMethods(content, fileName));
+    for (const method of extractAsyncMethods(content, fileName)) {
+      (method.body.includes('RegisterCallback<') ? asyncMethods : compatWrappers).push(method);
+    }
   }
 });
 
@@ -179,12 +184,29 @@ describe('cs-waits-js async API의 timeoutMs 파라미터 (csharp-category-parti
   test('async 메서드 수 == int timeoutMs = 0 시그니처 수 == RegisterCallback 호출 수 (1:1:1)', () => {
     let sigCount = 0;
     let regCount = 0;
+    let expressionBodied = 0;
     for (const { content } of apiFiles) {
       sigCount += (content.match(/int timeoutMs = 0\)/g) || []).length;
       regCount += (content.match(/RegisterCallback</g) || []).length;
+      // 하위 호환 오버로드(compat.ts)는 `=> 새 메서드(...)`로 넘기기만 한다
+      expressionBodied += (content.match(/int timeoutMs = 0\)\n\s+=>/g) || []).length;
     }
-    expect(sigCount).toBe(asyncMethods.length);
+    expect(sigCount - expressionBodied - compatWrappers.length).toBe(asyncMethods.length);
     expect(regCount).toBe(asyncMethods.length);
+  });
+
+  test('RegisterCallback을 직접 부르지 않는 async 메서드는 compat.ts에 적힌 하위 호환 래퍼뿐이다', () => {
+    const allowed = new Set<string>([
+      ...RETURN_TYPE_COMPAT.map(c => c.api),
+      ...LEGACY_SUBSCRIBE_COMPAT.map(c => c.api),
+    ]);
+    expect(compatWrappers.filter(m => !allowed.has(m.name)).map(m => `${m.file}:${m.name}`)).toEqual([]);
+    // Awaitable/Task 두 브랜치
+    expect(compatWrappers.length).toBe(allowed.size * 2);
+    for (const wrapper of compatWrappers) {
+      const typed = RETURN_TYPE_COMPAT.find(c => c.api === wrapper.name);
+      if (typed) expect(wrapper.body).toContain(`await ${typed.api}Typed(`);
+    }
   });
 });
 

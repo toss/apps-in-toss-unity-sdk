@@ -231,8 +231,28 @@ namespace AppsInToss
     public class ContactsViralEventData
     {
         [Preserve]
-        [JsonProperty("rewardAmount")]
-        public double? RewardAmount; // optional
+        [JsonProperty("rewardAmount", NullValueHandling = NullValueHandling.Ignore)]
+        [Obsolete("Use RewardAmountTyped")]
+        public double RewardAmount;
+
+        /// <summary>와이어에 <see cref="RewardAmount"/> 값이 왔는지 여부. Newtonsoft가 역직렬화할 때 채운다.</summary>
+        [JsonIgnore]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        public bool RewardAmountSpecified { get; set; }
+
+        /// <summary>
+        /// <see cref="RewardAmount"/>를 값이 없으면 null로 돌려준다. 값을 쓰면 <see cref="RewardAmount"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public double? RewardAmountTyped
+        {
+            get => RewardAmountSpecified || RewardAmount != 0 ? RewardAmount : (double?)null;
+            set
+            {
+                RewardAmount = value ?? 0;
+                RewardAmountSpecified = value.HasValue;
+            }
+        }
         [Preserve]
         [JsonProperty("rewardUnit")]
         public string RewardUnit; // optional

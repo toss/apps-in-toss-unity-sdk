@@ -108,6 +108,51 @@ namespace AppsInToss
     }
 
     /// <summary>
+    /// 하위 호환 멤버(`[Obsolete]` 필드의 `Typed` 쌍, 옛 반환 타입 래퍼)가 쓰는 변환 도우미.
+    /// </summary>
+    internal static class AITCompat
+    {
+        private static class EnumWireMap<T> where T : struct, Enum
+        {
+            internal static readonly Dictionary<string, T> FromWire = new Dictionary<string, T>();
+            internal static readonly Dictionary<T, string> ToWireValue = new Dictionary<T, string>();
+
+            static EnumWireMap()
+            {
+                foreach (var field in typeof(T).GetFields(BindingFlags.Public | BindingFlags.Static))
+                {
+                    var member = field.GetCustomAttribute<EnumMemberAttribute>();
+                    string wire = member != null && member.Value != null ? member.Value : field.Name;
+                    var value = (T)field.GetValue(null);
+                    FromWire[wire] = value;
+                    ToWireValue[value] = wire;
+                }
+            }
+        }
+
+        /// <summary>와이어 문자열을 enum으로 바꾼다. 정의에 없는 값이거나 null이면 null.</summary>
+        internal static T? ParseEnum<T>(string wire) where T : struct, Enum
+        {
+            if (wire == null) return null;
+            return EnumWireMap<T>.FromWire.TryGetValue(wire, out var value) ? value : (T?)null;
+        }
+
+        /// <summary>enum을 와이어 문자열(EnumMember 값)로 바꾼다. null이면 null.</summary>
+        internal static string ToWire<T>(T? value) where T : struct, Enum
+        {
+            if (!value.HasValue) return null;
+            return EnumWireMap<T>.ToWireValue.TryGetValue(value.Value, out var wire) ? wire : null;
+        }
+
+        /// <summary>이전 SDK의 GetUserKeyForGame 문자열: 성공이면 해시, 실패면 에러 코드.</summary>
+        internal static string LegacyUserKey(GetUserKeyForGameResult result)
+        {
+            if (result == null) return null;
+            return result.IsSuccess ? result.GetSuccess()?.Hash : result.GetErrorCode();
+        }
+    }
+
+    /// <summary>
     /// Attribute to mark API methods with their category for grouping in UI.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method)]

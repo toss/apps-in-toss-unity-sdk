@@ -248,12 +248,12 @@ namespace AppsInToss
     {
         [EnumMember(Value = "clipboard")]
         Clipboard,
-        [EnumMember(Value = "geolocation")]
-        Geolocation,
         [EnumMember(Value = "contacts")]
         Contacts,
         [EnumMember(Value = "photos")]
         Photos,
+        [EnumMember(Value = "geolocation")]
+        Geolocation,
         [EnumMember(Value = "camera")]
         Camera,
         [EnumMember(Value = "microphone")]
@@ -361,14 +361,14 @@ namespace AppsInToss
         USER_PHONE,
         [EnumMember(Value = "USER_ADDRESS")]
         USER_ADDRESS,
-        [EnumMember(Value = "USER_ADDRESS_BASE")]
-        USER_ADDRESS_BASE,
-        [EnumMember(Value = "USER_ADDRESS_DETAIL")]
-        USER_ADDRESS_DETAIL,
         [EnumMember(Value = "USER_EMAIL")]
         USER_EMAIL,
         [EnumMember(Value = "USER_CONSUMPTION_HISTORY")]
-        USER_CONSUMPTION_HISTORY
+        USER_CONSUMPTION_HISTORY,
+        [EnumMember(Value = "USER_ADDRESS_BASE")]
+        USER_ADDRESS_BASE,
+        [EnumMember(Value = "USER_ADDRESS_DETAIL")]
+        USER_ADDRESS_DETAIL
     }
 
     [Serializable]
@@ -470,6 +470,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("brandPrimaryColor")]
         public string BrandPrimaryColor;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -511,6 +515,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("orders")]
         public CompletedOrRefundedOrdersResultOrder[] Orders;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -573,7 +581,19 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("status")]
-        public DeclaredAgeRangeStatus Status;
+        [Obsolete("Use StatusTyped")]
+        public string Status;
+
+        /// <summary>
+        /// <see cref="Status"/>를 <see cref="DeclaredAgeRangeStatus"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Status"/>에 그대로 남는다. 값을 쓰면 <see cref="Status"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public DeclaredAgeRangeStatus? StatusTyped
+        {
+            get => AITCompat.ParseEnum<DeclaredAgeRangeStatus>(Status);
+            set => Status = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("lowerBound")]
         public double? LowerBound; // optional
@@ -665,6 +685,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("subscription")]
         public IapSubscriptionInfoResult Subscription;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -742,13 +766,29 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("accessLocation")]
-        public LocationAccessLocation? AccessLocation; // optional
+        [Obsolete("Use AccessLocationTyped")]
+        public string AccessLocation; // optional
+
+        /// <summary>
+        /// <see cref="AccessLocation"/>를 <see cref="LocationAccessLocation"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="AccessLocation"/>에 그대로 남는다. 값을 쓰면 <see cref="AccessLocation"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public LocationAccessLocation? AccessLocationTyped
+        {
+            get => AITCompat.ParseEnum<LocationAccessLocation>(AccessLocation);
+            set => AccessLocation = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("timestamp")]
         public double Timestamp;
         [Preserve]
         [JsonProperty("coords")]
         public LocationCoords Coords;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -979,5 +1019,32 @@ namespace AppsInToss
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    /// <summary>
+    /// 이전 SDK의 SafeAreaInsetsSubscribe 매개변수 묶음이다. 새 코드는
+    /// <c>AIT.SafeAreaInsetsSubscribe(onEvent, onError)</c>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("AIT.SafeAreaInsetsSubscribe(Action<SafeAreaInsets> onEvent, Action<AITException> onError)를 사용하세요.")]
+    public class SafeAreaInsetsSubscribe__0
+    {
+        [JsonIgnore]
+        public System.Action<SafeAreaInsets> OnEvent;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    /// <summary>
+    /// 이전 생성기가 잘못 만들어 공개한 빈 클래스다. 쓸 곳이 없다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("쓸 곳이 없는 빈 클래스예요.")]
+    public class number
+    {
     }
 }

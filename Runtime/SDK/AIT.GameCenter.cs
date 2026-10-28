@@ -501,7 +501,7 @@ namespace AppsInToss
         [Preserve]
         [APICategory("GameCenter")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<GetUserKeyForGameResult> GetUserKeyForGame(int timeoutMs = 0)
+        public static async Awaitable<GetUserKeyForGameResult> GetUserKeyForGameTyped(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<GetUserKeyForGameResult>();
@@ -509,7 +509,7 @@ namespace AppsInToss
                 result => acs.SetResult(result),
                 error => acs.SetException(error),
                 timeoutMs,
-                "GetUserKeyForGame"
+                "GetUserKeyForGameTyped"
             );
             __getUserKeyForGame_Internal(callbackId, "GetUserKeyForGameResult");
             return await acs.Awaitable;
@@ -521,7 +521,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<GetUserKeyForGameResult> GetUserKeyForGame(int timeoutMs = 0)
+        public static async Task<GetUserKeyForGameResult> GetUserKeyForGameTyped(int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<GetUserKeyForGameResult>();
@@ -529,7 +529,7 @@ namespace AppsInToss
                 result => tcs.TrySetResult(result),
                 error => tcs.TrySetException(error),
                 timeoutMs,
-                "GetUserKeyForGame"
+                "GetUserKeyForGameTyped"
             );
             __getUserKeyForGame_Internal(callbackId, "GetUserKeyForGameResult");
             return await tcs.Task;
@@ -539,6 +539,27 @@ namespace AppsInToss
             await Task.CompletedTask;
             return default(GetUserKeyForGameResult);
 #endif
+        }
+#endif
+
+        /// <summary>
+        /// 이전 SDK의 반환 타입(<c>string</c>)을 그대로 돌려주는 옛 시그니처다.
+        /// 새 코드는 <see cref="GetUserKeyForGameTyped"/>를 쓴다.
+        /// </summary>
+        [Obsolete("Use GetUserKeyForGameTyped")]
+        [Preserve]
+        [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<string> GetUserKeyForGame(int timeoutMs = 0)
+        {
+            var result = await GetUserKeyForGameTyped(timeoutMs);
+            return AITCompat.LegacyUserKey(result);
+        }
+#else
+        public static async Task<string> GetUserKeyForGame(int timeoutMs = 0)
+        {
+            var result = await GetUserKeyForGameTyped(timeoutMs);
+            return AITCompat.LegacyUserKey(result);
         }
 #endif
 
@@ -649,6 +670,21 @@ namespace AppsInToss
             return default(GrantPromotionRewardResult);
 #endif
         }
+#endif
+
+        /// <summary>
+        /// 이전 SDK의 매개변수 타입(<see cref="GrantPromotionRewardForGameParams"/>)을 받는 옛 시그니처다.
+        /// 새 코드는 <see cref="GrantPromotionRewardParams"/>를 넘긴다.
+        /// </summary>
+        [Obsolete("GrantPromotionRewardParams를 사용하세요.")]
+        [Preserve]
+        [APICategory("GameCenter")]
+#if UNITY_6000_0_OR_NEWER
+        public static Awaitable<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam, int timeoutMs = 0)
+            => GrantPromotionRewardForGame(paramsParam == null ? null : new GrantPromotionRewardParams { Params = paramsParam.Params ?? ((GrantPromotionRewardParams)paramsParam).Params, _extensionData = paramsParam._extensionData }, timeoutMs);
+#else
+        public static Task<GrantPromotionRewardResult> GrantPromotionRewardForGame(GrantPromotionRewardForGameParams paramsParam, int timeoutMs = 0)
+            => GrantPromotionRewardForGame(paramsParam == null ? null : new GrantPromotionRewardParams { Params = paramsParam.Params ?? ((GrantPromotionRewardParams)paramsParam).Params, _extensionData = paramsParam._extensionData }, timeoutMs);
 #endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR

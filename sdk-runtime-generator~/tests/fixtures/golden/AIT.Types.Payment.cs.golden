@@ -73,6 +73,19 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("params")]
         public CheckoutPaymentParams Params;
+        /// <summary>결제 토큰이에요.</summary>
+        [JsonIgnore]
+        [Obsolete("Use Params.PayToken")]
+        public string PayToken
+        {
+            get => Params?.PayToken;
+            set
+            {
+                if (Params == null) Params = new CheckoutPaymentParams();
+                Params.PayToken = value;
+            }
+        }
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -86,6 +99,19 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("params")]
         public RequestTossPayPaysBillingParams Params;
+        /// <summary>정기결제 래핑 토큰이에요.</summary>
+        [JsonIgnore]
+        [Obsolete("Use Params.WrappedToken")]
+        public string WrappedToken
+        {
+            get => Params?.WrappedToken;
+            set
+            {
+                if (Params == null) Params = new RequestTossPayPaysBillingParams();
+                Params.WrappedToken = value;
+            }
+        }
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

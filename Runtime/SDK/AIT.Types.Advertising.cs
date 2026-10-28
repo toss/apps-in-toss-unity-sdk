@@ -171,7 +171,19 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("theme")]
-        public NavigationBarTheme? Theme; // optional
+        [Obsolete("Use ThemeTyped")]
+        public string Theme; // optional
+
+        /// <summary>
+        /// <see cref="Theme"/>를 <see cref="NavigationBarTheme"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Theme"/>에 그대로 남는다. 값을 쓰면 <see cref="Theme"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public NavigationBarTheme? ThemeTyped
+        {
+            get => AITCompat.ParseEnum<NavigationBarTheme>(Theme);
+            set => Theme = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("padding")]
         public string Padding; // optional
@@ -310,13 +322,49 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("theme")]
-        public TossAdsAttachBannerOptionsTheme? Theme; // optional
+        [Obsolete("Use ThemeTyped")]
+        public string Theme; // optional
+
+        /// <summary>
+        /// <see cref="Theme"/>를 <see cref="TossAdsAttachBannerOptionsTheme"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Theme"/>에 그대로 남는다. 값을 쓰면 <see cref="Theme"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public TossAdsAttachBannerOptionsTheme? ThemeTyped
+        {
+            get => AITCompat.ParseEnum<TossAdsAttachBannerOptionsTheme>(Theme);
+            set => Theme = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("tone")]
-        public TossAdsAttachBannerOptionsTone? Tone; // optional
+        [Obsolete("Use ToneTyped")]
+        public string Tone; // optional
+
+        /// <summary>
+        /// <see cref="Tone"/>를 <see cref="TossAdsAttachBannerOptionsTone"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Tone"/>에 그대로 남는다. 값을 쓰면 <see cref="Tone"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public TossAdsAttachBannerOptionsTone? ToneTyped
+        {
+            get => AITCompat.ParseEnum<TossAdsAttachBannerOptionsTone>(Tone);
+            set => Tone = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("variant")]
-        public TossAdsAttachBannerOptionsVariant? Variant; // optional
+        [Obsolete("Use VariantTyped")]
+        public string Variant; // optional
+
+        /// <summary>
+        /// <see cref="Variant"/>를 <see cref="TossAdsAttachBannerOptionsVariant"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Variant"/>에 그대로 남는다. 값을 쓰면 <see cref="Variant"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public TossAdsAttachBannerOptionsVariant? VariantTyped
+        {
+            get => AITCompat.ParseEnum<TossAdsAttachBannerOptionsVariant>(Variant);
+            set => Variant = AITCompat.ToWire(value);
+        }
         [Preserve]
         [JsonProperty("callbacks")]
         public BannerSlotCallbacks Callbacks; // optional
@@ -332,6 +380,10 @@ namespace AppsInToss
     {
         [JsonIgnore]
         public System.Action Destroy;
+        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
+        [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
+        public string error;
+
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

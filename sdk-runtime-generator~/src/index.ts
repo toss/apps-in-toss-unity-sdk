@@ -20,6 +20,7 @@ import { DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY } from './ca
 import type { GeneratedTypeUnit } from './types.js';
 import { PUBLIC_TYPE_NAMES } from './generators/csharp/public-type-names.js';
 import { pruneUnreferencedSyntheticTypes } from './generators/csharp/prune-synthetic-types.js';
+import { applyTypeCompat, assertApiCompatTargets } from './generators/csharp/compat.js';
 import { TYPE_NAME_PINS, applyTypeNamePins, applyTypeNamePinsToUnits, buildDeprecatedShimUnits } from './generators/csharp/type-name-pins.js';
 
 const program = new Command();
@@ -314,6 +315,8 @@ async function generate(options: {
     const typeGenerator = new CSharpTypeGenerator();
     typeGenerator.protectedEnumNames = new Set(Object.keys(TYPE_NAME_PINS));
 
+    assertApiCompatTargets(new Set(apis.map(api => api.pascalName)));
+
     // C# API 생성 (기존 방식 - 검증용)
     const generatedCodes = await csharpGenerator.generate(apis, options.tag);
 
@@ -373,6 +376,10 @@ async function generate(options: {
     allTypeUnits.push(...pruneResult.kept);
     // 3.x JSDoc에 없는 타입 멤버 설명을 채운다
     for (const unit of allTypeUnits) unit.code = applyTypeMemberDocFallbacks(unit.code);
+    // 3.x가 바꾼 멤버에도 이전 SDK의 공개 멤버를 `[Obsolete]`로 남긴다 (compat.ts)
+    const compatUnits = applyTypeCompat(allTypeUnits);
+    allTypeUnits.length = 0;
+    allTypeUnits.push(...compatUnits);
     if (pruneResult.pruned.length > 0) {
       console.log(picocolors.gray(`   - 참조 없는 임시 타입 제거: ${pruneResult.pruned.join(', ')}`));
     }

@@ -184,6 +184,29 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __SafeAreaInsetsSubscribe_Internal(string subscriptionId, string typeName);
 #endif
+
+        /// <summary>
+        /// 이전 SDK의 시그니처다. 매개변수 묶음의 <c>OnEvent</c>로 구독을 시작하고 해제 Action을 돌려준다.
+        /// 새 코드는 <c>SafeAreaInsetsSubscribe(onEvent, onError)</c>를 쓴다.
+        /// </summary>
+        [Obsolete("Use SafeAreaInsetsSubscribe(Action<SafeAreaInsets> onEvent, Action<AITException> onError = null)")]
+        [Preserve]
+        [APICategory("SafeArea")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)
+        {
+            var unsubscribe = SafeAreaInsetsSubscribe(__0?.OnEvent ?? (_ => { }), null);
+            await Awaitable.NextFrameAsync();
+            return unsubscribe;
+        }
+#else
+        public static async Task<System.Action> SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0 __0, int timeoutMs = 0)
+        {
+            var unsubscribe = SafeAreaInsetsSubscribe(__0?.OnEvent ?? (_ => { }), null);
+            await Task.CompletedTask;
+            return unsubscribe;
+        }
+#endif
         /// <summary>
         /// Safe Area insets 값을 가져와요.
         /// </summary>

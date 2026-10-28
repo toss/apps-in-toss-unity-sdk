@@ -190,7 +190,7 @@ public class SerializationTester : MonoBehaviour
         TestClassSerialization("EventLogParams", new EventLogParams
         {
             Log_name = "test_event",
-            Log_type = EventLogParamsLog_type.Event
+            Log_typeTyped = EventLogParamsLog_type.Event
         }, json => json.Contains("test_event") && json.Contains("\"event\""));
     }
 

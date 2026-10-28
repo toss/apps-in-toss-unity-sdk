@@ -371,6 +371,20 @@ public static class MobileGameBuilder
         }
     }
 
+    /// <summary>
+    /// 이미 생성·임포트된 스테이지 앰비언스를 같은 길이의 무음으로 덮어쓰고 다시 임포트한다(perf 변형 amb-mute 용).
+    /// 실기기에서 들리는 소리가 앰비언스인지 가려내려는 확인 빌드에만 쓴다.
+    /// </summary>
+    public static void MuteHeavyAmbience()
+    {
+        for (int k = 0; k < HeavyStages; k++)
+        {
+            string path = StageDir(k) + "/amb.wav";
+            File.WriteAllBytes(path, ToWav16(new float[44100 * 40 * 2], 2, 44100));
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+        }
+    }
+
     /// <summary>스테이지 앰비언스 40초 스테레오 루프: 스테이지마다 다른 느린 패드 화음(노이즈는 실기기에서 화이트노이즈처럼 거슬려 넣지 않는다).</summary>
     private static byte[] BuildAmbience(int stage)
     {

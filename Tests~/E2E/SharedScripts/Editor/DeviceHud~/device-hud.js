@@ -363,9 +363,20 @@
     };
   }
 
-  // ---- 화면 꺼짐 방지 (Screen Wake Lock, 미지원이면 무시. 화면이 다시 보이면 다시 잡는다) ----
-  var wakeLock = { supported: !!(navigator.wakeLock && navigator.wakeLock.request), held: false, error: null };
-  function acquireWakeLock() {
+  // ---- 화면 꺼짐 방지: 앱인토스 SDK setScreenAwakeMode 가 먼저, 안 되면 Screen Wake Lock ----
+  // 토스 WKWebView 는 Web Wake Lock 을 NotAllowedError 로 거부했다. SDK 브리지(window.AppsInToss)는 부팅 뒤에 생길 수 있어 잠시 기다린다.
+  var wakeLock = { supported: !!(navigator.wakeLock && navigator.wakeLock.request), held: false, error: null, sdk: 'pending' };
+  function setSdkAwake(enabled) {
+    return safe(function () {
+      var ait = window.AppsInToss;
+      if (!ait || typeof ait.setScreenAwakeMode !== 'function') return false;
+      Promise.resolve(ait.setScreenAwakeMode({ enabled: enabled })).then(function () {
+        wakeLock.sdk = enabled ? 'on' : 'off';
+      }, function (e) { wakeLock.sdk = 'error:' + String(e && (e.message || e.name) || e); });
+      return true;
+    }, false);
+  }
+  function acquireWebWakeLock() {
     if (!wakeLock.supported || document.hidden) return;
     safe(function () {
       navigator.wakeLock.request('screen').then(function (l) {
@@ -374,7 +385,15 @@
       }, function (e) { wakeLock.error = String(e && e.name || e); });
     });
   }
-  acquireWakeLock();
+  function acquireWakeLock() {
+    if (document.hidden) return;
+    if (!setSdkAwake(true)) acquireWebWakeLock();
+  }
+  (function waitSdk(tries) {
+    if (setSdkAwake(true)) return;
+    if (tries <= 0) { wakeLock.sdk = 'unavailable'; acquireWebWakeLock(); return; }
+    setTimeout(function () { waitSdk(tries - 1); }, 500);
+  })(20);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) acquireWakeLock(); });
 
   // ---- 게임 자동 플레이 (mobilegame posture 의 AITRunScene.Cmd: autoplay/start/retry, 상태는 window.__AIT_RUN) ----
@@ -452,7 +471,14 @@
       }
     });
     if (!d.next) {
+      setSdkAwake(false); // 측정이 끝났으니 화면이 다시 꺼질 수 있게 둔다.
       banner(d.message || '모든 측정이 끝났습니다. 닫아도 됩니다.');
+      return;
+    }
+    // 다음 빌드가 지금과 같은 딥링크면 토스가 이동을 무시한다. 수신기가 reload 를 주면 같은 페이지를 새로 연다.
+    if (d.reload) {
+      banner((d.message || '같은 빌드를 다시 측정합니다') + '\n3초 뒤 새로고침합니다');
+      setTimeout(function () { safe(function () { location.reload(); }); }, 3000);
       return;
     }
     banner((d.message || '다음 측정으로 이동합니다') + '\n3초 뒤 자동으로 열립니다');
@@ -486,7 +512,7 @@
     var out = {
       id: run.id, at: run.at, state: run.state, elapsedMs: r1(now()),
       session: run.session, seq: run.seq, kind: run.kind,
-      wakeLock: { supported: wakeLock.supported, held: wakeLock.held, error: wakeLock.error },
+      wakeLock: { supported: wakeLock.supported, held: wakeLock.held, error: wakeLock.error, sdk: wakeLock.sdk },
       query: safe(function () { return location.search.replace(/^\?/, '').split('&').map(function (kv) { return kv.split('=')[0]; }); }, null),
       timeOrigin: safe(function () { return Math.round(performance.timeOrigin); }, null),
       nav: collectNav(),

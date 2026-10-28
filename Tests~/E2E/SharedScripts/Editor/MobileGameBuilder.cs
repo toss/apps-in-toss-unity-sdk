@@ -371,29 +371,21 @@ public static class MobileGameBuilder
         }
     }
 
-    /// <summary>스테이지 앰비언스 40초 스테레오 루프: 바람 소리(저역 통과 노이즈) + 스테이지마다 다른 느린 패드 화음.</summary>
+    /// <summary>스테이지 앰비언스 40초 스테레오 루프: 스테이지마다 다른 느린 패드 화음(노이즈는 실기기에서 화이트노이즈처럼 거슬려 넣지 않는다).</summary>
     private static byte[] BuildAmbience(int stage)
     {
         const int rate = 44100;
         const int seconds = 40;
         var buf = new float[rate * seconds * 2];
-        uint st = 991u + (uint)stage * 7919u;
-        float lpL = 0f, lpR = 0f;
         float[] roots = { 196f, 174.61f, 220f, 146.83f };   // G3, F3, A3, D3
         float root = roots[stage % roots.Length];
         for (int i = 0; i < rate * seconds; i++)
         {
-            unchecked { st = st * 1664525u + 1013904223u; }
-            float nL = ((st >> 8) & 0xFFFF) / 32767.5f - 1f;
-            unchecked { st = st * 1664525u + 1013904223u; }
-            float nR = ((st >> 8) & 0xFFFF) / 32767.5f - 1f;
-            lpL += (nL - lpL) * 0.02f;
-            lpR += (nR - lpR) * 0.02f;
             float t = (float)i / rate;
             float swell = 0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * t / 10f);
             float pad = (Mathf.Sin(2f * Mathf.PI * root * t) + 0.6f * Mathf.Sin(2f * Mathf.PI * root * 1.5f * t) + 0.4f * Mathf.Sin(2f * Mathf.PI * root * 2.5198f * t)) * 0.06f * swell;
-            buf[i * 2] = lpL * 0.9f + pad;
-            buf[i * 2 + 1] = lpR * 0.9f + pad;
+            buf[i * 2] = pad;
+            buf[i * 2 + 1] = pad;
         }
         return ToWav16(buf, 2, rate);
     }

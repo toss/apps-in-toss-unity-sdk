@@ -9,6 +9,9 @@
 (function () {
   'use strict';
   if (window.__aitDeviceHud) return;
+  // 자동화 브라우저(CI Playwright 의 게임 플레이 벤치마크)에서는 아무것도 하지 않는다. HUD 의 오버레이·rAF 래퍼·자동 플레이가
+  // 테스트의 탭 입력과 프레임 측정을 방해한다(CI 가 같은 지표를 따로 잰다).
+  try { if (navigator.webdriver === true) return; } catch (e) {}
   window.__aitDeviceHud = true;
 
   var BUILD = __AIT_HUD_BUILD_JSON__;
@@ -18,8 +21,6 @@
   var PHASE_A_MS = 5000;
   var PHASE_B_MS = 60000;
   var AUTO_RUNS = 3;
-  // 자동화 브라우저(CI Playwright 의 게임 플레이 벤치마크)에서는 자동 플레이와 회차 새로고침을 하지 않는다. 테스트가 버튼을 직접 누른다.
-  var AUTOMATED = safe(function () { return navigator.webdriver === true; }, false);
   var REPORT_URL = (function () {
     var q = safe(function () { return new URLSearchParams(location.search).get('aitHudReport'); }, null);
     var u = q || '__AIT_HUD_REPORT_URL__';
@@ -159,7 +160,7 @@
       if (ts - frameT0 > PHASE_A_MS && !run.__aSaved) {
         run.__aSaved = true;
         persist();
-        if (!AUTOMATED) startAutoplay();
+        startAutoplay();
         upload(false);
       }
     }
@@ -497,7 +498,7 @@
 
   function onRunDone() {
     upload(true);
-    if (AUTOMATED || run.seq >= AUTO_RUNS) return;
+    if (run.seq >= AUTO_RUNS) return;
     banner(run.seq + '/' + AUTO_RUNS + ' 회차 측정 완료\n결과를 보내고 ' + (run.seq + 1) + '회차를 위해 새로고침합니다');
     // 전송이 끝나거나 실패로 확정될 때까지 기다린 뒤 새로고침한다(최대 15초).
     var waited = 0;

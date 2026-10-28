@@ -415,7 +415,16 @@ jobs:
 
           echo "Searching for Unity ${UNITY_VERSION_PATTERN}.x in ${UNITY_BASE}..."
 
-          UNITY_DIR=$(ls -d "${UNITY_BASE}/${UNITY_VERSION_PATTERN}"* 2>/dev/null | sort -rV | head -1)
+          # 프로젝트 ProjectVersion.txt 의 에디터가 설치돼 있으면 그 버전을 쓴다. 같은 계열의 더 높은 패치가
+          # 설치돼 있어도(다른 브랜치의 버전 올리기 준비 등) 프로젝트가 고정한 에디터로 빌드해야 결과가 재현된다.
+          PROJECT_VERSION_FILE="Tests~/E2E/${{ inputs.project-dir-prefix }}-${UNITY_VERSION_PATTERN}/ProjectSettings/ProjectVersion.txt"
+          PINNED=$(sed -n 's/^m_EditorVersion: *//p' "$PROJECT_VERSION_FILE" 2>/dev/null | tr -d '\r')
+          if [ -n "$PINNED" ] && [ -x "${UNITY_BASE}/${PINNED}/Unity.app/Contents/MacOS/Unity" ]; then
+            UNITY_DIR="${UNITY_BASE}/${PINNED}"
+            echo "Using project-pinned Unity ${PINNED}"
+          else
+            UNITY_DIR=$(ls -d "${UNITY_BASE}/${UNITY_VERSION_PATTERN}"* 2>/dev/null | sort -rV | head -1)
+          fi
 
           if [ -z "$UNITY_DIR" ]; then
             echo "::error::Unity ${UNITY_VERSION_PATTERN}.x not found"

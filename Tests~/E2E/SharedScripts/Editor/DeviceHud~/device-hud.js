@@ -5,6 +5,7 @@
 // 자동 측정: 첫 그리기 뒤 5초(부팅 구간)가 지나면 게임 자동 플레이를 켜고 60초를 잰 뒤, 같은 탭에서 AUTO_RUNS 번까지
 // 새로고침해 반복한다. 수신 주소는 저장소에 두지 않는다. 배포 직전에 로컬에서 __AIT_HUD_REPORT_URL__ 을 https 주소로
 // 바꾸거나 페이지 쿼리 aitHudReport 로 넘기면 측정마다 결과를 POST 하고, 없으면 클립보드 복사만 쓴다.
+// 마지막 회차 POST 의 응답이 {next} 딥링크를 주면 다음 빌드로 이동한다(측정 순서는 수신 쪽이 정한다).
 (function () {
   'use strict';
   if (window.__aitDeviceHud) return;
@@ -362,6 +363,20 @@
     };
   }
 
+  // ---- 화면 꺼짐 방지 (Screen Wake Lock, 미지원이면 무시. 화면이 다시 보이면 다시 잡는다) ----
+  var wakeLock = { supported: !!(navigator.wakeLock && navigator.wakeLock.request), held: false, error: null };
+  function acquireWakeLock() {
+    if (!wakeLock.supported || document.hidden) return;
+    safe(function () {
+      navigator.wakeLock.request('screen').then(function (l) {
+        wakeLock.held = true;
+        l.addEventListener('release', function () { wakeLock.held = false; });
+      }, function (e) { wakeLock.error = String(e && e.name || e); });
+    });
+  }
+  acquireWakeLock();
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) acquireWakeLock(); });
+
   // ---- 게임 자동 플레이 (mobilegame posture 의 AITRunScene.Cmd: autoplay/start/retry, 상태는 window.__AIT_RUN) ----
   var autoTimer = null, autoStarts = 0;
   function gameCmd(c) {
@@ -412,7 +427,13 @@
         fetch(REPORT_URL, { method: 'POST', mode: 'cors', keepalive: body.length < 60000, headers: { 'Content-Type': 'text/plain' }, body: body })
           .then(function (r) {
             if (!r.ok) throw new Error('http ' + r.status);
-            if (final) { uploadState = 'sent'; refreshLabel(); }
+            if (!final) return;
+            uploadState = 'sent';
+            refreshLabel();
+            return r.text().then(function (t) {
+              var d = safe(function () { return JSON.parse(t); }, null);
+              if (d && run.seq >= AUTO_RUNS) goNext(d);
+            });
           })
           .catch(function () {
             if (tries < 5) setTimeout(send, 1500 * tries);
@@ -422,6 +443,30 @@
     };
     send();
   }
+  function goNext(d) {
+    // 다음 빌드는 회차를 1부터 다시 센다. 같은 탭에서 이동하면 sessionStorage 가 남으므로 회차 키를 지운다.
+    safe(function () {
+      for (var i = window.sessionStorage.length - 1; i >= 0; i--) {
+        var k = window.sessionStorage.key(i);
+        if (k && k.indexOf('aitDeviceHud.seq:') === 0) window.sessionStorage.removeItem(k);
+      }
+    });
+    if (!d.next) {
+      banner(d.message || '모든 측정이 끝났습니다. 닫아도 됩니다.');
+      return;
+    }
+    banner((d.message || '다음 측정으로 이동합니다') + '\n3초 뒤 자동으로 열립니다');
+    safe(function () {
+      var a = document.createElement('a');
+      a.href = d.next;
+      a.textContent = '다음 측정 열기';
+      a.style.cssText = 'position:fixed;left:15%;right:15%;top:58%;z-index:2147483647;padding:16px;border-radius:14px;' +
+        'background:#3182f6;color:#fff;font:600 18px sans-serif;text-align:center;text-decoration:none;';
+      document.body.appendChild(a);
+    });
+    setTimeout(function () { safe(function () { location.href = d.next; }); }, 3000);
+  }
+
   function onRunDone() {
     upload(true);
     if (run.seq >= AUTO_RUNS) return;
@@ -441,6 +486,8 @@
     var out = {
       id: run.id, at: run.at, state: run.state, elapsedMs: r1(now()),
       session: run.session, seq: run.seq, kind: run.kind,
+      wakeLock: { supported: wakeLock.supported, held: wakeLock.held, error: wakeLock.error },
+      query: safe(function () { return location.search.replace(/^\?/, '').split('&').map(function (kv) { return kv.split('=')[0]; }); }, null),
       timeOrigin: safe(function () { return Math.round(performance.timeOrigin); }, null),
       nav: collectNav(),
       ttff: r1(run.ttff), overlayHidden: r1(run.overlayHidden), firstVisible: r1(run.firstVisible),

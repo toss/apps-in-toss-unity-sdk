@@ -323,35 +323,34 @@ for (const engine of ENGINES) {
           return;
         }
 
+        // WebKit 자동: 첫 방문은 add-first — 비-wasm 대상 파일을 cache.add 로 받아 저장하고 꺼내 준다(clone·JS put 없음, 지연 큐 없음).
         const before = await page.evaluate(() => ({
           clones: window['__spy'].clones,
-          puts: window['__spy'].puts.length,
+          puts: window['__spy'].puts.slice(),
           info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])),
         }));
+        expect(before.info.addFirst, '자동(-1)은 WebKit 에서 add-first').toBe(true);
         expect(before.clones, '부팅 중 Response.clone 0회').toBe(0);
-        expect(before.puts, '부팅 중 Cache.put 0회').toBe(0);
-        expect(before.info.queued.map((/** @type {string} */ u) => u.replace(server.origin, '')).sort()).toEqual([
+        expect(before.info.queued, '지연 put 큐 없음').toEqual([]);
+        expect(before.info.added.map((/** @type {string} */ u) => u.replace(server.origin, '')).sort()).toEqual([
           `/Build/${token}.data`,
           `/Build/${token}.framework.js`,
         ]);
-        expect(before.info.queued.some((/** @type {string} */ u) => u.endsWith('.wasm')), 'wasm 은 큐에 없다').toBe(false);
+        expect(before.puts.length, '저장은 add 2건뿐(spy 는 add 도 센다)').toBe(2);
+        expect(before.puts.some((/** @type {string} */ u) => u.endsWith('.wasm')), 'wasm 은 저장하지 않는다').toBe(false);
 
         await fireFirstFrame(page);
-        await waitFor(page, `window.__aitCacheDeferred.state === 'done'`);
+        await page.waitForTimeout(700);
         const after = await page.evaluate(() => ({
           puts: window['__spy'].puts.slice(),
           info: JSON.parse(JSON.stringify(window['__aitCacheDeferred'])),
         }));
         expect(after.info.errors).toEqual([]);
-        // HTTP 캐시가 있으면 put, 없으면(엔진이 only-if-cached 를 미스로 돌려주면) 생략. 어느 쪽이든 재다운로드는 없다.
-        expect(after.info.put.length + after.info.miss.length).toBe(2);
-        expect(after.puts.length).toBe(after.info.put.length);
-        expect(after.puts.some((/** @type {string} */ u) => u.endsWith('.wasm')), 'wasm 은 put 되지 않는다').toBe(false);
-        expect(server.count(`${token}.data`), '지연 put 이 data 를 다시 받지 않는다').toBe(1);
+        expect(after.info.state, '지연 put 이 돌지 않는다').toBe('idle');
+        expect(after.puts.length).toBe(2);
+        expect(server.count(`${token}.data`), 'data 는 한 번만 받는다').toBe(1);
         expect(server.count(`${token}.framework.js`)).toBe(1);
         expect(server.count(`${token}.wasm`)).toBe(1);
-        // 이 테스트 서버는 max-age=3600 이므로 WebKit 의 HTTP 캐시가 동작하면 두 파일 모두 put 되어야 한다.
-        expect(after.info.put.length, `HTTP 캐시 히트 put 수(miss=${after.info.miss.length})`).toBe(2);
         const keys = await page.evaluate(async () => {
           const names = await caches.keys();
           const out = [];
@@ -386,6 +385,41 @@ for (const engine of ENGINES) {
         expect(info.put.some((/** @type {string} */ u) => u.endsWith('.wasm'))).toBe(false);
         expect(server.count(`${token}.data`)).toBe(1);
         expect(server.count(`${token}.wasm`)).toBe(1);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // 토스 iOS 실기기는 data 를 HTTP 캐시에 남기지 않아 지연 put 이 첫 방문마다 data 를 다시 받았다. add-first 는 같은 조건(no-store)에서도
+    // 파일당 한 번만 받고, 재방문은 네트워크 없이 캐시에서 서빙한다.
+    test('add-first(pageCacheAddFirst=1) + HTTP 캐시 미스(no-store): 첫 방문 파일당 1회만 받고 재방문은 캐시 서빙(wasm 제외)', async () => {
+      server.state.noStore = true;
+      const token = newToken();
+      const url = registerPage(server, token, {
+        perf: { pageCacheDeferDelayMs: 100, pageCacheAddFirst: 1 },
+        head: [emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` })],
+      });
+      const { context, page } = await newPage();
+      try {
+        await page.goto(url);
+        const sizes = await page.evaluate(() => window['__boot']());
+        expect(Object.values(sizes).every((n) => n > 0), '로더가 받은 본문').toBe(true);
+        await fireFirstFrame(page);
+        await page.waitForTimeout(600);
+        const info = await page.evaluate(() => JSON.parse(JSON.stringify(window['__aitCacheDeferred'])));
+        expect(info.errors).toEqual([]);
+        expect(info.added.length).toBe(2);
+        expect(info.net, '네트워크로 다시 받아 저장하지 않는다').toEqual([]);
+        expect(server.count(`${token}.data`)).toBe(1);
+        expect(server.count(`${token}.framework.js`)).toBe(1);
+        expect(server.count(`${token}.wasm`)).toBe(1);
+
+        await page.goto(url);
+        const again = await page.evaluate(() => window['__boot']());
+        expect(again).toEqual(sizes);
+        expect(server.count(`${token}.data`), '재방문 data 는 캐시 서빙').toBe(1);
+        expect(server.count(`${token}.framework.js`)).toBe(1);
       } finally {
         await context.close();
       }

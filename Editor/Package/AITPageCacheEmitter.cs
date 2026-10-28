@@ -58,6 +58,10 @@ namespace AppsInToss.Editor.Package
     ///    wasm 컴파일 피크와 겹친다(put 만 미루면 메모리는 그대로라서 clone 자체를 하지 않는다).
     ///  · 첫 프레임 + 10초 뒤 파일 하나씩 fetch(url, { cache: 'only-if-cached', mode: 'same-origin' }) 로 HTTP 캐시에서 다시 읽어
     ///    put 한다. 미스면 tier 0·화면 보임일 때만 cache.add 로 네트워크에서 받아 저장한다(networkPut, net=N 으로 집계).
+    ///  · 첫 방문 add-first(자동 = 지연 put 이 자동으로 켜진 WebKit, tier 0, CacheStorage): wasm 이 아닌 대상 파일은 부팅 때부터
+    ///    cache.add 로 받아 저장하고 cache.match 로 꺼내 로더에 준다. iOS 실기기(토스 WKWebView)는 HTTP 캐시에 data 가 남지 않아
+    ///    위 networkPut 이 첫 방문마다 data(12.7MB)를 한 번 더 받았다. add 는 다운로드 1회로 저장까지 끝내고 본문이 WebContent 를
+    ///    거치지 않는다. add 가 실패하면 원래 fetch 로 받는다. pageCacheDeferredPut 을 0/1 로 명시하거나 __AIT_PERF.pageCacheAddFirst=0 이면 끈다.
     ///  · WebKit 에서는 wasm 을 put 대상(ALLOW_ABS)에서 뺀다. JSC 에는 V8 같은 code cache 이득이 없고, CDN 이 ETag 와 max-age=0 을
     ///    주므로 재방문은 HTTP 캐시 재검증(304)으로 받는다.
     ///  · Chromium 등 지연 put 이 꺼진 엔진은 부팅 중 clone 하고 put 한다. 자동(-1)에서 deviceMemory &gt;= 6 의 버퍼 put 은 본문 읽기와 put 을
@@ -516,9 +520,17 @@ namespace AppsInToss.Editor.Package
             // 그래서 deviceMemory >= 6 의 버퍼 put 경로에만 적용한다(그 미만의 스트림 put 은 미루면 tee 가 본문 전체를 쥐고 있게 된다).
             // pageCacheDeferredPut 을 0 으로 명시하면 예전처럼 부팅 중 바로 put 하고, 1 이면 지연 put(WebKit 경로)이 대신 돈다.
             var PUT_AFTER_FIRST_FRAME = !DEFERRED_PUT && DEFER_FLAG !== 0 && DEFER_FLAG !== 1;
+            // 첫 방문 add-first(자동 = 지연 put 자동이 켜진 엔진 = WebKit): 힌트 없는 비-wasm 대상 파일을 cache.add 로 받아 저장한 뒤 match 로 서빙한다.
+            // 토스 iOS WKWebView 는 data 를 HTTP 캐시에 남기지 않아 지연 put 이 첫 방문마다 networkPut 으로 data 를 한 번 더 받았다(실기기 7/7회).
+            // 진단/실험 오버라이드: __AIT_PERF.pageCacheAddFirst(0 끔 / 1 켬, C# 이 내보내지 않는 키).
+            var ADD_FIRST = DEFERRED_PUT && DEFER_FLAG !== 0 && DEFER_FLAG !== 1;
+            try {
+                var _af = window.__AIT_PERF && window.__AIT_PERF.pageCacheAddFirst;
+                if (_af === 0 || _af === 1) { ADD_FIRST = _af === 1; }
+            } catch (e) {}
             // 진단 훅(perf CI/검증용, 운영 무영향): 큐에 넣은 URL, put 성공, HTTP 캐시 미스(put 생략), 건너뜀(wasm/저메모리 tier/크기/압력), 오류.
-            // afterFirstFrame: 버퍼 put 을 첫 프레임 뒤로 미룬 URL.
-            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, lowTierPut: LOWTIER_PUT, lowDelayMs: LOW_DEFER_DELAY_MS, lowMaxBytes: LOW_MAX_BYTES, putAfterFirstFrame: PUT_AFTER_FIRST_FRAME, afterFirstFrame: [], state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
+            // afterFirstFrame: 버퍼 put 을 첫 프레임 뒤로 미룬 URL. added: 첫 방문 add-first 로 받아 저장한 URL.
+            window.__aitCacheDeferred = { enabled: DEFERRED_PUT, flag: DEFER_FLAG, webkit: IS_WEBKIT, delayMs: DEFER_DELAY_MS, lowTierPut: LOWTIER_PUT, lowDelayMs: LOW_DEFER_DELAY_MS, lowMaxBytes: LOW_MAX_BYTES, putAfterFirstFrame: PUT_AFTER_FIRST_FRAME, addFirst: ADD_FIRST, added: [], afterFirstFrame: [], state: 'idle', queued: [], put: [], miss: [], net: [], skipped: [], errors: [] };
             var WASM_ABS = {};
             for (var _wi = 0; _wi < WASM_LIST.length; _wi++) {
                 try { WASM_ABS[new URL(WASM_LIST[_wi], location.href).href] = true; } catch (e) {}
@@ -1037,13 +1049,40 @@ namespace AppsInToss.Editor.Package
                 } catch (e) { return false; }
             };
 
+            // 첫 방문 add-first: 다운로드와 저장을 cache.add 한 번으로 끝내고 저장된 엔트리를 꺼내 준다.
+            // add 는 본문 전체를 받은 뒤 끝나므로 응답이 늦게 오지만, 로더는 data 를 다 받은 뒤에야 쓰므로 부팅 시점은 거의 같다.
+            // 실패(비 200·네트워크 오류·엔트리 없음)면 null → 호출자가 원래 fetch 로 받는다.
+            function addFirstOk(url) {
+                return ADD_FIRST && BACKEND_KIND === 'caches' && !WASM_ABS[url] && currentTier() < 1 && typeof Request === 'function';
+            }
+            function addThenMatch(cache, url) {
+                var info = window.__aitCacheDeferred;
+                if (typeof cache.add !== 'function') { return Promise.resolve(null); }
+                return cache.add(new Request(url, { mode: 'same-origin' })).then(function () {
+                    return cache.match(url);
+                }).then(function (hit) {
+                    if (!hit) { info.errors.push('add-first ' + url + ': 저장 뒤 엔트리 없음'); return null; }
+                    info.added.push(url);
+                    window.__aitCacheStats.puts.push(url);
+                    markPopulated(url);
+                    return markNonNet(hit);
+                }, function (e) {
+                    info.errors.push('add-first ' + url + ': ' + (e && e.message || e));
+                    return null;
+                });
+            }
+
             // cache-first 체인: CacheStorage/IndexedDB 히트 → 단락, 미스 → priorFetch 후 비차단 put.
             // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
             function cacheFirst(resource, init, url) {
+                var addFirst = false;
+                try {
+                    addFirst = typeof resource === 'string' && !(init && init.signal) && !isHinted(url) && addFirstOk(url);
+                } catch (e) {}
                 // 네트워크 선시작 조건: 힌트 없음 + 호출자가 취소 시그널을 넘기지 않은 문자열 URL 요청
-                // (부트 경로의 Early Fetch·로더가 이 형태). 그 외에는 선시작 없이 기존 순서를 따른다.
+                // (부트 경로의 Early Fetch·로더가 이 형태). 그 외에는 선시작 없이 기존 순서를 따른다. add-first 는 add 가 받으므로 선시작하지 않는다.
                 var spec = null, specAbort = null, specFailed = false;
-                if (typeof AbortController === 'function' && typeof resource === 'string'
+                if (!addFirst && typeof AbortController === 'function' && typeof resource === 'string'
                     && !(init && init.signal) && !isHinted(url)) {
                     try {
                         specAbort = new AbortController();
@@ -1066,7 +1105,13 @@ namespace AppsInToss.Editor.Package
                             return hit; // 캐시 히트 → 네트워크 0, transferSize 0 으로 단락.
                         }
                         window.__aitCacheStats.misses.push(url);
-                        return (spec || priorFetch(resource, init)).then(function (resp) {
+                        var added = null;
+                        var viaAdd = addFirst ? addThenMatch(cache, url) : Promise.resolve(null);
+                        return viaAdd.then(function (hit) {
+                            added = hit;
+                            return hit || (spec || priorFetch(resource, init));
+                        }).then(function (resp) {
+                            if (added) { return resp; } // add-first 로 이미 저장한 엔트리: put 할 것이 없다.
                             // put 은 절대 await 하지 않음 → 부트 fetch 무지연(비차단).
                             try {
                                 // 저메모리 tier 는 put 을 건너뛰고, 지연 put(WebKit 기본)은 clone 없이 큐에만 넣는다(둘 다 resp 는 그대로 반환).

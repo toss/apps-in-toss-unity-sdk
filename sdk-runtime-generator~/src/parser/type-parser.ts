@@ -1,7 +1,8 @@
 import { SyntaxKind } from 'ts-morph';
 import { ParsedType, ParsedProperty } from '../types.js';
-import { DOM_TYPES } from './constants.js';
+import { DOM_TYPES, OPAQUE_OBJECT_TYPES } from './constants.js';
 import { cleanTypeName } from './utils.js';
+import { lookupUnionAlias } from './union-alias.js';
 
 /**
  * Record<K, V>의 K/V를 텍스트에서 분류할 때 원시 타입으로 인정하는 이름 집합.
@@ -50,6 +51,30 @@ export function parseType(typeNode: any): ParsedType {
       kind: 'dom-only',
       raw: typeText,
     };
+  }
+
+  // 바이너리 버퍼는 C# byte[]로 매핑되는 리프 타입이다 (lib 타입을 풀면 스택 오버플로우)
+  if (typeText === 'ArrayBuffer' || typeText === 'Uint8Array') {
+    return { name: typeText, kind: 'primitive', raw: typeText };
+  }
+
+  // 재귀 DOM 유니온(IDBValidKey)은 풀지 않고 object로 처리
+  if (OPAQUE_OBJECT_TYPES.has(typeText)) {
+    return { name: 'object', kind: 'primitive', raw: typeText };
+  }
+
+  // 문자열 index signature를 더하는 intersection(예: LoggerParams = `{ log_name?: string } & { [key: string]: Primitive }`)은
+  // 고정 형태 클래스가 아니라 열린 사전이다. 클래스로 만들면 임의 키를 보낼 수 없으므로 object로 둔다.
+  {
+    const base = typeNode.getNonNullableType?.() ?? typeNode;
+    if (base.isIntersection?.() && base.getStringIndexType?.()) {
+      return {
+        name: 'object',
+        kind: 'primitive',
+        raw: typeText,
+        ...(typeNode.isNullable?.() ? { isNullable: true } : {}),
+      };
+    }
   }
 
   // Primitive 타입 (string literal도 포함)
@@ -120,7 +145,8 @@ export function parseType(typeNode: any): ParsedType {
   }
 
   // String literal 타입 ("foo", 'bar')
-  if (typeText.startsWith('"') || typeText.startsWith("'")) {
+  // (union 멤버 나열이 리터럴로 시작할 수 있으므로 실제 union 타입은 제외한다)
+  if ((typeText.startsWith('"') || typeText.startsWith("'")) && !typeNode.isUnion?.()) {
     return {
       name: 'string',
       kind: 'primitive',
@@ -177,8 +203,22 @@ export function parseType(typeNode: any): ParsedType {
     }
   }
 
+  // 튜플 타입 ([boolean], [string, number])은 배열로 취급한다. 원소 타입이 모두 같으면 그 타입의 배열,
+  // 섞여 있으면 object 배열이다.
+  if (typeNode.isTuple?.()) {
+    const elements: any[] = typeNode.getTupleElements?.() ?? [];
+    const parsed = elements.map(e => parseType(e));
+    const same = parsed.length > 0 && parsed.every(p => p.name === parsed[0].name && p.kind === parsed[0].kind);
+    return {
+      name: 'Array',
+      kind: 'array',
+      elementType: same ? parsed[0] : { name: 'object', kind: 'primitive', raw: 'object' },
+      raw: typeText,
+    };
+  }
+
   // Array 타입
-  if (isArray || typeText.endsWith('[]')) {
+  if (isArray || (typeText.endsWith('[]') && !isUnion)) {
     const elementType = typeNode.getArrayElementType?.();
     return {
       name: 'Array',
@@ -266,6 +306,13 @@ export function parseType(typeNode: any): ParsedType {
   // Union 타입
   if (isUnion) {
     const unionTypes = typeNode.getUnionTypes?.() || [];
+
+    // `"A" | "B" | (string & {})` 는 서버가 값을 늘릴 수 있는 열린 문자열이다 (자동완성용 관용구).
+    // enum으로 닫으면 알 수 없는 값을 역직렬화하지 못하므로 string으로 둔다.
+    if (unionTypes.some((t: any) => t.getText?.() === 'string & {}')) {
+      return { name: 'string', kind: 'primitive', raw: typeText };
+    }
+
     const parsedUnionTypes = unionTypes.map((t: any) => parseType(t));
 
     // Nullable 패턴 감지: T | null 또는 T | undefined
@@ -326,8 +373,10 @@ export function parseType(typeNode: any): ParsedType {
       return result;
     }
 
+    // 객체 멤버가 있는 union은 번들 alias 이름을 쓴다 (인라인으로 펼쳐진 경우 포함)
+    const aliasName = lookupUnionAlias(typeNode);
     const finalResult: ParsedType = {
-      name: typeText,
+      name: aliasName ?? typeText,
       kind: 'union',
       unionTypes: nonDomTypes,
       raw: typeText,
@@ -490,7 +539,9 @@ export function parseType(typeNode: any): ParsedType {
       properties: properties.map((prop: any) => {
         const propName = prop.getName();
         const valueDecl = prop.getValueDeclaration?.();
-        const propType = valueDecl ? prop.getTypeAtLocation?.(valueDecl) : prop.getDeclaredType?.();
+        // Omit/Pick 등 매핑 타입에서 온 프로퍼티는 값 선언이 없다 → 첫 선언 위치 기준으로 해석
+        const locationDecl = valueDecl ?? prop.getDeclarations?.()?.[0] ?? symbol?.getDeclarations?.()?.[0];
+        const propType = locationDecl ? prop.getTypeAtLocation?.(locationDecl) : prop.getDeclaredType?.();
 
         return {
           name: propName,
@@ -518,7 +569,8 @@ export function parseType(typeNode: any): ParsedType {
           properties: properties.map((prop: any) => {
             const propName = prop.getName();
             const propDecl = prop.getValueDeclaration?.();
-            const propType = propDecl?.getType?.() || prop.getDeclaredType?.();
+            // Omit/Pick 등 매핑 타입에서 온 프로퍼티는 값 선언이 없다 → 선언 위치 기준으로 해석
+            const propType = propDecl?.getType?.() || prop.getTypeAtLocation?.(decl) || prop.getDeclaredType?.();
 
             return {
               name: propName,
@@ -555,7 +607,7 @@ export function parseType(typeNode: any): ParsedType {
       properties: properties.map((prop: any) => {
         const propName = prop.getName();
         const propDecl = prop.getValueDeclaration?.();
-        const propType = propDecl?.getType?.() || prop.getDeclaredType?.();
+        const propType = propDecl?.getType?.() || prop.getTypeAtLocation?.(declarations?.[0]) || prop.getDeclaredType?.();
 
         return {
           name: propName,

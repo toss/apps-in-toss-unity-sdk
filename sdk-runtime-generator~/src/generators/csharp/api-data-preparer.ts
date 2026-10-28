@@ -1,8 +1,16 @@
 import { ParsedAPI } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
-import { escapeCSharpKeyword, toPascalCase, xmlSafe, functionParamTypeName, extractCleanName } from './utils.js';
+import { escapeCSharpKeyword, escapeObsoleteMessage, toPascalCase, xmlSafe,functionParamTypeName, extractCleanName } from './utils.js';
 import { isInlineAnonymousObjectParam } from './type-collector.js';
 import { PRIMITIVE_TYPES } from './constants.js';
+import { getApiCompat, ApiCompatData } from './compat.js';
+
+/**
+ * 이전 SDK에서 `(int timeoutMs = 0)`만 받다가 선택 파라미터가 앞에 붙은 API.
+ * 옛 시그니처 `Api(int timeoutMs = 0)`를 그대로 오버로드로 두고, 새 시그니처는 첫 파라미터를 필수로 받는다
+ * (둘 다 기본값이 있으면 `Api()`가 모호해진다). 첫 파라미터는 null을 넘길 수 있어야 한다.
+ */
+const COMPAT_TIMEOUT_ONLY_OVERLOADS = new Set<string>(['IAPGetCompletedOrRefundedOrders']);
 
 /**
  * 준비된 파라미터 데이터
@@ -50,6 +58,26 @@ export interface PreparedApiData {
   nestedCallbackParamType?: string;
   nestedCallbackOptionsType?: string;
   nestedCallbackEventType?: string;
+  /** options.callbacks 묶음을 받는 API (TossAds.initialize/attach/attachBanner) */
+  /** 예전에 `(int timeoutMs)`만 받던 API: 같은 호출이 계속 컴파일되도록 오버로드를 하나 더 낸다 */
+  compatTimeoutOnlyOverload?: boolean;
+  /** 메서드의 C# 이름 (반환 타입 하위 호환으로 `...Typed`가 되면 pascalName과 다르다) */
+  methodName: string;
+  /** 하위 호환 래퍼 (compat.ts) */
+  returnTypeCompat?: ApiCompatData['returnTypeCompat'];
+  legacySubscribe?: ApiCompatData['legacySubscribe'];
+  legacyParamOverload?: ApiCompatData['legacyParamOverload'];
+  hasCallbackBag?: boolean;
+  callbackBag?: {
+    /** 묶음을 가진 파라미터 이름과 C# 타입 */
+    paramName: string;
+    paramType: string;
+    /** 묶음 필드의 C# 이름 (options.Callbacks) */
+    propertyPascal: string;
+    members: Array<{ name: string; pascalName: string; hasPayload: boolean }>;
+    /** 결과 핸들의 C# 멤버 이름 (예: Destroy). 핸들이 없으면 undefined */
+    handlePascal?: string;
+  };
 }
 
 /**
@@ -89,7 +117,7 @@ export function prepareParameters(api: ParsedAPI): PreparedParameter[] {
           param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
         const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
         const apiName = capitalize(api.name);
-        const paramName = capitalize(param.typeNameSeed ?? param.name);
+        const paramName = capitalize(param.name);
         paramType = `${apiName}${paramName}`;
       }
 
@@ -321,7 +349,15 @@ export function getNestedCallbackEventType(api: ParsedAPI): string | undefined {
   if (api.parameters.length > 0 && api.parameters[0].type.kind === 'object') {
     const onEventProp = api.parameters[0].type.properties?.find(p => p.name === 'onEvent');
     if (onEventProp && onEventProp.type.kind === 'function' && onEventProp.type.functionParams?.[0]) {
-      return mapToCSharpType(onEventProp.type.functionParams[0]);
+      const fp0 = onEventProp.type.functionParams[0];
+      // 인라인 익명 이벤트 객체는 type-collector가 등록한 ...OnEventParam 클래스를 쓴다
+      // (extractCallbackTypes와 같은 규칙. object로 무너뜨리지 않는다)
+      const parentName = api.parameters[0].type.name;
+      const parentIsAnonymous = !parentName || parentName === '__type' || parentName === 'object' || parentName.startsWith('{');
+      if (isInlineAnonymousObjectParam(fp0) && !parentIsAnonymous) {
+        return functionParamTypeName(extractCleanName(parentName), 'onEvent');
+      }
+      return mapToCSharpType(fp0);
     }
   }
   return 'object';
@@ -354,11 +390,7 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
   // deprecated 메시지의 줄바꿈 제거 (C# [Obsolete] 어트리뷰트에서 줄바꿈 불가)
   let deprecatedMessage = api.deprecatedMessage;
   if (deprecatedMessage) {
-    deprecatedMessage = deprecatedMessage
-      .replace(/\n/g, ' ')  // 줄바꿈을 공백으로
-      .replace(/\s+/g, ' ') // 연속 공백을 하나로
-      .replace(/"/g, '\\"') // 큰따옴표 이스케이프
-      .trim();
+    deprecatedMessage = escapeObsoleteMessage(deprecatedMessage);
   }
 
   // 이벤트 데이터 타입 결정
@@ -386,6 +418,8 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     api.parameters[0].type.properties?.some(p => p.name === 'options');
   const isNamespaceCallbackBased = api.isCallbackBased && hasArgsObjectPattern;
 
+  const apiCompat = getApiCompat(api.pascalName);
+
   return {
     name: api.name,
     pascalName: api.pascalName,
@@ -393,7 +427,9 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     description: api.description,
     returnDescription: api.returnDescription,
     examples: api.examples,
-    parameters: api.isCallbackBased ? callbackApiParameters : parameters,
+    // `(int timeoutMs = 0)` 오버로드와 인자 없는 호출이 겹치지 않도록, 그 오버로드를 두는 API는 첫 매개변수를 필수로 둔다
+    parameters: (api.isCallbackBased ? callbackApiParameters : parameters).map((p, i) =>
+      i === 0 && COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) ? { ...p, optional: false } : p),
     returnType,
     isAsync: api.isAsync,
     callbackType,
@@ -422,5 +458,24 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     nestedCallbackParamType: getNestedCallbackParamType(api),
     nestedCallbackOptionsType: getNestedCallbackOptionsType(api),
     nestedCallbackEventType: getNestedCallbackEventType(api),
+    // options.callbacks 묶음 API 지원
+    compatTimeoutOnlyOverload: COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) || undefined,
+    methodName: apiCompat.methodName ?? api.pascalName,
+    returnTypeCompat: apiCompat.returnTypeCompat,
+    legacySubscribe: apiCompat.legacySubscribe,
+    legacyParamOverload: apiCompat.legacyParamOverload,
+    hasCallbackBag: !!api.callbackBag,
+    callbackBag: api.callbackBag
+      ? (() => {
+          const bagParam = parameters.find(p => p.paramName === escapeCSharpKeyword(api.callbackBag!.paramName));
+          return {
+            paramName: bagParam?.paramName ?? api.callbackBag!.paramName,
+            paramType: bagParam?.paramType ?? 'object',
+            propertyPascal: toPascalCase(api.callbackBag!.property),
+            members: api.callbackBag!.members,
+            handlePascal: api.callbackBag!.handleProperty ? toPascalCase(api.callbackBag!.handleProperty) : undefined,
+          };
+        })()
+      : undefined,
   };
 }

@@ -17,12 +17,6 @@ export interface ChangelogMarkdownOptions {
   dialect: ChangelogMarkdownDialect;
   /** 결과 문자열의 최대 UTF-8 바이트 크기 (기본 200,000) */
   maxBytes?: number;
-  /**
-   * dtsSource가 'sibling'이 아니어서(예: web-bridge → webview-bridge 리네임으로 sibling
-   * 탐색 실패 → pnpm store 폴백) API 표면이 근사(approximate)된 버전 목록.
-   * 인트로 문단에 결정적 문구로 명시해, 해당 버전의 diff가 비어 있어도 이유를 알 수 있게 한다.
-   */
-  approximatedVersions?: string[];
 }
 
 const DEFAULT_MAX_BYTES = 200_000;
@@ -70,17 +64,6 @@ export function generateChangelogMarkdown(
     `어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v${latestVersion})이 최상단에 오도록 정렬되어 있습니다.`,
   );
   lines.push('');
-
-  if (options.approximatedVersions && options.approximatedVersions.length > 0) {
-    const sortedApproximated = [...options.approximatedVersions].sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true }),
-    );
-    lines.push(
-      `다음 버전은 패키지 리네임 등으로 sibling 탐색에 실패해 pnpm store 폴백으로 API 표면을 근사함: ` +
-      sortedApproximated.map(v => `v${v}`).join(', '),
-    );
-    lines.push('');
-  }
 
   // 버전 전이 diff — 최신 → 과거 순, major 버전 그룹으로 묶는다.
   const diffsDesc = [...diffs].reverse();

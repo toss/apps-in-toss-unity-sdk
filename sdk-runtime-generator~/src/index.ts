@@ -6,7 +6,6 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { TypeScriptParser, drainDomViolations, type DomViolation } from './parser/index.js';
-import { findTypeDefinitions, findWebAnalyticsPath } from './discovery.js';
 import { validateAllTypes } from './validators/types.js';
 import { validateCompleteness, printSummary } from './validators/completeness.js';
 import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp/index.js';
@@ -15,8 +14,14 @@ import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './gener
 import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib, generateCoreManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
-import { FRAMEWORK_APIS, BUNDLED_NAMESPACE_ALLOWLIST, EXCLUDED_APIS, DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY, resolveApiCategory } from './categories.js';
-import { getApiImportSource, type ParsedAPI, type GeneratedTypeUnit } from './types.js';
+import { applyDocFallbacks, applyTypeMemberDocFallbacks } from './doc-fallbacks.js';
+import { escapeCSharpKeyword } from './generators/csharp/utils.js';
+import { DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY } from './categories.js';
+import type { GeneratedTypeUnit } from './types.js';
+import { PUBLIC_TYPE_NAMES } from './generators/csharp/public-type-names.js';
+import { pruneUnreferencedSyntheticTypes } from './generators/csharp/prune-synthetic-types.js';
+import { applyTypeCompat, assertApiCompatTargets } from './generators/csharp/compat.js';
+import { TYPE_NAME_PINS, applyTypeNamePins, applyTypeNamePinsToUnits, buildDeprecatedShimUnits } from './generators/csharp/type-name-pins.js';
 
 const program = new Command();
 
@@ -29,57 +34,6 @@ const program = new Command();
  */
 function generateUnityGUID(): string {
   return crypto.randomBytes(16).toString('hex');
-}
-
-/**
- * 타깃 web-framework가 더 이상 공개 export하지 않는 API를 발견 목록에서 제거한다.
- *
- * 배경: 발견(discovery)은 web-bridge .d.ts 스캔에 의존하는데, web-framework 메이저
- * 업데이트로 패키지가 재구성되면(예: web-bridge → webview-bridge 리네임) 발견 경로가
- * pnpm 스토어의 stale 구버전 .d.ts로 폴백할 수 있다. 그러면 신버전에서 제거된 API가
- * 계속 발견되고, 그 API의 브릿지가 존재하지 않는 심볼을 import 하여 jslib 타입 검사
- * (TS2305)에서 실패한다.
- *
- * 이 필터는 **@apps-in-toss/web-framework에서 import 될** API에 한해, 그 심볼이 실제
- * 타깃 web-framework의 public export 집합에 있는지 확인하고 없으면 제거한다.
- * - isTopLevelExport(FRAMEWORK_APIS) / @apps-in-toss/web-analytics 소속 API는 게이트 대상이 아니다.
- * - export 집합 계산 실패 시(빈 집합) 필터를 적용하지 않는다(fail-open) — 정상 동작하는
- *   기존 버전 생성이 빈 집합 때문에 전부 제거되는 사고를 방지.
- *
- * 2.6.1 등 기존 stable 버전에서는 발견 API가 모두 여전히 export되므로 무회귀.
- */
-function filterToWebFrameworkExports(apis: ParsedAPI[], parser: TypeScriptParser): ParsedAPI[] {
-  const wfExports = parser.getWebFrameworkExportedNames();
-  if (wfExports.size === 0) {
-    // 판별 불가 → 필터 스킵 (경고는 getWebFrameworkExportedNames에서 이미 출력)
-    return apis;
-  }
-
-  const skipped: string[] = [];
-  const kept = apis.filter(api => {
-    // top-level export(FRAMEWORK_APIS)는 번들에서 직접 파싱 → 게이트 제외
-    if (api.isTopLevelExport) return true;
-    // web-framework가 아닌 패키지(web-analytics)에서 import → 게이트 제외
-    if (getApiImportSource(api) !== '@apps-in-toss/web-framework') return true;
-
-    // 브릿지가 web-framework에서 import할 심볼: 네임스페이스 API는 네임스페이스 이름,
-    // 그 외는 원본 함수 이름.
-    const requiredSymbol = api.namespace ?? api.originalName;
-    if (wfExports.has(requiredSymbol)) return true;
-
-    skipped.push(`${api.name} (심볼: ${requiredSymbol})`);
-    return false;
-  });
-
-  if (skipped.length > 0) {
-    console.log(
-      picocolors.yellow(
-        `⚠️  web-framework public export 제외: ${skipped.join(', ')} (이 web-framework 버전에서 제거됨 — 브릿지 생성 건너뜀)`,
-      ),
-    );
-  }
-
-  return kept;
 }
 
 /**
@@ -286,36 +240,18 @@ async function generate(options: {
       webFrameworkPath = await findWebFrameworkInNodeModules();
     }
 
-    // 2. TypeScript 정의 파일 찾기
-    const typeDefinitionsPath = await findTypeDefinitions(webFrameworkPath);
-
-    // 3. web-analytics 패키지 탐색 (선택적)
-    const webAnalyticsPath = await findWebAnalyticsPath(webFrameworkPath);
-    if (webAnalyticsPath) {
-      console.log(picocolors.green(`✅ web-analytics 발견: ${webAnalyticsPath}`));
-    } else {
-      console.log(picocolors.yellow(`⚠️  web-analytics를 찾을 수 없습니다. Analytics API 생성을 건너뜁니다.`));
+    // 2. 입력: web-framework 3.x 번들 dist/index.d.ts 하나. 3.x가 아니거나 번들이 없으면 즉시 실패한다.
+    const installedVersion = await getInstalledWebFrameworkVersion(webFrameworkPath);
+    if (!installedVersion || !installedVersion.startsWith('3.')) {
+      throw new Error(
+        `이 SDK는 @apps-in-toss/web-framework 3.x만 지원합니다. 설치된 버전: ${installedVersion ?? '알 수 없음'} (${webFrameworkPath})`
+      );
     }
-
-    // 4. API 파싱
+    const bundleFile = path.join(webFrameworkPath, 'dist', 'index.d.ts');
+    console.log(picocolors.green(`✅ web-framework 번들 index.d.ts를 입력으로 사용: ${bundleFile}`));
     console.log(picocolors.cyan('\n📊 web-framework 분석 중...'));
-    const parser = new TypeScriptParser(typeDefinitionsPath, webFrameworkPath);
-    if (webAnalyticsPath) {
-      parser.addSourceDirectory(webAnalyticsPath);
-    }
-
-    // web-framework 번들 index.d.ts 보충 등록 (web-bridge에 없는 3.x 전용 네임스페이스 — 예: Ads)
-    const bundledIndexPath = path.join(webFrameworkPath, 'dist', 'index.d.ts');
-    if (BUNDLED_NAMESPACE_ALLOWLIST.length > 0) {
-      try {
-        await fs.access(bundledIndexPath);
-        parser.addBundledNamespaceSource(bundledIndexPath, BUNDLED_NAMESPACE_ALLOWLIST);
-      } catch {
-        // 번들 index.d.ts가 없는 구버전(web-bridge 배포 구조)이면 스킵
-      }
-    }
-
-    const allParsedApis = await parser.parseAPIs(FRAMEWORK_APIS);
+    const parser = new TypeScriptParser(bundleFile);
+    const allParsedApis = await parser.parseAPIs();
 
     // DOM-only 타입 위반 검증: 파싱 중 누적된 위반을 한 번에 보고하고 실패시킨다.
     const domViolations = drainDomViolations();
@@ -323,15 +259,7 @@ async function generate(options: {
       throw new Error(formatDomViolations(domViolations));
     }
 
-    // 제외 목록에 있는 API 필터링
-    const excludedSet = new Set(EXCLUDED_APIS);
-    const notExcludedApis = allParsedApis.filter(api => !excludedSet.has(api.name));
-
-    // 타깃 web-framework가 더 이상 public export하지 않는 API 제거
-    // (예: 3.0.0에서 제거된 onVisibilityChangedByTransparentServiceWeb).
-    // 발견 경로가 stale .d.ts로 폴백해 제거된 API를 계속 발견하더라도, 실제 타깃
-    // web-framework export에 없으면 브릿지를 생성하지 않아 TS2305 실패를 예방한다.
-    const apis = filterToWebFrameworkExports(notExcludedApis, parser);
+    const apis = allParsedApis;
 
     // 생성기 측 deprecate override 적용 (upstream d.ts에 @deprecated가 없는 API)
     for (const api of apis) {
@@ -342,37 +270,12 @@ async function generate(options: {
       }
     }
 
+    // 3.x JSDoc에 없는 요약/@param/@returns는 큐레이션 폴백으로 채운다
+    const docFilled = applyDocFallbacks(apis, escapeCSharpKeyword);
+    console.log(picocolors.gray(`   - 문서 폴백 적용: ${docFilled.length}개 API`));
+
     if (apis.length === 0) {
-      console.error(picocolors.red('\n❌ web-framework에서 API를 발견하지 못했습니다.\n'));
-      console.error(picocolors.yellow('다음을 확인하세요:'));
-      console.error(picocolors.yellow(`  1. TypeScript 정의 경로: ${typeDefinitionsPath}`));
-      console.error(picocolors.yellow(`  2. web-framework 버전: ${webFrameworkPath}`));
-      console.error(picocolors.yellow(`  3. .d.ts 파일에 export된 함수가 있는지 확인`));
-      process.exit(1);
-    }
-
-    // FRAMEWORK_APIS 파싱 완전성 검증
-    const parsedApiNames = new Set(allParsedApis.map(a => a.name));
-    const parsedFrameworkApiCount = FRAMEWORK_APIS.filter(name => parsedApiNames.has(name)).length;
-    const missingFrameworkApis = FRAMEWORK_APIS.filter(name => !parsedApiNames.has(name));
-
-    if (missingFrameworkApis.length > 0) {
-      if (parsedFrameworkApiCount > 0) {
-        // 일부만 파싱됨 → 비정상 (부분 파싱은 버그)
-        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS 일부 파싱 실패: ${missingFrameworkApis.join(', ')}`));
-        console.error(picocolors.yellow(`   web-framework 번들 index.d.ts에 해당 API 선언이 모두 있는지 확인하세요.`));
-        console.error(picocolors.yellow(`   현재 번들 경로: ${parser.frameworkDtsPath ?? '찾을 수 없음'}`));
-        process.exit(1);
-      } else if (!parser.frameworkDtsPath) {
-        // 번들 .d.ts를 못 찾았으면 API가 없는지조차 알 수 없다. 스킵하면 AIT.LoadFullScreenAd 등이
-        // 조용히 빠져 Unity 컴파일에서야 CS0117로 드러나므로 여기서 멈춘다.
-        console.error(picocolors.red(`\n❌ FRAMEWORK_APIS를 파싱할 web-framework 번들 index.d.ts를 찾지 못했습니다: ${missingFrameworkApis.join(', ')}`));
-        console.error(picocolors.yellow(`   node_modules/@apps-in-toss/web-framework/dist/index.d.ts 존재를 확인하세요.`));
-        process.exit(1);
-      } else {
-        // 번들 .d.ts는 찾았지만 API가 모두 없음 → 이 버전에 해당 API 없음 (정상)
-        console.log(picocolors.yellow(`⚠️  FRAMEWORK_APIS 스킵: ${missingFrameworkApis.join(', ')} (이 web-framework 버전에 해당 API 없음)`));
-      }
+      throw new Error(`web-framework 번들에서 API를 발견하지 못했습니다: ${bundleFile}`);
     }
 
     console.log(picocolors.green(`✓ ${apis.length}개 API 발견`));
@@ -393,17 +296,7 @@ async function generate(options: {
     console.log(picocolors.cyan('\n📦 타입 정의 파싱 중...'));
     const typeDefinitions = await parser.parseTypeDefinitions();
 
-    // web-framework 번들의 FRAMEWORK_APIS 타입 정의 추가 (loadFullScreenAd, showFullScreenAd 관련)
-    // 번들 .d.ts가 없으면 스킵
-    const frameworkTypeDefinitions = parser.frameworkDtsPath
-      ? parser.parseFrameworkTypeDefinitions(FRAMEWORK_APIS, parser.frameworkDtsPath)
-      : [];
-    typeDefinitions.push(...frameworkTypeDefinitions);
-
     console.log(picocolors.green(`✓ ${typeDefinitions.length}개 타입 정의 발견`));
-    if (frameworkTypeDefinitions.length > 0) {
-      console.log(picocolors.gray(`   - Framework 타입: ${frameworkTypeDefinitions.length}개 (${frameworkTypeDefinitions.map(t => t.name).join(', ')})`));
-    }
 
     // enum과 interface 분류
     const enums = typeDefinitions.filter(t => t.kind === 'enum');
@@ -420,6 +313,9 @@ async function generate(options: {
     const csharpGenerator = new CSharpGenerator();
     const jslibGenerator = new JSLibGenerator();
     const typeGenerator = new CSharpTypeGenerator();
+    typeGenerator.protectedEnumNames = new Set(Object.keys(TYPE_NAME_PINS));
+
+    assertApiCompatTargets(new Set(apis.map(api => api.pascalName)));
 
     // C# API 생성 (기존 방식 - 검증용)
     const generatedCodes = await csharpGenerator.generate(apis, options.tag);
@@ -429,12 +325,15 @@ async function generate(options: {
     console.log(picocolors.green(`✓ AIT.cs (메인 partial class)`));
 
     // 카테고리별 API partial class 파일들 생성
-    const categoryFiles = await csharpGenerator.generateCategoryFiles(apis);
+    const categoryFiles = new Map(
+      Array.from((await csharpGenerator.generateCategoryFiles(apis)).entries())
+        .map(([fileName, content]) => [fileName, applyTypeNamePins(content)] as const)
+    );
     console.log(picocolors.green(`✓ ${categoryFiles.size}개 카테고리 파일 (AIT.{Category}.cs)`));
 
     // AITCore 생성 (인프라 코드) - enum 타입 목록 전달
     const enumTypeNames = new Set(enums.map(e => e.name));
-    const coreFile = await csharpGenerator.generateCoreFile(apis, enumTypeNames);
+    const coreFile = applyTypeNamePins(await csharpGenerator.generateCoreFile(apis, enumTypeNames));
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
     // C# 타입 정의 생성 (파싱된 enum/interface) - 타입별 유닛
@@ -456,7 +355,34 @@ async function generate(options: {
     );
 
     // 타입 유닛을 카테고리별로 버킷팅 (API 추출 타입 + 파싱된 도메인 타입)
-    const allTypeUnits: GeneratedTypeUnit[] = [...apiTypeUnits, ...parsedTypesResult.units];
+    // 3.x가 이름을 바꾼 타입은 SDK에 공개돼 있던 이름으로 되돌린다 (type-name-pins.ts)
+    const pinnedTypeUnits: GeneratedTypeUnit[] = applyTypeNamePinsToUnits([
+      ...apiTypeUnits,
+      ...typeGenerator.applyEnumAliasesTo(parsedTypesResult.units),
+    ]);
+    // 3.x가 새 타입으로 대체한 옛 이름은 [Obsolete] 하위 클래스로 이어 간다
+    const allTypeUnits: GeneratedTypeUnit[] = [...pinnedTypeUnits, ...buildDeprecatedShimUnits(pinnedTypeUnits)];
+
+    // 어디에도 쓰이지 않는 타입은 지운다. d.ts가 선언했더라도 API 시그니처가 따라가지 않는 타입
+    // (Environment$1 -> System.Environment와 충돌하는 enum, 번들 별칭이 만든 중복 클래스 등)은
+    // 공개 표면에 둘 이유가 없다. 이전 SDK가 공개하던 이름(PUBLIC_TYPE_NAMES)만 참조 없이도 남긴다.
+    const declaredTypeNames = new Set<string>(PUBLIC_TYPE_NAMES);
+    const pruneResult = pruneUnreferencedSyntheticTypes(
+      allTypeUnits,
+      declaredTypeNames,
+      [...categoryFiles.values(), coreFile],
+    );
+    allTypeUnits.length = 0;
+    allTypeUnits.push(...pruneResult.kept);
+    // 3.x JSDoc에 없는 타입 멤버 설명을 채운다
+    for (const unit of allTypeUnits) unit.code = applyTypeMemberDocFallbacks(unit.code);
+    // 3.x가 바꾼 멤버에도 이전 SDK의 공개 멤버를 `[Obsolete]`로 남긴다 (compat.ts)
+    const compatUnits = applyTypeCompat(allTypeUnits);
+    allTypeUnits.length = 0;
+    allTypeUnits.push(...compatUnits);
+    if (pruneResult.pruned.length > 0) {
+      console.log(picocolors.gray(`   - 참조 없는 임시 타입 제거: ${pruneResult.pruned.join(', ')}`));
+    }
 
     // 'Other'로 남은 유닛(파싱된 도메인 타입 + 루프 밖 pending 타입)을 API 이름 프리픽스로 재귀속.
     // 이들 대부분은 `{ApiPascalName}{Options|Result|Params|Response|...}` 규약을 따르므로
@@ -465,7 +391,7 @@ async function generate(options: {
     // 참조 그래프 기반 delta-snapshot 분류(generateTypes)는 더 정확하므로 건드리지 않는다.
     const apiCatByPascal = new Map<string, string>();
     for (const api of apis) {
-      apiCatByPascal.set(api.pascalName, resolveApiCategory(api, false));
+      apiCatByPascal.set(api.pascalName, api.category);
     }
     const apiNamesLongestFirst = Array.from(apiCatByPascal.keys()).sort((a, b) => b.length - a.length);
     for (const unit of allTypeUnits) {

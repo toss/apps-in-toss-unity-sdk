@@ -1,12 +1,38 @@
-import * as path from 'path';
-import { NAMESPACE_CATEGORY_OVERRIDES } from './constants.js';
-
 /**
  * TypeScript 빌드 시 생성되는 $1, $2 등의 접미사 제거
  * 예: Location$1 -> Location
  */
 export function cleanTypeName(name: string): string {
+  const renamed = localTypeRenames.get(name);
+  if (renamed) return renamed;
   return name.replace(/\$\d+$/, '');
+}
+
+/**
+ * 번들이 같은 공개 이름을 두 선언에 겹쳐 쓰는 경우의 로컬 이름 -> 공개 export 이름.
+ *
+ * 롤업이 이름 충돌을 `$1` 접미사로 피한 뒤 접미사 쪽을 공개 이름으로 내보내면
+ * (`ContactsViralParams$1 as ContactsViralParams`, `ContactsViralParams as ContactsViralOption`),
+ * 접미사를 떼는 것만으로는 두 타입이 같은 이름이 된다. 충돌하는 쪽(접미사 없는 로컬 이름)을
+ * 자기 export 이름으로 옮긴다. 충돌하지 않는 export 별칭(`AttachOptions as TossAdsAttachOptions`)은
+ * 건드리지 않는다.
+ */
+const localTypeRenames = new Map<string, string>();
+
+export function registerLocalTypeRenames(exported: ReadonlyMap<string, readonly unknown[]>): void {
+  localTypeRenames.clear();
+  for (const [exportName, decls] of exported) {
+    for (const decl of decls) {
+      const localName = (decl as { getName?: () => string | undefined }).getName?.();
+      if (!localName || localName === exportName) continue;
+      const stripped = localName.replace(/\$\d+$/, '');
+      // 접미사를 뗀 이름이 다른 선언의 공개 이름이면 충돌이다
+      const owner = exported.get(stripped);
+      if (stripped === localName && owner && !owner.includes(decl)) {
+        localTypeRenames.set(localName, exportName);
+      }
+    }
+  }
 }
 
 /**
@@ -16,28 +42,4 @@ export function cleanTypeName(name: string): string {
 export function toPascalCase(str: string): string {
   if (!str) return str;
   return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/**
- * 파일 경로에서 카테고리 추출
- * .d.ts 파일명을 PascalCase로 변환하여 카테고리로 사용
- * 예: appLogin.d.ts -> AppLogin
- */
-export function getCategoryFromPath(filePath: string): string {
-  const fileName = path.basename(filePath, '.d.ts');
-  return fileName.charAt(0).toUpperCase() + fileName.slice(1);
-}
-
-/**
- * 네임스페이스 이름을 카테고리로 변환
- * - 특수 매핑이 있으면 사용
- * - 없으면 PascalCase로 변환하여 카테고리로 사용
- */
-export function getNamespaceCategory(namespaceName: string): string {
-  // 특수 매핑 확인
-  if (NAMESPACE_CATEGORY_OVERRIDES[namespaceName]) {
-    return NAMESPACE_CATEGORY_OVERRIDES[namespaceName];
-  }
-  // 기본값: PascalCase로 변환 (partner -> Partner, IAP -> IAP)
-  return toPascalCase(namespaceName);
 }

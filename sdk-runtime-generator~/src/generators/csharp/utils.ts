@@ -30,6 +30,18 @@ export function capitalize(str: string): string {
 }
 
 /**
+ * `[Obsolete("...")]` 문자열 리터럴에 넣을 수 있게 바꾼다.
+ * 줄바꿈은 공백으로 합치고, 역슬래시를 먼저 이스케이프한 뒤 큰따옴표를 이스케이프한다.
+ */
+export function escapeObsoleteMessage(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+}
+
+/**
  * XML 주석용 텍스트 변환 (마크다운 제거)
  * @param text 입력 텍스트
  * @returns XML 안전한 텍스트
@@ -52,6 +64,29 @@ export function xmlSafe(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
   return cleaned;
+}
+
+/**
+ * 여러 줄 설명을 XML 주석 한 줄씩(`///` 접두 없이)으로 나눈다. 줄 구조는 유지하고
+ * XML 특수 문자만 이스케이프한다. 번들 JSDoc은 여러 줄 설명이 많아서, 첫 줄만 `///`가
+ * 붙고 나머지가 주석 밖으로 새면 컴파일이 깨진다.
+ */
+export function xmlSafeLines(text: string): string[] {
+  if (!text) return [];
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.trimEnd().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+  while (lines.length > 0 && lines[0].trim() === '') lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines;
+}
+
+/** 타입(클래스/enum) 선언 위에 붙일 `<summary>` 블록. 설명이 없으면 빈 문자열 */
+export function typeSummaryBlock(description: string | undefined, indent = '    '): string {
+  const lines = xmlSafeLines(description ?? '');
+  if (lines.length === 0) return '';
+  const body = lines.map(line => `${indent}/// ${line}`.trimEnd()).join('\n');
+  return `${indent}/// <summary>\n${body}\n${indent}/// </summary>\n`;
 }
 
 /**

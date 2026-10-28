@@ -52,12 +52,8 @@ export const DOM_TYPES = new Set([
 ]);
 
 /**
- * 네임스페이스 -> 카테고리 특수 매핑 (기본값: 네임스페이스명을 PascalCase로)
- * 새 네임스페이스가 추가되어도 자동으로 처리됨
+ * C#에서 값의 구조를 표현할 수 없는 DOM 유니온 타입.
+ * 재귀 정의(IDBValidKey = number | string | Date | BufferSource | IDBValidKey[])라 풀어서
+ * 파싱하면 스택 오버플로우가 나므로 `object`로 처리한다. (JSON으로 직렬화되는 값 그대로 받는다)
  */
-export const NAMESPACE_CATEGORY_OVERRIDES: Record<string, string> = {
-  Ads: 'Advertising',
-  GoogleAdMob: 'Advertising',
-  SafeAreaInsets: 'SafeArea',
-  env: 'Environment',
-};
+export const OPAQUE_OBJECT_TYPES = new Set(['IDBValidKey']);

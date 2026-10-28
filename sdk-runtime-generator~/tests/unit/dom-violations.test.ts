@@ -1,14 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { Project } from 'ts-morph';
 import { parseType } from '../../src/parser/type-parser.js';
-import {
-  parseFunctionDeclaration,
-  parseVariableFunction,
-} from '../../src/parser/api-parser.js';
-import {
-  parseNamespaceObject,
-  parseNamespaceObjects,
-} from '../../src/parser/namespace-parser.js';
+import { parseBundle } from '../../src/parser/bundle-parser.js';
 import {
   clearDomViolations,
   drainDomViolations,
@@ -130,100 +123,68 @@ describe('Union DOM filtering', () => {
   });
 });
 
-describe('DOM violation collection in api-parser', () => {
+function parseApis(source: string) {
+  const project = makeProject();
+  const sf = project.createSourceFile('/index.d.ts', source);
+  return parseBundle(sf).apis;
+}
+
+describe('DOM violation collection (top-level 함수)', () => {
   beforeEach(() => {
     clearDomViolations();
   });
 
-  test('단독 HTMLElement 파라미터: parseFunctionDeclaration이 null 반환 + 위반 1개 수집', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/test.d.ts',
-      `export declare function foo(target: HTMLElement): void;`,
-    );
-    const fn = sf.getFunctionOrThrow('foo');
-
-    const result = parseFunctionDeclaration(fn, sf);
-
-    expect(result).toBeNull();
+  test('단독 HTMLElement 파라미터: API 제외 + 위반 1개 수집', () => {
+    const apis = parseApis(`export declare function foo(target: HTMLElement): void;`);
+    expect(apis.find((a) => a.originalName === 'foo')).toBeUndefined();
     const violations = drainDomViolations();
     expect(violations).toHaveLength(1);
     expect(violations[0]).toMatchObject({
-      functionName: 'foo',
       location: 'parameter',
       paramName: 'target',
       rawType: 'HTMLElement',
     });
   });
 
-  test('반환 타입 HTMLElement: parseFunctionDeclaration이 null 반환 + return 위반 수집', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/test.d.ts',
-      `export declare function bar(): HTMLElement;`,
-    );
-    const fn = sf.getFunctionOrThrow('bar');
-
-    const result = parseFunctionDeclaration(fn, sf);
-
-    expect(result).toBeNull();
+  test('반환 타입 HTMLElement: API 제외 + return 위반 수집', () => {
+    const apis = parseApis(`export declare function foo(): HTMLElement;`);
+    expect(apis.find((a) => a.originalName === 'foo')).toBeUndefined();
     const violations = drainDomViolations();
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toMatchObject({
-      functionName: 'bar',
-      location: 'return',
-      rawType: 'HTMLElement',
-    });
-    expect(violations[0].paramName).toBeUndefined();
+    expect(violations[0]).toMatchObject({ location: 'return', rawType: 'HTMLElement' });
   });
 
-  test('string | HTMLElement은 위반 아님: parseFunctionDeclaration이 non-null 반환', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/test.d.ts',
-      `export declare function baz(t: string | HTMLElement): void;`,
-    );
-    const fn = sf.getFunctionOrThrow('baz');
-
-    const result = parseFunctionDeclaration(fn, sf);
-
-    expect(result).not.toBeNull();
-    expect(result!.parameters[0].type.name).toBe('string');
-    const violations = drainDomViolations();
-    expect(violations).toHaveLength(0);
+  test('string | HTMLElement은 위반 아님: API 유지 + 위반 없음', () => {
+    const apis = parseApis(`export declare function foo(target: string | HTMLElement): void;`);
+    const api = apis.find((a) => a.originalName === 'foo');
+    expect(api).toBeDefined();
+    expect(api!.parameters[0].type.name).toBe('string');
+    expect(drainDomViolations()).toHaveLength(0);
   });
 
   test('여러 함수 위반 누적: 3개 함수 파싱 후 drainDomViolations() length 3', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/test.d.ts',
+    const apis = parseApis(
       [
         `export declare function a(el: HTMLElement): void;`,
         `export declare function b(): HTMLElement;`,
         `export declare function c(node: HTMLElement | Node): void;`,
       ].join('\n'),
     );
-
-    parseFunctionDeclaration(sf.getFunctionOrThrow('a'), sf);
-    parseFunctionDeclaration(sf.getFunctionOrThrow('b'), sf);
-    parseFunctionDeclaration(sf.getFunctionOrThrow('c'), sf);
-
+    expect(apis).toHaveLength(0);
     const violations = drainDomViolations();
     expect(violations).toHaveLength(3);
-    const names = violations.map((v) => v.functionName).sort();
+    const names = violations.map((v) => v.functionName.toLowerCase()).sort();
     expect(names).toEqual(['a', 'b', 'c']);
   });
 });
 
-describe('DOM violation collection in namespace-parser', () => {
+describe('DOM violation collection (네임스페이스 멤버)', () => {
   beforeEach(() => {
     clearDomViolations();
   });
 
-  test('네임스페이스 메서드 단독 HTMLElement: parseNamespaceObject가 해당 메서드를 제외하고 위반 1개 수집', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/Foo.d.ts',
+  test('네임스페이스 메서드 단독 HTMLElement: 해당 메서드를 제외하고 위반 1개 수집', () => {
+    const apis = parseApis(
       [
         `declare function attach(target: HTMLElement): void;`,
         `export declare const Foo: {`,
@@ -231,12 +192,7 @@ describe('DOM violation collection in namespace-parser', () => {
         `};`,
       ].join('\n'),
     );
-    const varDecl = sf.getVariableDeclarationOrThrow('Foo');
-
-    const apis = parseNamespaceObject('Foo', varDecl, sf);
-
-    const attachApi = apis.find((a) => a.originalName === 'attach');
-    expect(attachApi).toBeUndefined();
+    expect(apis.find((a) => a.originalName === 'attach')).toBeUndefined();
 
     const violations = drainDomViolations();
     expect(violations.length).toBeGreaterThanOrEqual(1);
@@ -250,9 +206,7 @@ describe('DOM violation collection in namespace-parser', () => {
   });
 
   test('네임스페이스 메서드 string | HTMLElement은 정상: API 반환되고 위반 없음', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/Foo.d.ts',
+    const apis = parseApis(
       [
         `declare function attach(target: string | HTMLElement): void;`,
         `export declare const Foo: {`,
@@ -260,71 +214,30 @@ describe('DOM violation collection in namespace-parser', () => {
         `};`,
       ].join('\n'),
     );
-    const varDecl = sf.getVariableDeclarationOrThrow('Foo');
-
-    const apis = parseNamespaceObject('Foo', varDecl, sf);
-
     const attachApi = apis.find((a) => a.originalName === 'attach');
     expect(attachApi).toBeDefined();
     expect(attachApi!.parameters[0].type.name).toBe('string');
-
-    const violations = drainDomViolations();
-    expect(violations).toHaveLength(0);
+    expect(drainDomViolations()).toHaveLength(0);
   });
 });
 
-describe('namespace-parser global function paths', () => {
+describe('변수로 선언된 top-level 함수의 DOM 처리', () => {
   beforeEach(() => {
     clearDomViolations();
   });
 
-  test('parseNamespaceObjects가 글로벌 function 선언 단독 HTMLElement를 위반으로 수집', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/index.d.ts',
-      `export declare function attachThing(target: HTMLElement): void;`,
-    );
-    const apis = parseNamespaceObjects(sf);
-    expect(apis.find((a) => a.originalName === 'attachThing')).toBeUndefined();
-    const violations = drainDomViolations();
-    expect(violations.some((v) => v.functionName === 'attachThing' && v.paramName === 'target')).toBe(true);
-  });
-
-});
-
-describe('parseVariableFunction DOM hooks', () => {
-  beforeEach(() => {
-    clearDomViolations();
-  });
-
-  test('변수 함수 단독 HTMLElement는 null 반환 + 위반 수집', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/test.d.ts',
-      `export declare const foo: (target: HTMLElement) => void;`,
-    );
-    const varDecl = sf.getVariableDeclarationOrThrow('foo');
-    const result = parseVariableFunction('foo', varDecl, sf);
-    expect(result).toBeNull();
+  test('변수 함수 단독 HTMLElement는 제외 + 위반 수집', () => {
+    const apis = parseApis(`export declare const foo: (target: HTMLElement) => void;`);
+    expect(apis).toHaveLength(0);
     const violations = drainDomViolations();
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toMatchObject({
-      functionName: 'foo',
-      location: 'parameter',
-      paramName: 'target',
-    });
+    expect(violations[0]).toMatchObject({ location: 'parameter', paramName: 'target' });
   });
 
   test('변수 함수 string | HTMLElement는 string으로 축소', () => {
-    const project = makeProject();
-    const sf = project.createSourceFile(
-      '/test.d.ts',
-      `export declare const foo: (target: string | HTMLElement) => void;`,
-    );
-    const varDecl = sf.getVariableDeclarationOrThrow('foo');
-    const result = parseVariableFunction('foo', varDecl, sf);
-    expect(result).not.toBeNull();
-    expect(result!.parameters[0].type.name).toBe('string');
+    const apis = parseApis(`export declare const foo: (target: string | HTMLElement) => void;`);
+    expect(apis).toHaveLength(1);
+    expect(apis[0].parameters[0].type.name).toBe('string');
     expect(drainDomViolations()).toHaveLength(0);
   });
 });

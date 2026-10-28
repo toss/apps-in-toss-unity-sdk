@@ -123,6 +123,21 @@ export function generateFieldDeclaration(originalName: string, type: string, opt
   return `        [Preserve]\n        public ${type} ${pascalName};${optionalComment}`;
 }
 
+/** 익명 객체 배열 프로퍼티가 가리키는 요소 클래스 이름 (예: Foo.files -> FooFile, Foo.indexes -> FooIndex) */
+export function anonymousArrayElementClassName(parentName: string, propName: string): string {
+  let singular = propName;
+  if (/ies$/.test(propName)) singular = propName.slice(0, -3) + 'y';
+  else if (/(x|ch|sh|ss)es$/.test(propName)) singular = propName.slice(0, -2);
+  else if (propName.endsWith('s') && !propName.endsWith('ss')) singular = propName.slice(0, -1);
+  return `${parentName}${capitalize(singular)}`;
+}
+
+function isAnonymousObjectArray(type: any): boolean {
+  const el = type?.kind === 'array' ? type.elementType : undefined;
+  return !!el && el.kind === 'object' && !!el.properties && el.properties.length > 0 &&
+    (el.name === '__type' || el.name === 'object' || el.name.startsWith('{'));
+}
+
 /**
  * 중첩 클래스 타입 생성 (내부 헬퍼)
  */
@@ -132,6 +147,7 @@ export function generateNestedClassType(
   nestedTypes: Map<string, string>
 ): string {
   const fields = properties
+    .filter(prop => prop.type.name !== 'never' && mapToCSharpType(prop.type) !== 'never') // `options?: never`는 값이 없다는 표시라 필드로 옮기지 않는다
     .map(prop => {
       let type = mapToCSharpType(prop.type);
       // 중첩 익명 객체는 생성된 클래스 이름 사용
@@ -140,6 +156,10 @@ export function generateNestedClassType(
           prop.type.properties.length > 0 &&
           (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
         type = `${name}${capitalize(prop.name)}`;
+      }
+      // 익명 객체 배열은 생성된 요소 클래스 이름 + []
+      else if (isAnonymousObjectArray(prop.type)) {
+        type = `${anonymousArrayElementClassName(name, prop.name)}[]`;
       }
       // Union 타입의 멤버가 intersection/익명 객체인 경우
       else if (prop.type.kind === 'union' && prop.type.unionTypes && prop.type.unionTypes.length > 0) {
@@ -187,6 +207,15 @@ export function collectNestedTypes(
         nestedTypes.set(nestedTypeName, generateNestedClassType(nestedTypeName, prop.type.properties, nestedTypes));
       }
     }
+    // 익명 객체 배열의 요소 클래스
+    else if (isAnonymousObjectArray(prop.type)) {
+      const elementName = anonymousArrayElementClassName(parentName, prop.name);
+      const elementProps = prop.type.elementType.properties;
+      if (!nestedTypes.has(elementName)) {
+        collectNestedTypes(elementName, elementProps, nestedTypes);
+        nestedTypes.set(elementName, generateNestedClassType(elementName, elementProps, nestedTypes));
+      }
+    }
     // Note: Union 타입의 intersection 멤버는 collectReferencedTypes에서 처리됨
     // 여기서 중복 생성하면 안됨
   }
@@ -200,7 +229,7 @@ export function collectReferencedTypes(
   typeMap: Map<string, string>,
   exclude: Set<string>,
   tracker: InlineTypeTracker,
-  generateClassType: (name: string, properties: any[], isResultType?: boolean) => string,
+  generateClassType: (name: string, properties: any[]) => string,
   parentTypeName?: string
 ): void {
   for (const prop of properties) {
@@ -270,10 +299,9 @@ export function collectReferencedTypes(
         } else {
           // 익명 객체 배열 요소 타입: 부모 컨텍스트에서 이름 생성
           // 예: IAPGetPendingOrdersResult의 orders 필드 -> IAPGetPendingOrdersResultOrder
-          const propNameSingular = prop.name.endsWith('s') ? prop.name.slice(0, -1) : prop.name;
           typeName = parentTypeName
-            ? `${parentTypeName}${capitalize(propNameSingular)}`
-            : `${capitalize(propNameSingular)}Item`;
+            ? anonymousArrayElementClassName(parentTypeName, prop.name)
+            : `${anonymousArrayElementClassName('', prop.name)}Item`;
 
           // 익명 타입 매핑 저장 (나중에 타입 변환 시 사용)
           const propPath = parentTypeName ? `${parentTypeName}.${prop.name}` : prop.name;
@@ -290,6 +318,7 @@ export function collectReferencedTypes(
       // → 외부 타입으로 큐잉하여 type definitions에서 해결
       // kind 조건 없음: 'object', 'union', 'unknown' 등 어떤 kind든 named reference면 큐잉
       else if (elementType.name &&
+               elementType.kind !== 'primitive' &&
                elementType.name !== '__type' &&
                elementType.name !== 'object' &&
                !elementType.name.startsWith('{')) {
@@ -353,7 +382,7 @@ export function collectFunctionParamTypes(
   typeMap: Map<string, string>,
   exclude: Set<string>,
   tracker: InlineTypeTracker,
-  generateClassType: (name: string, properties: any[], isResultType?: boolean) => string,
+  generateClassType: (name: string, properties: any[]) => string,
   contextName?: string
 ): void {
   // Union 타입 처리 (ContactsViralEvent = RewardFromContactsViralEvent | ContactsViralSuccessEvent)
@@ -465,6 +494,15 @@ export function collectNestedTypesForTypeDefinition(
         collectNestedTypesForTypeDefinition(nestedTypeName, prop.type.properties, nestedTypes, exclude, generatedTypeNames);
         // 중첩 클래스 생성
         nestedTypes.set(nestedTypeName, generateNestedClassType(nestedTypeName, prop.type.properties, nestedTypes));
+      }
+    }
+    // 익명 객체 배열의 요소 클래스
+    else if (isAnonymousObjectArray(prop.type)) {
+      const elementName = anonymousArrayElementClassName(parentName, prop.name);
+      const elementProps = prop.type.elementType.properties;
+      if (!nestedTypes.has(elementName) && !exclude.has(elementName) && !generatedTypeNames.has(elementName)) {
+        collectNestedTypesForTypeDefinition(elementName, elementProps, nestedTypes, exclude, generatedTypeNames);
+        nestedTypes.set(elementName, generateNestedClassType(elementName, elementProps, nestedTypes));
       }
     }
   }

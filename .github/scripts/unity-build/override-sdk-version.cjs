@@ -9,6 +9,13 @@ const onWindows = process.platform === 'win32';
 const run = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { stdio: 'inherit', shell: onWindows, ...opts });
 
+// 생성기는 web-framework 3.x의 dist/index.d.ts 하나만 입력으로 받는다. 1.x/2.x로 재생성하면
+// 생성기가 번들 구조를 해석하지 못하고 실패하므로, 시작하기 전에 분명한 메시지로 막는다.
+if (!/^3\.\d+\.\d+/.test(overrideVersion || '')) {
+  console.error(`::error::sdk_version_override는 3.x 버전만 쓸 수 있습니다: '${overrideVersion}'`);
+  process.exit(1);
+}
+
 console.log('=== SDK Version Override ===');
 console.log(`Target SDK version: ${overrideVersion}`);
 console.log('');

@@ -7,6 +7,7 @@
  * 항상 돈다.
  */
 
+import * as fs from 'fs';
 import { describe, test, expect } from 'vitest';
 import {
   assertWebFrameworkAliasInvariant,
@@ -20,20 +21,23 @@ describe('web-framework alias invariant', () => {
   });
 });
 
-describe('web-framework 3.x self-bundle invariant', () => {
-  // web-framework 3.x+는 별도 web-bridge 패키지 없이 자체 dist/index.d.ts에
-  // 전체 API 표면을 번들링한다(discovery.ts detectSelfContainedDts). 이 invariant는
-  // 설치된 3.x+ alias 전부가 실제로 'self-bundle'로 판정되는지 검증한다 — 판정이
-  // 깨지면(예: 4.x에서 번들 방식이 또 바뀜) resolveVersionPaths의 fail-loud 게이트가
-  // pnpm-store 폴백에 대해 throw하겠지만, 이 테스트는 그 회귀를 changelog 생성을
-  // 직접 돌리지 않고도 PR CI에서 더 빠르고 명시적으로 잡아낸다.
-  const major3PlusVersions = discoverInstalledVersions().filter(v => Number(v.split('.')[0]) >= 3);
+describe('web-framework 3.x 번들 입력 invariant', () => {
+  // 이 SDK는 web-framework 3.x의 dist/index.d.ts를 유일한 입력으로 쓴다.
+  // 설치된 3.x alias 전부가 번들 index.d.ts를 갖고 있는지 확인한다 (없으면 resolveVersionPaths가 throw).
+  const installed = discoverInstalledVersions();
 
-  test.each(major3PlusVersions.map(v => ({ version: v })))(
-    'v$version은 self-bundle로 판정되어야 함',
+  test('설치된 버전이 전부 3.x여야 함', () => {
+    expect(installed.length).toBeGreaterThan(0);
+    for (const v of installed) {
+      expect(Number(v.split('.')[0])).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  test.each(installed.map(v => ({ version: v })))(
+    'v$version은 dist/index.d.ts 번들을 가져야 함',
     async ({ version }) => {
       const paths = await resolveVersionPaths(version);
-      expect(paths.dtsSource).toBe('self-bundle');
+      expect(fs.existsSync(paths.bundleFile)).toBe(true);
     },
   );
 });

@@ -29,10 +29,13 @@ export interface EnumAliasResult {
  * Inline enum 목록을 named enum 값셋과 비교하여 alias 계획을 만든다.
  * @param inlineEnums 등장 순서가 보존된 inline enum의 Map (이름 → 값 배열).
  * @param parsedStringEnumValues 문자열 named enum의 Map. 값 셋이 일치하면 이쪽 이름으로 alias.
+ * @param protectedNames 다른 enum으로 합쳐지면 안 되는 이름 (공개 이름이 고정된 enum). 이 이름은 항상
+ *   그대로 emit하고, 같은 값 셋의 다른 inline enum이 이쪽으로 합쳐질 수는 있다.
  */
 export function computeEnumAliases(
   inlineEnums: Map<string, string[]>,
-  parsedStringEnumValues?: Map<string, string[]>
+  parsedStringEnumValues?: Map<string, string[]>,
+  protectedNames: ReadonlySet<string> = new Set(),
 ): EnumAliasResult {
   const aliases = new Map<string, string>();
   const emit: Array<{ name: string; values: string[] }> = [];
@@ -53,6 +56,12 @@ export function computeEnumAliases(
   for (const [name, values] of inlineEnums) {
     if (values.length === 0) continue;
     const key = valueSetKey(values);
+
+    if (protectedNames.has(name)) {
+      if (!seenInlineByKey.has(key)) seenInlineByKey.set(key, name);
+      emit.push({ name, values });
+      continue;
+    }
 
     const namedMatch = namedByKey.get(key);
     if (namedMatch && namedMatch !== name) {

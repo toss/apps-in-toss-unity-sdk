@@ -5,7 +5,8 @@
  * 타입 안전한 jslib 브릿지 코드를 생성합니다.
  */
 
-import { ParsedAPI, ParsedType, getApiImportSource } from '../types.js';
+import { ParsedAPI, ParsedType, getApiCallPath } from '../types.js';
+import { hasLegacyStringReturn } from './csharp/compat.js';
 
 /**
  * jslib 생성 결과
@@ -16,6 +17,13 @@ export interface JSLibGenerationResult {
   /** 카테고리별 최종 jslib 코드 */
   jslibFiles: Map<string, string>;
 }
+
+/**
+ * ArrayBuffer/Uint8Array를 base64 문자열로 바꾸는 JSON.stringify replacer.
+ * 그대로 stringify하면 `{}`가 되어 바이너리 데이터가 사라진다. C#에서는 byte[]로 받는다.
+ */
+const BINARY_TO_BASE64_REPLACER =
+  "function(k, v) { if (v instanceof ArrayBuffer) v = new Uint8Array(v); if (v instanceof Uint8Array) { var s = ''; for (var i = 0; i < v.length; i += 8192) s += String.fromCharCode.apply(null, v.subarray(i, i + 8192)); return btoa(s); } return v; }";
 
 /**
  * TypeScript 기반 jslib 생성기
@@ -162,34 +170,15 @@ ${functions}
    */
   private generateApiImports(apis: ParsedAPI[]): string {
     const imports: string[] = [];
-    const seenNamespaces = new Set<string>();
-    const seenTopLevelApis = new Set<string>();
+    const seenRoots = new Set<string>();
 
     for (const api of apis) {
-      if (api.namespace) {
-        // 네임스페이스 API (Storage, IAP, Analytics 등)
-        if (!seenNamespaces.has(api.namespace)) {
-          imports.push(`import type { ${api.namespace} } from '${getApiImportSource(api)}';`);
-          seenNamespaces.add(api.namespace);
-        }
-      } else if (api.isTopLevelExport) {
-        // Top-level export API (web-framework에서 직접 export)
-        if (!seenTopLevelApis.has(api.originalName)) {
-          imports.push(`import type { ${api.originalName} } from '@apps-in-toss/web-framework';`);
-          seenTopLevelApis.add(api.originalName);
-        }
-      } else if (!api.isEventSubscription) {
-        // 일반 API 함수
-        imports.push(`import type { ${api.originalName} } from '@apps-in-toss/web-framework';`);
-      }
-    }
-
-    // 이벤트 API의 네임스페이스들
-    for (const api of apis) {
-      if (api.isEventSubscription && api.namespace && !seenNamespaces.has(api.namespace)) {
-        // 이벤트 네임스페이스는 별도 처리 필요할 수 있음
-        seenNamespaces.add(api.namespace);
-      }
+      // 호출 경로의 루트(네임스페이스 또는 top-level 함수)를 타입 import 한다.
+      // 하위 멤버(isSupported 등)는 기반 API의 루트를 쓴다.
+      const root = getApiCallPath(api).split('.')[0];
+      if (seenRoots.has(root)) continue;
+      seenRoots.add(root);
+      imports.push(`import type { ${root} } from '@apps-in-toss/web-framework';`);
     }
 
     return imports.join('\n');
@@ -200,24 +189,13 @@ ${functions}
    */
   private generateWindowType(apis: ParsedAPI[]): string {
     const members: string[] = [];
-    const seenNamespaces = new Set<string>();
-    const seenApis = new Set<string>();
+    const seenRoots = new Set<string>();
 
     for (const api of apis) {
-      if (api.namespace) {
-        // 네임스페이스 API
-        if (!seenNamespaces.has(api.namespace)) {
-          members.push(`    ${api.namespace}: typeof ${api.namespace};`);
-          seenNamespaces.add(api.namespace);
-        }
-      } else if (!api.isEventSubscription) {
-        // 일반 API 함수 (top-level export 포함)
-        // top-level export도 window.AppsInToss에서 호출하므로 포함
-        if (!seenApis.has(api.originalName)) {
-          members.push(`    ${api.originalName}: typeof ${api.originalName};`);
-          seenApis.add(api.originalName);
-        }
-      }
+      const root = getApiCallPath(api).split('.')[0];
+      if (seenRoots.has(root)) continue;
+      seenRoots.add(root);
+      members.push(`    ${root}: typeof ${root};`);
     }
 
     return members.join('\n');
@@ -231,9 +209,12 @@ ${functions}
     const seen = new Set<string>();
 
     for (const api of apis) {
-      if (api.isTopLevelExport && !seen.has(api.originalName)) {
-        members.push(`  ${api.originalName}: typeof ${api.originalName};`);
-        seen.add(api.originalName);
+      if (!api.isTopLevelExport) continue;
+      // 하위 멤버(isSupported 등)는 기반 함수의 루트를 쓴다.
+      const root = getApiCallPath(api).split('.')[0];
+      if (!seen.has(root)) {
+        members.push(`  ${root}: typeof ${root};`);
+        seen.add(root);
       }
     }
 
@@ -294,6 +275,9 @@ import type { ${sortedTypes.join(', ')} } from '@apps-in-toss/web-framework';`;
     if (api.isEventSubscription) {
       return this.generateTypescriptEventFunction(api);
     }
+    if (api.callbackBag) {
+      return this.generateTypescriptCallbackBagFunction(api);
+    }
     if (api.isCallbackBased) {
       return this.generateTypescriptCallbackFunction(api);
     }
@@ -316,16 +300,15 @@ import type { ${sortedTypes.join(', ')} } from '@apps-in-toss/web-framework';`;
       : 'callbackId: number, typeName: number';
 
     // API 호출 표현식 (Parameters<typeof xxx> 타입 추출에 사용)
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     const jsConversions = effectiveParams.map((p, index) =>
-      `  const ${p.name}Val = ${this.getJSConversionTs(p.name, p.type, index, apiCallExpr)};`
+      `  const ${p.name}Val = ${this.getJSConversionTs(p.name, p.type, index, apiCallExpr, p.optional)};`
     ).join('\n');
 
     const apiCallParams = effectiveParams.map(p => `${p.name}Val`).join(', ');
-    const apiCall = `${apiCallExpr}(${apiCallParams})`;
+    // 프로퍼티 API(Device.locale 등)는 호출이 아니라 읽기
+    const apiCall = api.isProperty ? apiCallExpr : `${apiCallExpr}(${apiCallParams})`;
 
     if (api.isAsync) {
       return this.generateAsyncTypescriptFunction(api, paramList, jsConversions, apiCall);
@@ -488,9 +471,9 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
   console.log('[AIT jslib] ${api.name} subscribing, id:', subId);
 
   try {
-    const unsubscribe = window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {
+    const unsubscribe = ${this.eventSubscribeCall(api, true)}
 ${onEventHandler}
-        onError: (error: Error) => {
+        onError: (error: any) => {
           console.log('[AIT jslib] ${api.eventName} error:', error);
           const payload = JSON.stringify({
             CallbackId: subId,
@@ -556,11 +539,7 @@ ${onEventHandler}
 
     // API 호출 표현식
     // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
-    const apiCallExpr = api.isTopLevelExport
-      ? `window.AppsInToss.${api.originalName}`
-      : api.namespace
-        ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-        : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     // 파라미터 변환 코드
     const jsConversions = dataParams.map(p =>
@@ -641,9 +620,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
    */
   private generateTypescriptNamespaceCallbackFunction(api: ParsedAPI): string {
     // API 호출 표현식: 네임스페이스가 있으면 AppsInToss.Namespace.method, 없으면 AppsInToss.method
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     return `export const __${api.name}_Internal = (options: number, subscriptionId: number, typeName: number): void => {
   const subId = UTF8ToString(subscriptionId);
@@ -711,31 +688,39 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
    * @param paramIndex - 파라미터 인덱스 (Parameters<typeof func>[index] 타입 추출용)
    * @param apiCall - API 호출 표현식 (window.AppsInToss.xxx 또는 window.AppsInToss.Namespace.xxx)
    */
-  private getJSConversionTs(paramName: string, paramType: ParsedType, paramIndex: number, apiCall: string): string {
+  private getJSConversionTs(paramName: string, paramType: ParsedType, paramIndex: number, apiCall: string, optional = false): string {
     // 함수 시그니처에서 직접 타입을 추출 (Parameters<typeof xxx>[index])
     const paramTypeExpr = `Parameters<typeof ${apiCall}>[${paramIndex}]`;
+
+    // JSON 문자열 인자 -> 값. 선택 인자는 null/0 포인터를 undefined로 바꾼다 (jsonArgument와 동일).
+    const json = () => `${this.jsonArgument(paramName, optional)} as ${paramTypeExpr}`;
 
     // nullable 타입은 기본 타입처럼 처리 (object, array, union 등)
     // isNullable이 설정된 경우 JSON.parse로 변환 필요
     if (paramType.isNullable) {
-      return `JSON.parse(UTF8ToString(${paramName})) as ${paramTypeExpr}`;
+      return json();
     }
 
     switch (paramType.kind) {
       case 'primitive':
         if (paramType.name === 'string') {
-          return `UTF8ToString(${paramName})`;
+          return optional
+            ? `(${paramName} ? UTF8ToString(${paramName}) : undefined)`
+            : `UTF8ToString(${paramName})`;
+        }
+        if (paramType.name === 'object' || paramType.name === 'any' || paramType.name === 'unknown') {
+          return json();
         }
         return paramName;
 
       case 'object':
       case 'array':
-        return `JSON.parse(UTF8ToString(${paramName})) as ${paramTypeExpr}`;
+        return json();
 
       default:
         // function, union 등 복잡한 타입도 Parameters로 추출
         if (paramType.kind === 'function' || paramType.kind === 'union' || paramType.kind === 'record' || paramType.kind === 'unknown') {
-          return `JSON.parse(UTF8ToString(${paramName})) as ${paramTypeExpr}`;
+          return json();
         }
         return paramName;
     }
@@ -773,10 +758,146 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
     if (api.nestedCallbacks && api.nestedCallbacks.length > 0) {
       return this.generateNestedCallbackFunction(api);
     }
+    // options.callbacks 묶음을 받는 API (TossAds.initialize/attach/attachBanner)
+    if (api.callbackBag) {
+      return this.generateCallbackBagFunction(api);
+    }
     if (api.isCallbackBased) {
       return this.generateCallbackBasedFunction(api);
     }
     return this.generateRegularFunction(api);
+  }
+
+  /**
+   * options.callbacks 묶음을 받는 API (JavaScript)
+   *
+   * C#의 Action은 JSON으로 JS에 갈 수 없다. 그래서 JS가 같은 이름의 콜백을 만들어 호출에 끼워 넣고,
+   * 콜백이 불리면 `{ event, payload }`를 구독 ID로 C#에 보낸다 (AITCallbackBagEvent).
+   * 결과가 `{ destroy }` 핸들이면 destroy를 구독 해제 함수로 저장해서 C#의 Destroy가 부르게 한다.
+   */
+  private generateCallbackBagFunction(api: ParsedAPI): string {
+    const bag = api.callbackBag!;
+    const effectiveParams = api.parameters.filter(p =>
+      !(p.type.kind === 'primitive' && p.type.name === 'void')
+    );
+    const paramList = [...effectiveParams.map(p => p.name), 'subscriptionId', 'callbackId', 'typeName'].join(', ');
+    const callArgs = effectiveParams
+      .map(p => p.name === bag.paramName ? 'bagOptions' : this.getJSConversion(p.name, p.type, p.optional))
+      .join(', ');
+    const bagParam = effectiveParams.find(p => p.name === bag.paramName)!;
+    const callTarget = `window.AppsInToss.${getApiCallPath(api)}`;
+    const memberNames = bag.members.map(m => `'${m.name}'`).join(', ');
+    const handleStore = bag.handleProperty
+      ? `result && typeof result.${bag.handleProperty} === 'function' ? result.${bag.handleProperty} : function() {}`
+      : 'function() {}';
+
+    return `    __${api.name}_Internal: function(${paramList}) {
+        var subId = UTF8ToString(subscriptionId);
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} called, callbackId:', callback, 'subscriptionId:', subId);
+
+        try {
+            // C# 콜백(Action)은 JSON으로 올 수 없으므로 같은 이름의 콜백을 JS에서 만들어 이벤트로 돌려보낸다.
+            var bagCallbacks = {};
+            [${memberNames}].forEach(function(name) {
+                bagCallbacks[name] = function(eventPayload) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} callback:', name, eventPayload);
+                    var body = (eventPayload instanceof Error) ? { name: eventPayload.name, message: eventPayload.message } : eventPayload;
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: 'AITCallbackBagEvent',
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify({ event: name, payload: body === undefined ? null : body }),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                };
+            });
+            var bagOptions = Object.assign({}, ${this.getJSConversion(bagParam.name, bagParam.type, true)}, { ${bag.property}: bagCallbacks });
+
+            var result = ${callTarget}(${callArgs});
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = ${handleStore};
+
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result === undefined ? null : result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var errorPayload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', errorPayload); }, 0);
+        }
+    },`;
+  }
+
+  /**
+   * options.callbacks 묶음 API의 TypeScript 버전 (타입 검사용)
+   */
+  private generateTypescriptCallbackBagFunction(api: ParsedAPI): string {
+    const bag = api.callbackBag!;
+    const effectiveParams = api.parameters.filter(p =>
+      !(p.type.kind === 'primitive' && p.type.name === 'void')
+    );
+    const params = effectiveParams.map(p => `${p.name}: number`).join(', ');
+    const paramList = `${params ? params + ', ' : ''}subscriptionId: number, callbackId: number, typeName: number`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
+    const conversions = effectiveParams.map((p, index) =>
+      p.name === bag.paramName
+        ? `  const ${p.name}Val = Object.assign({}, ${this.getJSConversionTs(p.name, p.type, index, apiCallExpr, true)}, { ${bag.property}: bagCallbacks }) as Parameters<typeof ${apiCallExpr}>[${index}];`
+        : `  const ${p.name}Val = ${this.getJSConversionTs(p.name, p.type, index, apiCallExpr, p.optional)};`
+    ).join('\n');
+    const memberNames = bag.members.map(m => `'${m.name}'`).join(', ');
+    const callArgs = effectiveParams.map(p => `${p.name}Val`).join(', ');
+
+    return `export const __${api.name}_Internal = (${paramList}): void => {
+  const subId = UTF8ToString(subscriptionId);
+  const callback = UTF8ToString(callbackId);
+  const typeNameStr = UTF8ToString(typeName);
+
+  try {
+    const bagCallbacks: Record<string, (eventPayload?: unknown) => void> = {};
+    [${memberNames}].forEach((name) => {
+      bagCallbacks[name] = (eventPayload?: unknown) => {
+        const payload = JSON.stringify({
+          CallbackId: subId,
+          TypeName: 'AITCallbackBagEvent',
+          Result: JSON.stringify({ success: true, data: JSON.stringify({ event: name, payload: eventPayload ?? null }), error: '' })
+        });
+        SendMessage('AITCore', 'OnAITEventCallback', payload);
+      };
+    });
+${conversions}
+
+    const result: unknown = ${apiCallExpr}(${callArgs});
+    const payload = JSON.stringify({
+      CallbackId: callback,
+      TypeName: typeNameStr,
+      Result: JSON.stringify({ success: true, data: JSON.stringify(result === undefined ? null : result), error: '' })
+    });
+    SendMessage('AITCore', 'OnAITCallback', payload);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const payload = JSON.stringify({
+      CallbackId: callback,
+      TypeName: typeNameStr,
+      Result: JSON.stringify({ success: false, data: '', error: errorMessage })
+    });
+    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+  }
+};`;
   }
 
   /**
@@ -787,9 +908,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
     const paramList = ['params', 'subscriptionId', 'typeName'].join(', ');
 
     // API 호출 표현식
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     // 중첩 콜백 생성 코드
     const nestedCallbacksCode = api.nestedCallbacks!.map(nc => {
@@ -845,7 +964,8 @@ ${nestedCallbacksCode}
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -867,7 +987,8 @@ ${nestedCallbacksCode}
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -904,11 +1025,7 @@ ${nestedCallbacksCode}
 
     // API 호출 표현식
     // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
-    const apiCallExpr = api.isTopLevelExport
-      ? `window.AppsInToss.${api.originalName}`
-      : api.namespace
-        ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-        : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     // 파라미터 변환 코드
     const paramConversions = dataParams.map(p =>
@@ -951,7 +1068,8 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -972,7 +1090,8 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -989,14 +1108,13 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
    */
   private generateNamespaceCallbackBasedFunction(api: ParsedAPI): string {
     // API 호출 표현식: 네임스페이스가 있으면 AppsInToss.Namespace.method, 없으면 AppsInToss.method
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     return `    __${api.name}_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : undefined;
+        if (optionsObj === null) optionsObj = undefined;
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} called, id:', subId, 'options:', optionsObj);
 
@@ -1025,7 +1143,8 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -1046,7 +1165,8 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -1072,16 +1192,30 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
     ).join('\n');
 
     // 파라미터 변환을 인라인으로 처리 (중간 변수 없이)
-    const apiCallParams = effectiveParams.map(p => this.getJSConversion(p.name, p.type)).join(', ');
-    const apiCall = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}(${apiCallParams})`
-      : `window.AppsInToss.${api.originalName}(${apiCallParams})`;
+    const apiCallParams = effectiveParams.map(p => this.getJSConversion(p.name, p.type, p.optional)).join(', ');
+    const callTarget = `window.AppsInToss.${getApiCallPath(api)}`;
+    const apiCall = api.isProperty ? callTarget : `${callTarget}(${apiCallParams})`;
 
     if (api.isAsync) {
       return this.generateAsyncFunction(api, paramList, paramLogs, apiCall);
     } else {
       return this.generateSyncFunction(api, paramList, apiCall);
     }
+  }
+
+  /**
+   * 결과가 `{...} | {errorCode, message} | "ERROR" | undefined` 꼴의 합집합인지.
+   * 객체 멤버가 병합된 C# 클래스(errorCode/message 필드)로 역직렬화되므로, 문자열 코드와 undefined가
+   * 그대로 가면 JSON 문자열을 클래스로 읽다 예외가 나고 호출한 쪽 Task가 끝나지 않는다.
+   */
+  private wrapsErrorCodeResult(api: ParsedAPI): boolean {
+    if (api.returnType.kind !== 'promise') return false;
+    const result = api.returnType.promiseType;
+    if (!result || result.kind !== 'union' || result.isDiscriminatedUnion) return false;
+    const members = result.unionTypes ?? [];
+    const hasStringCode = members.some(t => t.kind === 'primitive' && t.name === 'string' && t.raw.startsWith('"'));
+    const hasErrorCodeField = members.some(t => t.properties?.some(prop => prop.name === 'errorCode'));
+    return hasStringCode && hasErrorCodeField;
   }
 
   /**
@@ -1100,6 +1234,9 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
       ? `                    var resultPayload;
                     if (typeof result === 'string') {
                         resultPayload = { _type: "error", _errorCode: result, _successJson: null };
+                    } else if (result === undefined || result === null) {
+                        // 미지원 앱 버전은 undefined를 돌려준다. 성공으로 보내면 GetSuccess()가 null이 된다.
+                        resultPayload = { _type: "error", _errorCode: "UNSUPPORTED", _successJson: null };
                     } else {
                         resultPayload = { _type: "success", _successJson: result, _errorCode: "" };
                     }
@@ -1108,12 +1245,40 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                         TypeName: typeNameStr,
                         Result: JSON.stringify({ success: true, data: JSON.stringify(resultPayload), error: '' })
                     });`
+      : this.wrapsErrorCodeResult(api)
+      ? `                    // 실패가 문자열 코드("ERROR")나 undefined(미지원)로 올 수 있는 API다.
+                    // C# 결과 클래스는 errorCode/message 필드를 가진 객체만 읽으므로 같은 모양으로 맞춘다.
+                    var normalized = result;
+                    if (typeof result === 'string') {
+                        normalized = { errorCode: result, message: '' };
+                    } else if (result === undefined || result === null) {
+                        normalized = { errorCode: 'UNSUPPORTED', message: '' };
+                    }
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(normalized), error: '' })
+                    });`
       : `                    var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result${api.returnsBinary ? ', ' + BINARY_TO_BASE64_REPLACER : ''}), error: '' })
                     });`;
 
+    // 옛 string 반환 멤버(compat.ts RETURN_TYPE_COMPAT)는 typeName "string"으로 불러 온다.
+    // 이전 SDK와 같은 인코딩(`data: JSON.stringify(result)`)으로 보내야 AITCore의 string 처리가 같은 문자열을 만든다.
+    const legacyStringHandling = hasLegacyStringReturn(api.name)
+      ? `                    if (typeNameStr === 'string') {
+                        // 하위 호환: 이전 SDK(string 반환)와 같은 인코딩
+                        SendMessage('AITCore', 'OnAITCallback', JSON.stringify({
+                            CallbackId: callback,
+                            TypeName: typeNameStr,
+                            Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                        }));
+                        return;
+                    }
+`
+      : '';
     return `    __${api.name}_Internal: function(${paramList}) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
@@ -1140,7 +1305,7 @@ ${paramLogs ? paramLogs + '\n' : ''}
             promiseResult
                 .then(function(result) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.originalName} resolved:', result);
-${resultHandling}
+${legacyStringHandling}${resultHandling}
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })
                 .catch(function(error) {
@@ -1148,7 +1313,7 @@ ${resultHandling}
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -1157,7 +1322,7 @@ ${resultHandling}
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -1189,11 +1354,29 @@ ${resultHandling}
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },`;
+  }
+
+  /**
+   * 이벤트 구독 호출의 여는 부분을 만든다 (`... ({` 까지, 닫는 `});`은 호출부가 붙인다).
+   * - addEventListener 방식: `<ns>.addEventListener('<event>', {`
+   * - 직접 구독 방식: `<path>({` (SafeArea.subscribe, Game.subscribeInfoOverlayHidden)
+   * @param forTypeCheck TS 타입 검사용이면 true. onError를 받지 않는 직접 구독 API는
+   *   인자 타입에 onError가 없어 excess property 오류가 나므로 인자를 unknown으로 받는 함수로 단언한다.
+   */
+  private eventSubscribeCall(api: ParsedAPI, forTypeCheck = false): string {
+    if (!api.isDirectSubscribe) {
+      return `window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {`;
+    }
+    const target = `window.AppsInToss.${getApiCallPath(api)}`;
+    if (forTypeCheck && !api.directSubscribeHasOnError) {
+      return `(${target} as (args: unknown) => () => void)({`;
+    }
+    return `${target}({`;
   }
 
   /**
@@ -1242,7 +1425,7 @@ ${resultHandling}
 
         try {
             // Subscribe to event
-            var unsubscribe = window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {
+            var unsubscribe = ${this.eventSubscribeCall(api)}
 ${onEventHandler}
                 onError: function(error) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.eventName} error:', error);
@@ -1252,7 +1435,7 @@ ${onEventHandler}
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: error.message || String(error)
+                            error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -1273,7 +1456,7 @@ ${onEventHandler}
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: error.message || String(error)
+                    error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -1284,11 +1467,20 @@ ${onEventHandler}
   /**
    * JavaScript 타입 변환 코드 생성
    */
-  private getJSConversion(paramName: string, paramType: ParsedType): string {
+  private getJSConversion(paramName: string, paramType: ParsedType, optional = false): string {
     switch (paramType.kind) {
       case 'primitive':
         if (paramType.name === 'string') {
-          return `UTF8ToString(${paramName})`;
+          // C#의 null 문자열은 포인터 0으로 넘어온다. UTF8ToString(0)은 ''라서 optional 인자가
+          // undefined 대신 빈 문자열이 되므로, 선택 인자는 포인터를 먼저 본다.
+          return optional
+            ? `(${paramName} ? UTF8ToString(${paramName}) : undefined)`
+            : `UTF8ToString(${paramName})`;
+        }
+        // 열린 사전(LoggerParams 같은 index signature 교차 타입)은 'object' 이름의 primitive로 오고,
+        // C#에서 JSON 문자열로 직렬화돼 넘어온다. 파싱하지 않으면 포인터(숫자)가 그대로 API에 들어간다.
+        if (paramType.name === 'object' || paramType.name === 'any' || paramType.name === 'unknown') {
+          return this.jsonArgument(paramName, optional);
         }
         return paramName;
 
@@ -1300,11 +1492,21 @@ ${onEventHandler}
         // record(Dictionary<K,V>)도 object/array와 동일하게 JSON 직렬화된 문자열로 넘어오므로
         // 파싱이 필요하다 — 누락 시 raw pointer가 그대로 API 호출부에 전달된다
         // (getJSConversionTs의 동일 분기와 정렬 유지).
-        return `JSON.parse(UTF8ToString(${paramName}))`;
+        return this.jsonArgument(paramName, optional);
 
       default:
         return paramName;
     }
+  }
+
+  /**
+   * JSON 문자열 인자를 JS 값으로 되돌리는 표현식.
+   * 선택 인자는 C#이 null을 "null"로 직렬화해 보내므로 JSON.parse 결과가 null이면 undefined로 바꾼다.
+   * d.ts는 `params?: T`(undefined만 허용)인데 런타임 기본값(`= {}`)은 null에 적용되지 않는다.
+   */
+  private jsonArgument(paramName: string, optional: boolean): string {
+    if (!optional) return `JSON.parse(UTF8ToString(${paramName}))`;
+    return `(function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(${paramName})`;
   }
 
   /**

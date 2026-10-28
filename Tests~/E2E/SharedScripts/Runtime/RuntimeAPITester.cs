@@ -1,10 +1,8 @@
 // -----------------------------------------------------------------------
 // RuntimeAPITester.cs - E2E Runtime API Test Runner
-// APITestCatalog.AllAPINames(3.0 풀빌드 기준 51개, 2026-08 SDK 3.0 커버리지
-// 감사로 갱신)에 대한 올바른 에러 발생 검증. API 이름 목록은 APITestCatalog.cs와
-// 단일화되어 있으며, 이 파일과 SDKAPIReflectionTests.cs가 함께 소비한다. 버전
-// 종속 항목은 양쪽 모두 동일한 #if 가드로 감싸 sdk_version_override 매트릭스에서
-// 카탈로그-호출부 드리프트가 나지 않게 한다.
+// APITestCatalog.AllAPINames에 대한 올바른 에러 발생 검증. API 이름 목록은
+// APITestCatalog.cs와 단일화되어 있으며, 이 파일과 SDKAPIReflectionTests.cs가
+// 함께 소비한다.
 // -----------------------------------------------------------------------
 
 using UnityEngine;
@@ -163,9 +161,7 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("GetDeviceId", async () => { await AIT.GetDeviceId(); });
         TestAPICall("GetLocale", async () => { await AIT.GetLocale(); });
         TestAPICall("GetNetworkStatus", async () => { await AIT.GetNetworkStatus(); });
-#if AIT_SDK_1_7_1_OR_LATER
         TestAPICall("GetOperationalEnvironment", async () => { await AIT.GetOperationalEnvironment(); });
-#endif
         TestAPICall("GetPlatformOS", async () => { await AIT.GetPlatformOS(); });
         TestAPICall("GetSchemeUri", async () => { await AIT.GetSchemeUri(); });
         TestAPICall("GetTossAppVersion", async () => { await AIT.GetTossAppVersion(); });
@@ -191,7 +187,7 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("FetchContacts", async () => { await AIT.FetchContacts(new FetchContactsOptions { Size = 10, Offset = 0 }); });
 
         // Event API
-        TestAPICall("EventLog", async () => { await AIT.EventLog(new EventLogParams { Log_name = "test", Log_type = "test" }); });
+        TestAPICall("EventLog", async () => { await AIT.EventLog(new EventLogParams { Log_name = "test", Log_typeTyped = EventLogParamsLog_type.Debug }); });
 
         // Permission APIs (class 타입 파라미터) - PermissionName/PermissionAccess named enum 사용
         TestAPICall("GetPermission", async () => { await AIT.GetPermission(new GetPermissionPermission { Name = PermissionName.Camera, Access = PermissionAccess.Access }); });
@@ -205,13 +201,11 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("GenerateHapticFeedback", async () => { await AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap }); });
         TestAPICall("SetDeviceOrientation", async () => { await AIT.SetDeviceOrientation(new SetDeviceOrientationOptions { Type = SetDeviceOrientationOptionsType.Portrait }); });
         TestAPICall("SetIosSwipeGestureEnabled", async () => { await AIT.SetIosSwipeGestureEnabled(new SetIosSwipeGestureEnabledOptions { IsEnabled = true }); });
-#if AIT_SDK_1_7_1_OR_LATER
         TestAPICall("SetScreenAwakeMode", async () => { await AIT.SetScreenAwakeMode(new SetScreenAwakeModeOptions { Enabled = true }); });
         TestAPICall("SetSecureScreen", async () => { await AIT.SetSecureScreen(new SetSecureScreenOptions { Enabled = true }); });
-#endif
 
         // Payment API
-        TestAPICall("CheckoutPayment", async () => { await AIT.CheckoutPayment(new CheckoutPaymentOptions { PayToken = "test-token" }); });
+        TestAPICall("CheckoutPayment", async () => { await AIT.CheckoutPayment(new CheckoutPaymentOptions { Params = new CheckoutPaymentParams { PayToken = "test-token" } }); });
 
         // Media APIs
         TestAPICall("FetchAlbumPhotos", async () => { await AIT.FetchAlbumPhotos(new FetchAlbumPhotosOptions { MaxCount = 1 }); });
@@ -220,7 +214,7 @@ public class RuntimeAPITester : MonoBehaviour
 
         // GameCenter APIs
         TestAPICall("SubmitGameCenterLeaderBoardScore", async () => { await AIT.SubmitGameCenterLeaderBoardScore(new SubmitGameCenterLeaderBoardScoreParams { Score = "100" }); });
-        TestAPICall("GrantPromotionRewardForGame", async () => { await AIT.GrantPromotionRewardForGame(new GrantPromotionRewardForGameParams()); });
+        TestAPICall("GrantPromotionRewardForGame", async () => { await AIT.GrantPromotionRewardForGame(new GrantPromotionRewardParams()); });
 
         // Other APIs
         TestAPICall("GetGroupId", async () => { await AIT.GetGroupId(); });
@@ -259,13 +253,8 @@ public class RuntimeAPITester : MonoBehaviour
         // 각 항목의 devtools mock 기본 동작(무인 자동 응답)은 감사 시점에
         // scratchpad의 devtools mock 소스로 확인했다 — file picker/사용자 입력을
         // 기다리는 API는 편입하지 않았다(SafeAreaInsetsSubscribe 등은 제외).
-        //
-        // sdk_version_override로 3.0 미만 web-framework를 재생성하면 이 타입/메서드가
-        // 존재하지 않아 CS0117/CS0246로 컴파일이 깨지므로 AIT_SDK_3_0_OR_LATER로 감싼다
-        // (asmdef versionDefines에 정의됨 — IAPv2Tester.cs와 동일 패턴).
         // =====================================================================
 
-#if AIT_SDK_3_0_OR_LATER
         // Environment APIs
         TestAPICall("EnvGetDeploymentId", async () => { await AIT.EnvGetDeploymentId(); });
         TestAPICall("GetAppsInTossGlobals", async () => { await AIT.GetAppsInTossGlobals(); });
@@ -296,7 +285,20 @@ public class RuntimeAPITester : MonoBehaviour
 
         // SafeArea API (Get만 편입 — Subscribe는 콜백 구독 패턴이라 이 하네스 제외)
         TestAPICall("SafeAreaInsetsGet", async () => { await AIT.SafeAreaInsetsGet(); });
-#endif
+
+        // 3.x 번들의 네임스페이스 멤버와 보조 API 중 무인 실행에 안전한 조회형
+        TestAPICall("EnvironmentDeviceId", async () => { await AIT.EnvironmentDeviceId(); });
+        TestAPICall("EnvironmentGroupId", async () => { await AIT.EnvironmentGroupId(); });
+        TestAPICall("EnvironmentEnvironment", async () => { await AIT.EnvironmentEnvironment(); });
+        TestAPICall("EnvironmentTossAppVersion", async () => { await AIT.EnvironmentTossAppVersion(); });
+        TestAPICall("EnvironmentDeploymentId", async () => { await AIT.EnvironmentDeploymentId(); });
+        TestAPICall("EnvironmentInitialURL", async () => { await AIT.EnvironmentInitialURL(); });
+        TestAPICall("EnvironmentGetNetworkStatus", async () => { await AIT.EnvironmentGetNetworkStatus(); });
+        TestAPICall("DeviceLocale", async () => { await AIT.DeviceLocale(); });
+        TestAPICall("DeviceOs", async () => { await AIT.DeviceOs(); });
+        TestAPICall("SafeAreaGet", async () => { await AIT.SafeAreaGet(); });
+        TestAPICall("GetSafeAreaInsets", async () => { await AIT.GetSafeAreaInsets(); });
+        TestAPICall("StorageGetItemsIsSupported", async () => { await AIT.StorageGetItemsIsSupported(); });
     }
 
     /// <summary>

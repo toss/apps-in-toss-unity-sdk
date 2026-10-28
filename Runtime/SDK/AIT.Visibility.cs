@@ -21,6 +21,10 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <summary>
+        /// 투명 서비스 웹뷰의 가시성 변화를 구독해요. callbackId로 웹뷰를 구분하고,
+        /// cleanup 함수를 반환해요.
+        /// </summary>
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="onError">에러 콜백</param>
         /// <returns>구독 취소를 위한 Action</returns>

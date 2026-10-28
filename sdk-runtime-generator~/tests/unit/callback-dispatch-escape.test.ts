@@ -45,7 +45,7 @@ describe('콜백 디스패치 템플릿 HTML escape 회귀 (csharp-core.hbs)', (
     expect(rendered).toContain(`JsonConvert.DeserializeObject<${DICT}>`);
 
     // 에러 콜백 AITException 메시지의 타입명도 raw
-    expect(rendered).toContain(`new AITException("${DICT}", apiResponse.error)`);
+    expect(rendered).toContain(`new AITException("${DICT}", apiResponse.error, apiResponse.errorName)`);
 
     // eventDataTypes(구독 이벤트) 경로도 동일하게 raw
     expect(rendered).toContain(`(rawCallback as Action<${DICT}>)`);

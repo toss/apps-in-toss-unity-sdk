@@ -47,35 +47,27 @@ public class IAPv2Tester : MonoBehaviour
     /// <summary>화면 이벤트 로그(iapEventLog) 상한. 초과 시 오래된 항목을 트리밍한다.</summary>
     private const int MaxIapEventLogCount = 300;
 
-#if AIT_SDK_3_0_OR_LATER
     // 구독 테스트 상태 (SDK 3.0)
     private string iapSubscriptionSku = "";
     private string iapSubscriptionOfferId = "";
     private IapSubscriptionInfoResponse iapSubscriptionInfo = null;
-#endif
 
     // 구독 해제 액션
     private Action _purchaseDisposer;
-#if AIT_SDK_3_0_OR_LATER
     private Action _subscriptionPurchaseDisposer;
-#endif
 
     // uGUI 참조
     private Text _statusText;
     private InputField _skuInput;
     private InputField _orderIdInput;
-#if AIT_SDK_3_0_OR_LATER
     private InputField _subscriptionSkuInput;
     private InputField _subscriptionOfferIdInput;
-#endif
     private GameObject _eventLogContainer;
     private GameObject _productListContainer;
     private GameObject _quickSelectContainer;
     private GameObject _pendingOrdersContainer;
     private GameObject _completedOrdersContainer;
-#if AIT_SDK_3_0_OR_LATER
     private GameObject _subscriptionInfoContainer;
-#endif
 
     /// <summary>
     /// 마지막 작업 상태 메시지
@@ -176,7 +168,6 @@ public class IAPv2Tester : MonoBehaviour
 
         UIBuilder.CreateButton(section, "IAPCompleteProductGrant(...)", onClick: ExecuteIAPCompleteGrant);
 
-#if AIT_SDK_3_0_OR_LATER
         // Step 6: 구독 주문 생성
         UIBuilder.CreateText(section, "Step 6: Create Subscription Order (구독)",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary, fontStyle: FontStyle.Bold);
@@ -210,7 +201,6 @@ public class IAPv2Tester : MonoBehaviour
 
         _subscriptionInfoContainer = CreateDynamicContainer(section, "SubscriptionInfo");
         _subscriptionInfoContainer.SetActive(false);
-#endif
     }
 
     private GameObject CreateDynamicContainer(Transform parent, string name)
@@ -366,7 +356,6 @@ public class IAPv2Tester : MonoBehaviour
         if (_pendingOrdersContainer == null) return;
         ClearContainer(_pendingOrdersContainer);
 
-#if AIT_SDK_1_7_OR_LATER
         if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
         {
             _pendingOrdersContainer.SetActive(true);
@@ -395,19 +384,6 @@ public class IAPv2Tester : MonoBehaviour
         {
             _pendingOrdersContainer.SetActive(false);
         }
-#else
-        if (iapPendingOrders != null && iapPendingOrders.Orders != null && iapPendingOrders.Orders.Length > 0)
-        {
-            _pendingOrdersContainer.SetActive(true);
-            UIBuilder.CreateText(_pendingOrdersContainer.transform,
-                $"Pending Orders ({iapPendingOrders.Orders.Length}) - SDK 1.7.0+ required for details",
-                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
-        }
-        else
-        {
-            _pendingOrdersContainer.SetActive(false);
-        }
-#endif
     }
 
     private void UpdateCompletedOrders()
@@ -415,7 +391,6 @@ public class IAPv2Tester : MonoBehaviour
         if (_completedOrdersContainer == null) return;
         ClearContainer(_completedOrdersContainer);
 
-#if AIT_SDK_1_7_OR_LATER
         if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
         {
             _completedOrdersContainer.SetActive(true);
@@ -445,22 +420,8 @@ public class IAPv2Tester : MonoBehaviour
         {
             _completedOrdersContainer.SetActive(false);
         }
-#else
-        if (iapCompletedOrders != null && iapCompletedOrders.Orders != null && iapCompletedOrders.Orders.Length > 0)
-        {
-            _completedOrdersContainer.SetActive(true);
-            UIBuilder.CreateText(_completedOrdersContainer.transform,
-                $"Completed/Refunded Orders ({iapCompletedOrders.Orders.Length}) - SDK 1.7.0+ required for details",
-                UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextPrimary);
-        }
-        else
-        {
-            _completedOrdersContainer.SetActive(false);
-        }
-#endif
     }
 
-#if AIT_SDK_3_0_OR_LATER
     private void UpdateSubscriptionInfo()
     {
         if (_subscriptionInfoContainer == null) return;
@@ -484,7 +445,6 @@ public class IAPv2Tester : MonoBehaviour
             _subscriptionInfoContainer.SetActive(false);
         }
     }
-#endif
 
     private async void ExecuteIAPGetProductList()
     {
@@ -532,7 +492,6 @@ public class IAPv2Tester : MonoBehaviour
 
         try
         {
-#if AIT_SDK_1_7_OR_LATER
             var options = new IapCreateOneTimePurchaseOrderOptionsOptions
             {
                 Sku = iapSku,
@@ -573,9 +532,6 @@ public class IAPv2Tester : MonoBehaviour
                     UpdateEventLog();
                 }
             );
-#else
-            ExecuteIAPCreateOrderLegacy();
-#endif
             iapStatus = "Purchase order created";
             LogIap("Order created successfully");
         }
@@ -594,42 +550,6 @@ public class IAPv2Tester : MonoBehaviour
         UpdateEventLog();
     }
 
-#if !AIT_SDK_1_7_OR_LATER
-    private void ExecuteIAPCreateOrderLegacy()
-    {
-        try
-        {
-            var options = new IapCreateOneTimePurchaseOrderOptionsOptions
-            {
-                Sku = iapSku
-            };
-
-            _purchaseDisposer?.Invoke();
-            _purchaseDisposer = AIT.IAPCreateOneTimePurchaseOrder(
-                onEvent: (successEvent) =>
-                {
-                    iapStatus = "Purchase completed (legacy)";
-                    LogIap("OnEvent (legacy): success");
-                    UpdateStatus();
-                    UpdateEventLog();
-                },
-                options: options,
-                onError: (error) =>
-                {
-                    iapStatus = "Purchase failed (legacy)";
-                    LogIap($"OnError (legacy): {error?.Message}");
-                    UpdateStatus();
-                    UpdateEventLog();
-                }
-            );
-        }
-        catch (Exception ex)
-        {
-            iapStatus = $"Error: {ex.Message}";
-            LogIap($"Exception (legacy): {ex.Message}");
-        }
-    }
-#endif
 
     private async void ExecuteIAPGetPendingOrders()
     {
@@ -738,7 +658,6 @@ public class IAPv2Tester : MonoBehaviour
         UpdateEventLog();
     }
 
-#if AIT_SDK_3_0_OR_LATER
     /// <summary>
     /// 구독 주문을 생성한다. 일회성 구매(ExecuteIAPCreateOrder)와 흐름은 동일하지만
     /// Args가 ProductId 대신 Sku + 선택적 OfferId를 받고, ProcessProductGrant 콜백 파라미터에
@@ -855,10 +774,10 @@ public class IAPv2Tester : MonoBehaviour
             }
             else
             {
-                // subscription이 비어 있는 응답도 유효한 관찰 대상이다(예: 미프로비저닝 구독) —
-                // error 필드를 함께 로그에 남겨 원인 파악에 쓴다.
-                iapStatus = $"Subscription info empty (error: {iapSubscriptionInfo?.error})";
-                LogIap($"Empty response: error={iapSubscriptionInfo?.error}");
+                // subscription이 비어 있는 응답도 유효한 관찰 대상이다(예: 미프로비저닝 구독).
+                // 오류는 AITException으로 오므로 여기서는 비어 있다는 사실만 남긴다.
+                iapStatus = "Subscription info empty";
+                LogIap("Empty response: subscription is null");
             }
         }
         catch (AITException ex)
@@ -878,14 +797,11 @@ public class IAPv2Tester : MonoBehaviour
         UpdateEventLog();
         UpdateSubscriptionInfo();
     }
-#endif
 
     private void OnDestroy()
     {
         _purchaseDisposer?.Invoke();
-#if AIT_SDK_3_0_OR_LATER
         _subscriptionPurchaseDisposer?.Invoke();
-#endif
     }
 
     /// <summary>

@@ -1,7 +1,7 @@
 {{!-- Event API method template for subscription-based events --}}
 {{#if this.description}}
         /// <summary>
-        /// {{{this.description}}}
+        /// {{docSummary this.description}}
         /// </summary>
 {{/if}}
         /// <param name="onEvent">Event callback when the event is triggered</param>

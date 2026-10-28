@@ -45,7 +45,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -54,7 +54,84 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __StorageGetItems_Internal: function(keys, callbackId, typeName) {
+        // 비동기 함수 (Promise 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItems called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItems raw param keys:', UTF8ToString(keys));
+
+        try {
+            var promiseResult = window.AppsInToss.Storage.getItems(JSON.parse(UTF8ToString(keys)));
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+
+            if (!promiseResult || typeof promiseResult.then !== 'function') {
+                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems did not return a Promise, sending immediate response');
+                var payload = JSON.stringify({
+                    CallbackId: callback,
+                    TypeName: typeNameStr,
+                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
+                });
+                SendMessage('AITCore', 'OnAITCallback', payload);
+                return;
+            }
+
+            promiseResult
+                .then(function(result) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems resolved:', result);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                    });
+                    SendMessage('AITCore', 'OnAITCallback', payload);
+                })
+                .catch(function(error) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems rejected:', error);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+                    });
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+                });
+        } catch (error) {
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems sync error:', error);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __StorageGetItemsIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.Storage.getItems.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -100,7 +177,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -109,168 +186,7 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
-            });
-            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
-        }
-    },
-
-    __StorageRemoveItem_Internal: function(key, callbackId, typeName) {
-        // 비동기 함수 (Promise 반환)
-        var callback = UTF8ToString(callbackId);
-        var typeNameStr = UTF8ToString(typeName);
-
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem raw param key:', UTF8ToString(key));
-
-        try {
-            var promiseResult = window.AppsInToss.Storage.removeItem(UTF8ToString(key));
-            if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
-
-            if (!promiseResult || typeof promiseResult.then !== 'function') {
-                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem did not return a Promise, sending immediate response');
-                var payload = JSON.stringify({
-                    CallbackId: callback,
-                    TypeName: typeNameStr,
-                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
-                });
-                SendMessage('AITCore', 'OnAITCallback', payload);
-                return;
-            }
-
-            promiseResult
-                .then(function(result) {
-                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem resolved:', result);
-                    var payload = JSON.stringify({
-                        CallbackId: callback,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
-                    });
-                    SendMessage('AITCore', 'OnAITCallback', payload);
-                })
-                .catch(function(error) {
-                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem rejected:', error);
-                    var payload = JSON.stringify({
-                        CallbackId: callback,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
-                    });
-                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
-                });
-        } catch (error) {
-            if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem sync error:', error);
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
-            });
-            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
-        }
-    },
-
-    __StorageClearItems_Internal: function(callbackId, typeName) {
-        // 비동기 함수 (Promise 반환)
-        var callback = UTF8ToString(callbackId);
-        var typeNameStr = UTF8ToString(typeName);
-
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageClearItems called, callbackId:', callback);
-
-        try {
-            var promiseResult = window.AppsInToss.Storage.clearItems();
-            if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
-
-            if (!promiseResult || typeof promiseResult.then !== 'function') {
-                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems did not return a Promise, sending immediate response');
-                var payload = JSON.stringify({
-                    CallbackId: callback,
-                    TypeName: typeNameStr,
-                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
-                });
-                SendMessage('AITCore', 'OnAITCallback', payload);
-                return;
-            }
-
-            promiseResult
-                .then(function(result) {
-                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems resolved:', result);
-                    var payload = JSON.stringify({
-                        CallbackId: callback,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
-                    });
-                    SendMessage('AITCore', 'OnAITCallback', payload);
-                })
-                .catch(function(error) {
-                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems rejected:', error);
-                    var payload = JSON.stringify({
-                        CallbackId: callback,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
-                    });
-                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
-                });
-        } catch (error) {
-            if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems sync error:', error);
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
-            });
-            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
-        }
-    },
-
-    __StorageGetItems_Internal: function(keys, callbackId, typeName) {
-        // 비동기 함수 (Promise 반환)
-        var callback = UTF8ToString(callbackId);
-        var typeNameStr = UTF8ToString(typeName);
-
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItems called, callbackId:', callback);
-        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageGetItems raw param keys:', UTF8ToString(keys));
-
-        try {
-            var promiseResult = window.AppsInToss.Storage.getItems(JSON.parse(UTF8ToString(keys)));
-            if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
-
-            if (!promiseResult || typeof promiseResult.then !== 'function') {
-                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
-                if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems did not return a Promise, sending immediate response');
-                var payload = JSON.stringify({
-                    CallbackId: callback,
-                    TypeName: typeNameStr,
-                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
-                });
-                SendMessage('AITCore', 'OnAITCallback', payload);
-                return;
-            }
-
-            promiseResult
-                .then(function(result) {
-                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems resolved:', result);
-                    var payload = JSON.stringify({
-                        CallbackId: callback,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
-                    });
-                    SendMessage('AITCore', 'OnAITCallback', payload);
-                })
-                .catch(function(error) {
-                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems rejected:', error);
-                    var payload = JSON.stringify({
-                        CallbackId: callback,
-                        TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
-                    });
-                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
-                });
-        } catch (error) {
-            if (window.__AIT_VERBOSE) console.log('[AIT jslib] getItems sync error:', error);
-            var payload = JSON.stringify({
-                CallbackId: callback,
-                TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -315,7 +231,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -324,7 +240,137 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __StorageSetItemsIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.Storage.setItems.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __StorageRemoveItem_Internal: function(key, callbackId, typeName) {
+        // 비동기 함수 (Promise 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageRemoveItem raw param key:', UTF8ToString(key));
+
+        try {
+            var promiseResult = window.AppsInToss.Storage.removeItem(UTF8ToString(key));
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+
+            if (!promiseResult || typeof promiseResult.then !== 'function') {
+                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem did not return a Promise, sending immediate response');
+                var payload = JSON.stringify({
+                    CallbackId: callback,
+                    TypeName: typeNameStr,
+                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
+                });
+                SendMessage('AITCore', 'OnAITCallback', payload);
+                return;
+            }
+
+            promiseResult
+                .then(function(result) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem resolved:', result);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                    });
+                    SendMessage('AITCore', 'OnAITCallback', payload);
+                })
+                .catch(function(error) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem rejected:', error);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+                    });
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+                });
+        } catch (error) {
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] removeItem sync error:', error);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __StorageClearItems_Internal: function(callbackId, typeName) {
+        // 비동기 함수 (Promise 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] StorageClearItems called, callbackId:', callback);
+
+        try {
+            var promiseResult = window.AppsInToss.Storage.clearItems();
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
+
+            if (!promiseResult || typeof promiseResult.then !== 'function') {
+                // Promise가 아닌 경우 (undefined, null 등) - 즉시 응답
+                if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems did not return a Promise, sending immediate response');
+                var payload = JSON.stringify({
+                    CallbackId: callback,
+                    TypeName: typeNameStr,
+                    Result: JSON.stringify({ success: true, data: JSON.stringify(promiseResult), error: '' })
+                });
+                SendMessage('AITCore', 'OnAITCallback', payload);
+                return;
+            }
+
+            promiseResult
+                .then(function(result) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems resolved:', result);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                    });
+                    SendMessage('AITCore', 'OnAITCallback', payload);
+                })
+                .catch(function(error) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems rejected:', error);
+                    var payload = JSON.stringify({
+                        CallbackId: callback,
+                        TypeName: typeNameStr,
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+                    });
+                    setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+                });
+        } catch (error) {
+            if (window.__AIT_VERBOSE) console.log('[AIT jslib] clearItems sync error:', error);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }

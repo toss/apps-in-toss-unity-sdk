@@ -105,15 +105,38 @@ public class SDKSerializationTests
     [Test]
     public void ClassSerialization_CheckoutPaymentOptions_RoundTrip()
     {
-        var original = new CheckoutPaymentOptions { PayToken = "test-token-123" };
+        var original = new CheckoutPaymentOptions { Params = new CheckoutPaymentParams { PayToken = "test-token-123" } };
         AssertClassRoundTrip(original);
     }
 
     [Test]
     public void ClassSerialization_EventLogParams_RoundTrip()
     {
-        var original = new EventLogParams { Log_name = "test_event", Log_type = "custom" };
+        var original = new EventLogParams { Log_name = "test_event", Log_typeTyped = EventLogParamsLog_type.Event };
         AssertClassRoundTrip(original);
+    }
+
+    [Test]
+    public void ClassSerialization_EventLogParams_LegacyStringLogType_RoundTrip()
+    {
+#pragma warning disable CS0618 // 하위 호환 경로: 옛 string Log_type 은 알 수 없는 값도 보존한다
+        var original = new EventLogParams { Log_name = "test_event", Log_type = "custom" };
+        Assert.IsNull(original.Log_typeTyped, "알 수 없는 값은 Typed 가 null");
+        var restored = JsonConvert.DeserializeObject<EventLogParams>(JsonConvert.SerializeObject(original, settings), settings);
+        Assert.AreEqual("custom", restored.Log_type);
+        restored.Log_typeTyped = EventLogParamsLog_type.Event;
+        Assert.AreEqual("event", restored.Log_type, "Typed 설정이 string 에 반영돼야 함");
+#pragma warning restore CS0618
+    }
+
+    [Test]
+    public void ClassSerialization_CheckoutPaymentOptions_LegacyPayTokenForwardsToParams()
+    {
+#pragma warning disable CS0618
+        var options = new CheckoutPaymentOptions { PayToken = "legacy-token" };
+        Assert.AreEqual("legacy-token", options.Params.PayToken);
+        Assert.IsTrue(JsonConvert.SerializeObject(options, settings).Contains("legacy-token"));
+#pragma warning restore CS0618
     }
 
     // =====================================================

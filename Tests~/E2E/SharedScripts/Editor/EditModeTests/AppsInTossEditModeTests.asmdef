@@ -22,13 +22,7 @@
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS"
     ],
-    "versionDefines": [
-        {
-            "name": "im.toss.apps-in-toss-unity-sdk",
-            "expression": "3.0.0",
-            "define": "AIT_SDK_3_0_OR_LATER"
-        }
-    ],
+    "versionDefines": [],
     "noEngineReferences": false,
     "optionalUnityReferences": [
         "TestAssemblies"

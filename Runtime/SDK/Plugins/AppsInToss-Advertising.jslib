@@ -9,7 +9,8 @@ mergeInto(LibraryManager.library, {
     __GoogleAdMobLoadAppsInTossAdMob_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : undefined;
+        if (optionsObj === null) optionsObj = undefined;
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobLoadAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
@@ -38,7 +39,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -59,17 +61,42 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
         }
     },
 
+    __GoogleAdMobLoadAppsInTossAdMobIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.GoogleAdMob.loadAppsInTossAdMob.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
     __GoogleAdMobShowAppsInTossAdMob_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
-        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : {};
+        var optionsObj = options ? JSON.parse(UTF8ToString(options)) : undefined;
+        if (optionsObj === null) optionsObj = undefined;
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob called, id:', subId, 'options:', optionsObj);
 
@@ -98,7 +125,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -119,10 +147,34 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
+        }
+    },
+
+    __GoogleAdMobShowAppsInTossAdMobIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.GoogleAdMob.showAppsInTossAdMob.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },
 
@@ -165,7 +217,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                        Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
                 });
@@ -174,7 +226,344 @@ mergeInto(LibraryManager.library, {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
-                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __GoogleAdMobIsAppsInTossAdMobLoadedIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.GoogleAdMob.isAppsInTossAdMobLoaded.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsInitialize_Internal: function(options, subscriptionId, callbackId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] TossAdsInitialize called, callbackId:', callback, 'subscriptionId:', subId);
+
+        try {
+            // C# 콜백(Action)은 JSON으로 올 수 없으므로 같은 이름의 콜백을 JS에서 만들어 이벤트로 돌려보낸다.
+            var bagCallbacks = {};
+            ['onInitialized', 'onInitializationFailed'].forEach(function(name) {
+                bagCallbacks[name] = function(eventPayload) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] TossAdsInitialize callback:', name, eventPayload);
+                    var body = (eventPayload instanceof Error) ? { name: eventPayload.name, message: eventPayload.message } : eventPayload;
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: 'AITCallbackBagEvent',
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify({ event: name, payload: body === undefined ? null : body }),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                };
+            });
+            var bagOptions = Object.assign({}, (function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(options), { callbacks: bagCallbacks });
+
+            var result = window.AppsInToss.TossAds.initialize(bagOptions);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = function() {};
+
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result === undefined ? null : result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var errorPayload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', errorPayload); }, 0);
+        }
+    },
+
+    __TossAdsInitializeIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.initialize.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsAttach_Internal: function(adGroupId, target, options, subscriptionId, callbackId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] TossAdsAttach called, callbackId:', callback, 'subscriptionId:', subId);
+
+        try {
+            // C# 콜백(Action)은 JSON으로 올 수 없으므로 같은 이름의 콜백을 JS에서 만들어 이벤트로 돌려보낸다.
+            var bagCallbacks = {};
+            ['onAdRendered', 'onAdViewable', 'onAdClicked', 'onAdImpression', 'onAdFailedToRender', 'onNoFill'].forEach(function(name) {
+                bagCallbacks[name] = function(eventPayload) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] TossAdsAttach callback:', name, eventPayload);
+                    var body = (eventPayload instanceof Error) ? { name: eventPayload.name, message: eventPayload.message } : eventPayload;
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: 'AITCallbackBagEvent',
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify({ event: name, payload: body === undefined ? null : body }),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                };
+            });
+            var bagOptions = Object.assign({}, (function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(options), { callbacks: bagCallbacks });
+
+            var result = window.AppsInToss.TossAds.attach(UTF8ToString(adGroupId), UTF8ToString(target), bagOptions);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = function() {};
+
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result === undefined ? null : result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var errorPayload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', errorPayload); }, 0);
+        }
+    },
+
+    __TossAdsAttachIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.attach.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsAttachBanner_Internal: function(adGroupId, target, options, subscriptionId, callbackId, typeName) {
+        var subId = UTF8ToString(subscriptionId);
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] TossAdsAttachBanner called, callbackId:', callback, 'subscriptionId:', subId);
+
+        try {
+            // C# 콜백(Action)은 JSON으로 올 수 없으므로 같은 이름의 콜백을 JS에서 만들어 이벤트로 돌려보낸다.
+            var bagCallbacks = {};
+            ['onAdRendered', 'onAdViewable', 'onAdClicked', 'onAdImpression', 'onAdFailedToRender', 'onNoFill'].forEach(function(name) {
+                bagCallbacks[name] = function(eventPayload) {
+                    if (window.__AIT_VERBOSE) console.log('[AIT jslib] TossAdsAttachBanner callback:', name, eventPayload);
+                    var body = (eventPayload instanceof Error) ? { name: eventPayload.name, message: eventPayload.message } : eventPayload;
+                    var payload = JSON.stringify({
+                        CallbackId: subId,
+                        TypeName: 'AITCallbackBagEvent',
+                        Result: JSON.stringify({
+                            success: true,
+                            data: JSON.stringify({ event: name, payload: body === undefined ? null : body }),
+                            error: ''
+                        })
+                    });
+                    SendMessage('AITCore', 'OnAITEventCallback', payload);
+                };
+            });
+            var bagOptions = Object.assign({}, (function(p) { if (!p) return undefined; var v = JSON.parse(UTF8ToString(p)); return v === null ? undefined : v; })(options), { callbacks: bagCallbacks });
+
+            var result = window.AppsInToss.TossAds.attachBanner(UTF8ToString(adGroupId), UTF8ToString(target), bagOptions);
+
+            if (!window.__AIT_SUBSCRIPTIONS) {
+                window.__AIT_SUBSCRIPTIONS = {};
+            }
+            window.__AIT_SUBSCRIPTIONS[subId] = result && typeof result.destroy === 'function' ? result.destroy : function() {};
+
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result === undefined ? null : result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var errorPayload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', errorPayload); }, 0);
+        }
+    },
+
+    __TossAdsAttachBannerIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.attachBanner.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsDestroy_Internal: function(slotId, callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.destroy(UTF8ToString(slotId));
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsDestroyIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.destroy.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsDestroyAll_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.destroyAll();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __TossAdsDestroyAllIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.TossAds.destroyAll.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
@@ -213,7 +602,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -234,10 +624,34 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
+        }
+    },
+
+    __loadFullScreenAdIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.loadFullScreenAd.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },
 
@@ -274,7 +688,8 @@ mergeInto(LibraryManager.library, {
                         Result: JSON.stringify({
                             success: false,
                             data: '',
-                            error: errorMessage
+                            error: errorMessage,
+                            errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                         })
                     });
                     setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
@@ -295,10 +710,34 @@ mergeInto(LibraryManager.library, {
                 Result: JSON.stringify({
                     success: false,
                     data: '',
-                    error: errorMessage
+                    error: errorMessage,
+                    errorName: (error && error.name && error.name !== 'Error') ? error.name : ''
                 })
             });
             setTimeout(function() { SendMessage('AITCore', 'OnAITEventCallback', payload); }, 0);
+        }
+    },
+
+    __showFullScreenAdIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.showFullScreenAd.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error), errorName: (error && error.name && error.name !== 'Error') ? error.name : '' })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
         }
     },
 

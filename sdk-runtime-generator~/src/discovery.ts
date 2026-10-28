@@ -1,32 +1,16 @@
 /**
- * web-framework 버전 발견(discovery) 공유 모듈
+ * web-framework 버전 발견(discovery) 모듈
  *
- * - index.ts의 generate() 파이프라인(node_modules의 "현재" web-framework 1개를 찾음)과
- * - changelog 파이프라인(package.json devDependencies의 web-framework-X.Y.Z alias로
- *   설치된 여러 버전을 전부 찾음, tests/unit/multi-version.test.ts 및
- *   tests/unit/scripts/generate-changelog.ts)
- *
- * 양쪽이 공유하는 "web-bridge/.d.ts 경로 찾기" 로직을 여기 한 곳에 모은다.
- * index.ts는 이 모듈을 import만 하며 동작은 이전과 동일해야 한다
- * (검증: `pnpm generate` 후 `git status`에서 Runtime/SDK/ 무변경).
+ * changelog 파이프라인(package.json devDependencies의 web-framework-X.Y.Z alias로
+ * 설치된 여러 버전을 전부 찾음, tests/unit/multi-version.test.ts 및
+ * tests/unit/scripts/generate-changelog.ts)이 쓴다. 입력은 항상 각 버전의
+ * dist/index.d.ts 하나다.
  */
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
-import picocolors from 'picocolors';
 import { TypeScriptParser } from './parser/index.js';
-
-/**
- * .d.ts 디렉토리를 찾은 전략.
- * - self-bundle: web-framework 자체 dist/index.d.ts가 전체 API 표면을 번들링하고
- *   있어(별도 web-bridge 의존성이 없음) 그 파일 자체를 사용 (3.x+, changelog 경로)
- * - pnpm-store: node_modules/.pnpm 전체를 스캔해 가장 최신 web-bridge를 발견.
- *   generate() 경로는 현재 이 전략으로 web-bridge 파일별 .d.ts를 읽는다
- *   (web-analytics의 transitive web-bridge가 pnpm store에 깔려 있음)
- * - package-dir: node_modules 직하 또는 web-framework 패키지 내부 경로에서 발견
- */
-export type DtsSource = 'self-bundle' | 'pnpm-store' | 'package-dir';
 
 /**
  * 특정 web-framework 버전에 대해 해석된 경로 정보.
@@ -34,203 +18,8 @@ export type DtsSource = 'self-bundle' | 'pnpm-store' | 'package-dir';
 export interface VersionPaths {
   version: string;
   webFrameworkPath: string;
-  dtsDir: string;
-  dtsSource: DtsSource;
-  webAnalyticsDtsDir: string | null;
-}
-
-/**
- * pnpm virtual store에서 web-bridge 패키지 동적 검색
- * v1.8.0+: dist/ 디렉토리, v1.5.0~v1.7.x: built/ 디렉토리
- *
- * 스토어에 여러 web-bridge 버전이 공존할 수 있으므로, 가능한 한 **가장 최신**
- * web-bridge 버전을 선택해 그 시점에 알려진 최대 API 표면을 발견하게 한다.
- * (과거에는 readdir 순서상 lexicographically-first 항목이 선택되어 오래된 표면으로
- * 폴백하는 버그가 있었다.)
- */
-export async function findWebBridgeInPnpmStore(): Promise<string | null> {
-  const pnpmDir = path.join(process.cwd(), 'node_modules/.pnpm');
-  const PREFIX = '@apps-in-toss+web-bridge@';
-
-  try {
-    const entries = await fs.readdir(pnpmDir);
-    // @apps-in-toss+web-bridge@{version}[_<peer>] 패턴 찾기 (web-analytics 제외)
-    const webBridgeEntries = entries.filter(e =>
-      e.startsWith(PREFIX) && !e.includes('+web-analytics')
-    );
-
-    // 버전 내림차순 정렬 — 가장 최신 web-bridge를 우선 선택.
-    // 엔트리명: "@apps-in-toss+web-bridge@2.6.1" 또는
-    //           "@apps-in-toss+web-bridge@1.5.0_@apps-in-toss+bridge-core@1.5.0"
-    const parseVersion = (entry: string): number[] => {
-      const raw = entry.slice(PREFIX.length);
-      // peer-dep 접미사(_… 또는 (…) 와 prerelease(-…) 제거 후 숫자 파트만 비교
-      const version = raw.split(/[_(]/)[0].split('-')[0];
-      return version.split('.').map(n => Number(n) || 0);
-    };
-    webBridgeEntries.sort((a, b) => {
-      const va = parseVersion(a);
-      const vb = parseVersion(b);
-      for (let i = 0; i < Math.max(va.length, vb.length); i++) {
-        const diff = (vb[i] || 0) - (va[i] || 0);
-        if (diff !== 0) return diff;
-      }
-      return 0;
-    });
-
-    // 최신 버전부터 순회하며 dist/built가 실재하는 첫 엔트리를 사용
-    for (const webBridgeEntry of webBridgeEntries) {
-      const basePath = path.join(
-        pnpmDir,
-        webBridgeEntry,
-        'node_modules/@apps-in-toss/web-bridge'
-      );
-
-      // v1.8.0+: dist/, v1.5.0~v1.7.x: built/
-      for (const subdir of ['dist', 'built']) {
-        const candidatePath = path.join(basePath, subdir);
-        try {
-          await fs.access(candidatePath);
-          console.log(picocolors.gray(`  pnpm store에서 web-bridge 선택(최신): ${webBridgeEntry}`));
-          return candidatePath;
-        } catch {
-          continue;
-        }
-      }
-    }
-  } catch {
-    // pnpm store가 없으면 null 반환
-  }
-
-  return null;
-}
-
-/**
- * 후보 디렉토리에 유효한(.d.ts, index.d.ts/index.d.cts 제외) 타입 정의 파일이 있는지 확인
- */
-async function hasValidDtsFiles(dir: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(dir);
-    if (!stat.isDirectory()) return false;
-    const files = await fs.readdir(dir);
-    return files.some(f =>
-      f.endsWith('.d.ts') &&
-      f !== 'index.d.ts' &&
-      f !== 'index.d.cts'
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * self-bundle(자기완결) dist/index.d.ts 판정에 쓰는 최소 //#region 마커 개수.
- * 낮은 임계값은 우연히 region 주석 몇 개 있는 일반 barrel 파일을 오탐할 수 있고,
- * 너무 높으면 작은 self-bundle 버전을 놓칠 수 있다. 실측(3.0.1 dist/index.d.ts,
- * 2502줄)에서 102개가 관찰되어 여유 있게 10으로 잡는다.
- */
-const SELF_BUNDLE_REGION_MARKER_THRESHOLD = 10;
-
-/**
- * web-framework 패키지 자체의 dist/index.d.ts가 "자기완결(self-contained) 번들"인지
- * 판정한다 — 즉 별도 web-bridge 패키지 없이 전체 API 표면이 이 파일 하나에
- * 번들되어 있는지.
- *
- * 실측 근거(2026-08-22 조사, `@apps-in-toss/web-framework` 3.0.1~3.0.4):
- * - dist/index.d.ts가 2502줄이며 원본 소스 파일 경계마다 rollup-plugin-dts류 번들러가
- *   삽입하는 `//#region src/apis/.../*.d.ts` 마커가 102개 존재 (일반 재수출 barrel
- *   파일에는 이런 마커가 없다).
- * - dist/ 디렉토리에 index.d.ts 외에 config.d.ts가 동거하지만, index.d.ts 자체에
- *   전체 API(Device, TossPay, Share, checkoutPayment, getDeviceId, ... 등)가 이미
- *   다 들어있어 index.d.ts만으로 충분히 자기완결적이다.
- * - 3.0.1~3.0.3의 index.d.ts는 바이트 동일(md5 e4c54acb)이고 3.0.4는 다르다(md5
- *   d37b0236) — 버전이 달라도 이 판정 로직 자체는 파일 내용에 의존하지 않고 구조적
- *   특징(region 마커 개수)만 보므로 안정적으로 동작한다.
- */
-export async function detectSelfContainedDts(webFrameworkPath: string): Promise<string | null> {
-  const indexDtsPath = path.join(webFrameworkPath, 'dist', 'index.d.ts');
-  try {
-    const content = await fs.readFile(indexDtsPath, 'utf-8');
-    const regionMarkerCount = (content.match(/\/\/#region /g) ?? []).length;
-    if (regionMarkerCount >= SELF_BUNDLE_REGION_MARKER_THRESHOLD) {
-      return path.join(webFrameworkPath, 'dist');
-    }
-  } catch {
-    // dist/index.d.ts가 없으면 self-bundle이 아님
-  }
-  return null;
-}
-
-/**
- * TypeScript 정의 파일 경로 찾기 (발견 전략과 소스를 함께 반환)
- * 찾지 못하면 null을 반환한다 (throw는 호출부 책임).
- */
-export async function findTypeDefinitionsWithSource(
-  webFrameworkPath: string,
-): Promise<{ path: string; source: DtsSource } | null> {
-  // pnpm virtual store에서 동적으로 검색
-  const pnpmStorePath = await findWebBridgeInPnpmStore();
-
-  // 가능한 경로들 확인 (pnpm store > node_modules > 기타)
-  const candidates: { path: string; source: DtsSource }[] = [
-    // pnpm virtual store 경로 (동적 검색 결과 - 여러 버전이 있을 수 있음)
-    ...(pnpmStorePath ? [{ path: pnpmStorePath, source: 'pnpm-store' as const }] : []),
-    // 일반 node_modules 경로 (dist 우선, built 폴백)
-    { path: path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/dist'), source: 'package-dir' },
-    { path: path.join(process.cwd(), 'node_modules/@apps-in-toss/web-bridge/built'), source: 'package-dir' },
-    // web-framework 내부 경로 (dist 우선, built 폴백)
-    { path: path.join(webFrameworkPath, 'node_modules/@apps-in-toss/web-bridge/dist'), source: 'package-dir' },
-    { path: path.join(webFrameworkPath, 'node_modules/@apps-in-toss/web-bridge/built'), source: 'package-dir' },
-    { path: path.join(webFrameworkPath, 'dist-web'), source: 'package-dir' },
-    { path: path.join(webFrameworkPath, 'built'), source: 'package-dir' },
-    { path: path.join(webFrameworkPath, 'dist'), source: 'package-dir' },
-    { path: path.join(webFrameworkPath, 'lib'), source: 'package-dir' },
-  ];
-
-  for (const candidate of candidates) {
-    if (await hasValidDtsFiles(candidate.path)) {
-      console.log(picocolors.green(`✅ TypeScript 정의 파일 발견: ${candidate.path}`));
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-/**
- * TypeScript 정의 파일 경로 찾기
- * (index.ts generate() 파이프라인 전용 — 못 찾으면 throw)
- */
-export async function findTypeDefinitions(webFrameworkPath: string): Promise<string> {
-  const result = await findTypeDefinitionsWithSource(webFrameworkPath);
-  if (!result) {
-    throw new Error('TypeScript 정의 파일을 찾을 수 없습니다.');
-  }
-  return result.path;
-}
-
-/**
- * web-analytics 패키지의 .d.ts 디렉토리 경로 찾기
- * node_modules 직접 의존성에서 탐색
- */
-export async function findWebAnalyticsPath(webFrameworkPath: string): Promise<string | null> {
-  // 일반 node_modules 경로
-  const directPaths = [
-    path.join(process.cwd(), 'node_modules/@apps-in-toss/web-analytics/dist'),
-    path.join(process.cwd(), 'node_modules/@apps-in-toss/web-analytics/built'),
-  ];
-  for (const p of directPaths) {
-    try {
-      const stat = await fs.stat(p);
-      if (stat.isDirectory()) {
-        return p;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
+  /** dist/index.d.ts 절대 경로 */
+  bundleFile: string;
 }
 
 // =====================================================
@@ -252,89 +41,29 @@ export function discoverInstalledVersions(): string[] {
 }
 
 /**
- * 특정 web-framework alias 버전의 경로 전체를 해석한다.
- *
- * ⚠️ 스코프 경계: 이 함수는 changelog 전용 호출부(tests/unit/scripts/generate-changelog.ts,
- * tests/unit/multi-version.test.ts)에서만 쓰인다. index.ts의 generate() 파이프라인은
- * findTypeDefinitions()/findTypeDefinitionsWithSource()를 직접 호출하며 이 함수를 거치지
- * 않는다. 그래서 여기서 self-bundle 단축 경로를 앞에 추가해도 findTypeDefinitionsWithSource의
- * 공유 후보 배열 순서(및 그걸 그대로 쓰는 generate() 경로의 동작)는 전혀 바뀌지 않는다
- * (검증: `pnpm generate` 후 `git status`에서 Runtime/SDK/ 무변경 — 이 파일 상단 주석 참고).
- *
- * web-framework 3.x+는 별도 web-bridge 패키지 없이 자체 dist/index.d.ts에 전체
- * API 표면을 번들링한다(detectSelfContainedDts 참고) — 다른 탐색보다 먼저 이 단축
- * 경로를 확인해 stale pnpm-store 폴백(2.10.x web-bridge 고정)으로 새지 않게 한다.
- *
- * self-bundle 판정에 실패하면 pnpm store 등 폴백을 시도하고, 그래도 해석에 실패하면 조용히
- * 스킵하는 대신 이 버전이 왜 빠지는지 알 수 있도록 명확한 한국어 메시지로 throw한다 —
- * changelog 최신 버전 누락(예: 3.0.1) 버그의 재발을 방지하기 위함.
- *
- * fail-loud 게이트: web-framework major가 3 이상인데도 최종 source가 'pnpm-store'
- * 폴백이면(= self-bundle 판정이 실패해 stale 근사로 빠진 것) 조용히
- * 근사 리포트를 내는 대신 즉시 throw한다. 향후 4.x 등에서 또 구조가 바뀌면(예: dist
- * 번들링 방식 변경) self-bundle 판정이 깨질 수 있는데, 이때 stale web-bridge(2.10.x)로 조용히
- * 폴백하며 "변경 없음"을 오보하는 사고(이번 3.0.1 버그와 동일한 유형)가 재발하지
- * 않도록 하기 위함.
+ * 특정 web-framework alias 버전의 번들 경로를 해석한다.
+ * dist/index.d.ts가 없으면 다른 입력으로 대체하지 않고 이유를 알 수 있는 메시지로 즉시 실패한다.
  */
 export async function resolveVersionPaths(version: string): Promise<VersionPaths> {
   const aliasPath = path.join(process.cwd(), 'node_modules', `web-framework-${version}`);
   const realPath = await fs.realpath(aliasPath);
+  const bundleFile = path.join(realPath, 'dist', 'index.d.ts');
 
-  const selfBundleDtsDir = await detectSelfContainedDts(realPath);
-  const result = selfBundleDtsDir
-    ? { path: selfBundleDtsDir, source: 'self-bundle' as const }
-    : await findTypeDefinitionsWithSource(realPath);
-
-  if (!result) {
+  try {
+    await fs.access(bundleFile);
+  } catch {
     throw new Error(
-      `web-framework v${version}의 TypeScript 정의 파일을 찾을 수 없습니다.\n` +
-      `  확인한 경로: self-bundle(dist/index.d.ts), pnpm store 폴백, ` +
-      `${realPath} 하위 dist/built/lib 등.\n` +
-      `  web-framework 재구성(예: web-bridge → webview-bridge 리네임)으로 발견 전략이 깨졌을 수 있습니다.\n` +
-      `  discovery.ts의 findTypeDefinitionsWithSource를 확인하세요.`
+      `web-framework v${version}의 번들 index.d.ts를 찾을 수 없습니다: ${bundleFile}\n` +
+      `  이 SDK는 web-framework 3.x의 dist/index.d.ts만 입력으로 씁니다.`
     );
   }
 
-  const majorVersion = Number(version.split('.')[0]);
-  if (majorVersion >= 3 && result.source === 'pnpm-store') {
-    throw new Error(
-      `web-framework v${version}(major ${majorVersion})의 API 표면을 pnpm-store 폴백으로만 ` +
-      `찾았습니다 — self-bundle 판정이 실패했다는 뜻입니다.\n` +
-      `  이 폴백은 stale 버전의 web-bridge(예: v2.10.x)를 근사로 사용하므로, 3.x+에서는 ` +
-      `changelog가 "변경 없음"을 오보하는 사고(2026-08 web-framework 3.0.1 누락 버그와 ` +
-      `동일 유형)로 이어질 수 있어 조용히 넘어가지 않고 즉시 실패시킵니다.\n` +
-      `  discovery.ts의 detectSelfContainedDts(//#region 마커 판정)가 v${version}의 새 dist ` +
-      `구조를 더 이상 인식하지 못할 수 있습니다 — 실제 dist/index.d.ts 구조를 확인하고 ` +
-      `판정 로직을 갱신하세요.`
-    );
-  }
-
-  const webAnalyticsDtsDir = await findWebAnalyticsPath(realPath);
-
-  return {
-    version,
-    webFrameworkPath: realPath,
-    dtsDir: result.path,
-    dtsSource: result.source,
-    webAnalyticsDtsDir,
-  };
+  return { version, webFrameworkPath: realPath, bundleFile };
 }
 
-/**
- * 버전 경로에서 파서를 생성하고 web-analytics 소스가 있으면 추가
- *
- * self-bundle(paths.dtsSource === 'self-bundle')인 경우 dist/index.d.ts 자체가 이미
- * Analytics 네임스페이스를 포함한 전체 API 표면을 번들링하고 있으므로(detectSelfContainedDts
- * 참고) web-analytics dist를 추가로 addSourceDirectory하면 같은 API가 두 번
- * 파싱되어 changelog 카탈로그에 중복 항목이 생긴다 (실측: AnalyticsClick/Impression/Screen
- * 각 2건). self-bundle은 "이 파일 하나로 완결"이라는 설계와 정합하도록 여기서 스킵한다.
- */
+/** 버전 경로에서 번들 파서를 생성한다 */
 export function createParserForVersion(paths: VersionPaths): TypeScriptParser {
-  const parser = new TypeScriptParser(paths.dtsDir, paths.webFrameworkPath);
-  if (paths.webAnalyticsDtsDir && paths.dtsSource !== 'self-bundle') {
-    parser.addSourceDirectory(paths.webAnalyticsDtsDir);
-  }
-  return parser;
+  return new TypeScriptParser(paths.bundleFile);
 }
 
 // =====================================================

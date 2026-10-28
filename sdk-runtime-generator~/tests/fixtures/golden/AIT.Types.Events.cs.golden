@@ -14,16 +14,54 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    public enum EventLogParamsLog_type
+    {
+        [EnumMember(Value = "impression")]
+        Impression,
+        [EnumMember(Value = "error")]
+        Error,
+        [EnumMember(Value = "debug")]
+        Debug,
+        [EnumMember(Value = "info")]
+        Info,
+        [EnumMember(Value = "warn")]
+        Warn,
+        [EnumMember(Value = "event")]
+        Event,
+        [EnumMember(Value = "screen")]
+        Screen,
+        [EnumMember(Value = "click")]
+        Click,
+        [EnumMember(Value = "popup")]
+        Popup
+    }
+
+    /// <summary>
+    /// 와이어 계약(log_type: string)은 넓게 유지하고, 공개 표면은 구 SDK와 동일하게
+    /// log_type 유니온으로 좁혀서 제공해요.
+    /// </summary>
     [Serializable]
     [Preserve]
     public class EventLogParams
     {
         [Preserve]
+        [JsonProperty("log_type")]
+        [Obsolete("Use Log_typeTyped")]
+        public string Log_type;
+
+        /// <summary>
+        /// <see cref="Log_type"/>를 <see cref="EventLogParamsLog_type"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
+        /// 그 문자열은 <see cref="Log_type"/>에 그대로 남는다. 값을 쓰면 <see cref="Log_type"/>도 함께 바뀐다.
+        /// </summary>
+        [JsonIgnore]
+        public EventLogParamsLog_type? Log_typeTyped
+        {
+            get => AITCompat.ParseEnum<EventLogParamsLog_type>(Log_type);
+            set => Log_type = AITCompat.ToWire(value);
+        }
+        [Preserve]
         [JsonProperty("log_name")]
         public string Log_name;
-        [Preserve]
-        [JsonProperty("log_type")]
-        public string Log_type;
         [Preserve]
         [JsonProperty("params")]
         public Dictionary<string, object> Params;

@@ -127,11 +127,12 @@ namespace AppsInToss
 
             try
             {
-                var eventLogParams = new EventLogParams
+                // 와이어 계약(log_type은 문자열)을 그대로 보낸다. 생성된 EventLogParams는 log_type이 enum이라 쓰지 않는다.
+                var eventLogParams = new Dictionary<string, object>
                 {
-                    Log_name = logName,
-                    Log_type = "unity_runtime",
-                    Params = parameters
+                    { "log_name", logName },
+                    { "log_type", "unity_runtime" },
+                    { "params", parameters }
                 };
                 __AITDebugLog_Send(AITJsonSettings.Serialize(eventLogParams));
             }

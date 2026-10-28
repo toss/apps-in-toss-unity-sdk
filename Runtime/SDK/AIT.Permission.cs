@@ -80,6 +80,56 @@ namespace AppsInToss
         [Preserve]
         [APICategory("Permission")]
 #if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<PermissionDialogResult> OpenPermissionDialogTyped(OpenPermissionDialogPermission permission, int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<PermissionDialogResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<PermissionDialogResult>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "OpenPermissionDialogTyped"
+            );
+            __openPermissionDialog_Internal(AITJsonSettings.Serialize(permission), callbackId, "PermissionDialogResult");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] OpenPermissionDialog called");
+            await Awaitable.NextFrameAsync();
+            return default(PermissionDialogResult);
+#endif
+        }
+#else
+        public static async Task<PermissionDialogResult> OpenPermissionDialogTyped(OpenPermissionDialogPermission permission, int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<PermissionDialogResult>();
+            string callbackId = AITCore.Instance.RegisterCallback<PermissionDialogResult>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "OpenPermissionDialogTyped"
+            );
+            __openPermissionDialog_Internal(AITJsonSettings.Serialize(permission), callbackId, "PermissionDialogResult");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] OpenPermissionDialog called");
+            await Task.CompletedTask;
+            return default(PermissionDialogResult);
+#endif
+        }
+#endif
+
+        /// <summary>
+        /// 이전 SDK의 반환 타입(<c>string</c>)을 그대로 돌려주는 옛 시그니처다.
+        /// 이전 SDK와 같은 경로(typeName "string")로 값을 받으므로 문자열이 같다.
+        /// 새 코드는 <see cref="OpenPermissionDialogTyped"/>를 쓴다.
+        /// </summary>
+        [Obsolete("Use OpenPermissionDialogTyped")]
+        [Preserve]
+        [APICategory("Permission")]
+#if UNITY_6000_0_OR_NEWER
         public static async Awaitable<string> OpenPermissionDialog(OpenPermissionDialogPermission permission, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR

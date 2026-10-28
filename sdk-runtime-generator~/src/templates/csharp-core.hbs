@@ -108,6 +108,44 @@ namespace AppsInToss
     }
 
     /// <summary>
+    /// 하위 호환 멤버(`[Obsolete]` 필드의 `Typed` 쌍, 옛 반환 타입 래퍼)가 쓰는 변환 도우미.
+    /// </summary>
+    internal static class AITCompat
+    {
+        private static class EnumWireMap<T> where T : struct, Enum
+        {
+            internal static readonly Dictionary<string, T> FromWire = new Dictionary<string, T>();
+            internal static readonly Dictionary<T, string> ToWireValue = new Dictionary<T, string>();
+
+            static EnumWireMap()
+            {
+                foreach (var field in typeof(T).GetFields(BindingFlags.Public | BindingFlags.Static))
+                {
+                    var member = field.GetCustomAttribute<EnumMemberAttribute>();
+                    string wire = member != null && member.Value != null ? member.Value : field.Name;
+                    var value = (T)field.GetValue(null);
+                    FromWire[wire] = value;
+                    ToWireValue[value] = wire;
+                }
+            }
+        }
+
+        /// <summary>와이어 문자열을 enum으로 바꾼다. 정의에 없는 값이거나 null이면 null.</summary>
+        internal static T? ParseEnum<T>(string wire) where T : struct, Enum
+        {
+            if (wire == null) return null;
+            return EnumWireMap<T>.FromWire.TryGetValue(wire, out var value) ? value : (T?)null;
+        }
+
+        /// <summary>enum을 와이어 문자열(EnumMember 값)로 바꾼다. null이면 null.</summary>
+        internal static string ToWire<T>(T? value) where T : struct, Enum
+        {
+            if (!value.HasValue) return null;
+            return EnumWireMap<T>.ToWireValue.TryGetValue(value.Value, out var wire) ? wire : null;
+        }
+    }
+
+    /// <summary>
     /// Attribute to mark API methods with their category for grouping in UI.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method)]
@@ -205,6 +243,22 @@ namespace AppsInToss
     }
 
     /// <summary>
+    /// options.callbacks 묶음 API에서 JS 콜백이 불릴 때 오는 이벤트 (콜백 이름과 인자).
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    public class AITCallbackBagEvent
+    {
+        [Preserve]
+        [JsonProperty("event")]
+        public string Event;
+
+        [Preserve]
+        [JsonProperty("payload")]
+        public Newtonsoft.Json.Linq.JToken Payload;
+    }
+
+    /// <summary>
     /// API response from JavaScript bridge.
     /// Uses explicit success/data/error format to avoid IL2CPP stripping issues.
     /// </summary>
@@ -218,6 +272,9 @@ namespace AppsInToss
         public string data = "";
         [Preserve]
         public string error = "";
+        /// <summary>JS Error의 name (예: GetCurrentLocationPermissionError). 일반 Error는 빈 문자열이다.</summary>
+        [Preserve]
+        public string errorName = "";
     }
 
     /// <summary>
@@ -443,6 +500,34 @@ namespace AppsInToss
         }
 
         /// <summary>
+        /// options.callbacks 묶음의 인자 없는 콜백을 호출한다 (TossAds.initialize 등).
+        /// </summary>
+        internal static void InvokeCallbackBag(Action callback)
+        {
+            try { callback?.Invoke(); }
+            catch (Exception ex) { Debug.LogException(ex); }
+        }
+
+        /// <summary>
+        /// options.callbacks 묶음의 콜백을 호출한다. 인자 타입은 콜백 델리게이트에서 추론한다.
+        /// </summary>
+        internal static void InvokeCallbackBag<T>(Action<T> callback, Newtonsoft.Json.Linq.JToken payload)
+        {
+            if (callback == null) return;
+            try
+            {
+                var value = payload == null || payload.Type == Newtonsoft.Json.Linq.JTokenType.Null
+                    ? default(T)
+                    : payload.ToObject<T>();
+                callback(value);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+            }
+        }
+
+        /// <summary>
         /// Unsubscribe from an event
         /// </summary>
         public void Unsubscribe(string subscriptionId)
@@ -552,7 +637,7 @@ namespace AppsInToss
             {
                 if (_subscriptionErrorCallbacks.TryGetValue(callbackId, out var errorCallback))
                 {
-                    errorCallback?.Invoke(new AITException(typeName, apiResponse.error));
+                    errorCallback?.Invoke(new AITException(typeName, apiResponse.error, apiResponse.errorName));
                 }
             }
         }
@@ -602,7 +687,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback{{@index}}) && errorCallback{{@index}} != null)
                         {
-                            errorCallback{{@index}}(new AITException("{{{this}}}", apiResponse.error));
+                            errorCallback{{@index}}(new AITException("{{{this}}}", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
@@ -639,7 +724,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var enumErrCb_{{this}}) && enumErrCb_{{this}} != null)
                         {
-                            enumErrCb_{{this}}(new AITException("{{this}}", apiResponse.error));
+                            enumErrCb_{{this}}(new AITException("{{this}}", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
@@ -662,7 +747,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var stringErrorCallback) && stringErrorCallback != null)
                         {
-                            stringErrorCallback(new AITException("string", apiResponse.error));
+                            stringErrorCallback(new AITException("string", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
@@ -681,7 +766,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var boolErrorCallback) && boolErrorCallback != null)
                         {
-                            boolErrorCallback(new AITException("bool", apiResponse.error));
+                            boolErrorCallback(new AITException("bool", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
@@ -699,7 +784,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var doubleErrorCallback) && doubleErrorCallback != null)
                         {
-                            doubleErrorCallback(new AITException("double", apiResponse.error));
+                            doubleErrorCallback(new AITException("double", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
@@ -715,7 +800,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var voidErrorCallback) && voidErrorCallback != null)
                         {
-                            voidErrorCallback(new AITException("void", apiResponse.error));
+                            voidErrorCallback(new AITException("void", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
@@ -733,7 +818,7 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var actionErrorCallback) && actionErrorCallback != null)
                         {
-                            actionErrorCallback(new AITException("System.Action", apiResponse.error));
+                            actionErrorCallback(new AITException("System.Action", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;

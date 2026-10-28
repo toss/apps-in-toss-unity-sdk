@@ -1,8 +1,8 @@
 import { ParsedAPI, ParsedType, ParsedTypeDefinition, GeneratedTypeUnit } from '../../types.js';
-import { resolveApiCategory, DEFAULT_CATEGORY } from '../../categories.js';
+import { DEFAULT_CATEGORY } from '../../categories.js';
 import { mapToCSharpType } from '../../validators/types.js';
 import { loadUnionResultTemplate } from './templates.js';
-import { extractCleanName, capitalize, xmlSafe, functionParamTypeName } from './utils.js';
+import { extractCleanName, capitalize, xmlSafe, functionParamTypeName, typeSummaryBlock } from './utils.js';
 import { generateFieldDoc } from './field-docs.js';
 import {
   InlineTypeTracker,
@@ -12,6 +12,7 @@ import {
   generateFieldDeclaration,
   generateNestedClassType,
   collectNestedTypes,
+  anonymousArrayElementClassName,
   collectReferencedTypes,
   collectFunctionParamTypes,
   collectNestedTypesForTypeDefinition,
@@ -22,8 +23,15 @@ import { computeEnumAliases, applyEnumAliases } from './enum-dedup.js';
 /**
  * C# 타입 정의 생성기
  */
+/** 이름 있는 타입 참조 (`Foo`, `Foo$1`, `import("...").Foo`) */
+const NAMED_TYPE_PATTERN = /^(import\([^)]*\)\.)?[A-Za-z_][A-Za-z0-9_]*(\$\d+)?$/;
+
 export class CSharpTypeGenerator {
   private unionResultTemplate?: HandlebarsTemplateDelegate;
+  /** generateTypes가 계산한 inline enum alias (typeDefinitions 유닛에도 같은 치환을 적용하기 위해 보관) */
+  private enumAliases = new Map<string, string>();
+  /** 다른 enum으로 합쳐지면 안 되는 inline enum 이름 */
+  protectedEnumNames: ReadonlySet<string> = new Set();
 
   // 인라인 타입 추적기
   private tracker: InlineTypeTracker = new InlineTypeTracker();
@@ -116,9 +124,7 @@ export class CSharpTypeGenerator {
       })
       .join(',\n');
 
-    const description = typeDef.description
-      ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
-      : '';
+    const description = typeSummaryBlock(typeDef.description);
 
     // 참고: [JsonConverter(typeof(StringEnumConverter))]는 IL2CPP에서 타입 해석 무한 루프를 일으킴
     // EnumMember 어트리뷰트만 사용하고, 직렬화 시 JsonSerializerSettings에서 StringEnumConverter 설정
@@ -135,16 +141,35 @@ export class CSharpTypeGenerator {
 
     // Note: 중첩 타입은 generateTypes에서 collectReferencedTypes로 생성됨 (중복 방지)
     const fields = typeDef.properties
+      .filter(prop => prop.type.name !== 'never')
       .map(prop => {
         let type = mapToCSharpType(prop.type);
 
+        // Inline string literal union -> enum (문자열이 아니라 enum 타입을 유지한다)
+        // (이름 있는 alias union은 그 이름의 enum을 그대로 쓴다)
+        if (isInlineStringLiteralUnion(prop.type) && !NAMED_TYPE_PATTERN.test(prop.type.name)) {
+          const enumName = `${typeDef.name}${capitalize(prop.name)}`;
+          if (!this.tracker.inlineEnums.has(enumName)) {
+            this.tracker.inlineEnums.set(enumName, extractEnumValues(prop.type));
+          }
+          // optional enum은 nullable로 둔다: 값이 없을 때 첫 멤버(0)로 기본값이 잡히는 오류 방지
+          type = prop.optional ? `${enumName}?` : enumName;
+        }
         // 중첩 익명 객체 처리 - 타입 이름만 생성 (클래스는 별도 생성)
-        if (prop.type.kind === 'object' &&
+        else if (prop.type.kind === 'object' &&
             prop.type.properties &&
             prop.type.properties.length > 0 &&
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           // 중첩 클래스 이름 생성
           type = `${typeDef.name}${capitalize(prop.name)}`;
+        }
+        // 익명 객체 배열은 생성된 요소 클래스 이름 + []
+        else if (prop.type.kind === 'array' &&
+            prop.type.elementType?.kind === 'object' &&
+            prop.type.elementType.properties &&
+            prop.type.elementType.properties.length > 0 &&
+            (prop.type.elementType.name === '__type' || prop.type.elementType.name === 'object' || prop.type.elementType.name.startsWith('{'))) {
+          type = `${anonymousArrayElementClassName(typeDef.name, prop.name)}[]`;
         }
 
         const description = generateFieldDoc(prop.name, prop.description);
@@ -152,11 +177,17 @@ export class CSharpTypeGenerator {
       })
       .join('\n');
 
-    const description = typeDef.description
-      ? `    /// <summary>\n    /// ${typeDef.description}\n    /// </summary>\n`
-      : '';
+    const description = typeSummaryBlock(typeDef.description);
 
     return `${description}    [Serializable]\n    [Preserve]\n    public class ${typeDef.name}\n    {\n${fields}\n\n${JSON_EXTENSION_DATA_FIELD}\n    }`;
+  }
+
+  /**
+   * generateTypes가 정한 inline enum alias를 이미 만들어진 유닛(타입 정의 경로)에도 적용한다.
+   * 타입 정의 클래스가 참조한 inline enum 이름이 다른 enum으로 합쳐진 경우 이름을 맞춘다.
+   */
+  applyEnumAliasesTo(units: GeneratedTypeUnit[]): GeneratedTypeUnit[] {
+    return units.map(unit => ({ ...unit, code: applyEnumAliases(unit.code, this.enumAliases) }));
   }
 
   /**
@@ -224,11 +255,12 @@ export class CSharpTypeGenerator {
    * 클래스 타입 생성
    * Note: 중첩 타입은 collectReferencedTypes에서 별도로 생성됨 (중복 방지)
    */
-  private generateClassType(name: string, properties: any[], isResultType: boolean = false): string {
+  private generateClassType(name: string, properties: any[]): string {
     // extractCleanName을 사용하여 정리된 이름 얻기
     const cleanName = extractCleanName(name);
 
     const fields = properties
+      .filter(prop => prop.type.name !== 'never') // `options?: never` 같은 "값이 없다"는 표시는 필드로 옮기지 않는다
       .map(prop => {
         let type = mapToCSharpType(prop.type);
 
@@ -289,50 +321,21 @@ export class CSharpTypeGenerator {
             prop.type.elementType.properties &&
             prop.type.elementType.properties.length > 0 &&
             (prop.type.elementType.name === '__type' || prop.type.elementType.name === 'object' || prop.type.elementType.name.startsWith('{'))) {
-          const propNameSingular = prop.name.endsWith('s') ? prop.name.slice(0, -1) : prop.name;
-          type = `${cleanName}${capitalize(propNameSingular)}[]`;
+          type = `${anonymousArrayElementClassName(cleanName, prop.name)}[]`;
         }
         const description = generateFieldDoc(prop.name, prop.description);
         return `${description}${generateFieldDeclaration(prop.name, type, prop.optional)}`;
       })
       .join('\n');
 
-    // Result 타입이면 error 필드 추가 (jslib 에러 응답 수신용)
-    const errorField = isResultType
-      ? '\n        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>\n        public string error;'
-      : '';
-
     return `    [Serializable]
     [Preserve]
     public class ${cleanName}
     {
-${fields}${errorField}
+${fields}
 
 ${JSON_EXTENSION_DATA_FIELD}
     }`;
-  }
-
-  /**
-   * 찾을 수 없는 타입에 대한 빈 stub 클래스 생성
-   * SDK 버전 호환성: 이전 버전에 없는 타입이 참조될 때 컴파일 오류 방지
-   */
-  private generateStubClass(typeName: string): string {
-    const cleanName = extractCleanName(typeName);
-    const lines: string[] = [];
-
-    lines.push('    /// <summary>');
-    lines.push(`    /// Stub class for ${cleanName} (type definition not found in current SDK version)`);
-    lines.push('    /// This class is auto-generated for SDK version compatibility');
-    lines.push('    /// </summary>');
-    lines.push('    [Serializable]');
-    lines.push('    [Preserve]');
-    lines.push(`    public class ${cleanName}`);
-    lines.push('    {');
-    lines.push('        // Stub class - no properties defined');
-    lines.push('        // This type may not be available in the current SDK version');
-    lines.push('    }');
-
-    return lines.join('\n');
   }
 
   /**
@@ -345,7 +348,7 @@ ${JSON_EXTENSION_DATA_FIELD}
     apis: ParsedAPI[],
     excludeTypeNames?: Set<string>,
     typeDefinitions?: ParsedTypeDefinition[],
-    parser?: { parseNativeModulesType: (typeName: string) => ParsedTypeDefinition | null },
+    parser?: { parseBundleType: (typeName: string) => ParsedTypeDefinition | null },
     parsedStringEnumValues?: Map<string, string[]>
   ): Promise<GeneratedTypeUnit[]> {
     const typeMap = new Map<string, string>(); // typeName -> classDefinition
@@ -357,8 +360,13 @@ ${JSON_EXTENSION_DATA_FIELD}
     const typeCategory = new Map<string, string>();
     const inlineEnumCategory = new Map<string, string>();
 
-    // Inline enum Map 초기화 (generateClassType에서 채워짐)
+    // Inline enum Map 초기화 (generateClassType에서 채워짐).
+    // 타입 정의 경로(generateTypeDefinitions)가 먼저 등록한 inline enum은 이 클래스들이 참조하므로 지우지 않고 다시 싣는다.
+    const typeDefinitionPhaseEnums = new Map(this.tracker.inlineEnums);
     this.tracker.clear();
+    for (const [enumName, enumValues] of typeDefinitionPhaseEnums) {
+      this.tracker.inlineEnums.set(enumName, enumValues);
+    }
 
     // generateClassType을 바인딩하여 collectReferencedTypes에 전달
     const boundGenerateClassType = this.generateClassType.bind(this);
@@ -367,7 +375,7 @@ ${JSON_EXTENSION_DATA_FIELD}
     for (const api of apis) {
       // 이 api가 새로 추가하는 타입/enum 키를 잡기 위한 처리 전 스냅샷
       // (경고는 generateCategoryFiles가 이미 1회 출력하므로 여기서는 silent)
-      const apiCategory = resolveApiCategory(api, false);
+      const apiCategory = api.category;
       const typeKeysBefore = new Set(typeMap.keys());
       const urKeysBefore = new Set(unionResultMap.keys());
       const enumKeysBefore = new Set(this.tracker.inlineEnums.keys());
@@ -401,17 +409,17 @@ ${JSON_EXTENSION_DATA_FIELD}
               if (rawTypeName && rawTypeName !== '__type' && !rawTypeName.startsWith('{')) {
                 typeName = rawTypeName;
               } else {
-                typeName = `${capitalize(api.name)}${capitalize(param.typeNameSeed ?? param.name)}`;
+                typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
               }
             } else {
-              typeName = `${capitalize(api.name)}${capitalize(param.typeNameSeed ?? param.name)}`;
+              typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
             }
           } else if (param.optional) {
             // optional named 객체 파라미터는 API-스코프 합성명을 쓴다(예: AttachOptions →
             // TossAdsAttachOptions). prepareParameters의 시그니처 합성과 반드시 일치시켜
             // 클래스명과 참조가 어긋나 CS0246이 나지 않도록 한다. (자세한 근거는
             // api-data-preparer.ts prepareParameters 주석 참조.)
-            typeName = `${capitalize(api.name)}${capitalize(param.typeNameSeed ?? param.name)}`;
+            typeName = `${capitalize(api.name)}${capitalize(param.name)}`;
           }
 
           // cleanName을 키로 사용 (중복 방지)
@@ -449,7 +457,7 @@ ${JSON_EXTENSION_DATA_FIELD}
         // Union 타입: named type이면 그대로 사용, 익명이면 각 멤버를 개별 클래스로
         if (innerType.kind === 'union' && innerType.unionTypes) {
           // Union 자체가 named type인지 확인
-          const isNamedUnion = innerType.name && innerType.name.includes('.');
+          const isNamedUnion = Boolean(innerType.name) && NAMED_TYPE_PATTERN.test(innerType.name);
 
           if (isNamedUnion) {
             // named union: 멤버들을 하나의 클래스로 병합하거나 개별 생성
@@ -487,8 +495,7 @@ ${JSON_EXTENSION_DATA_FIELD}
 
                 const cleanName = extractCleanName(typeName);
                 if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
-                  // 반환 타입이므로 isResultType: true - error 필드 추가
-                  typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties, true));
+                  typeMap.set(cleanName, this.generateClassType(typeName, unionMember.properties));
                   // 프로퍼티에서 참조되는 named type도 수집 (재귀)
                   collectReferencedTypes(unionMember.properties, typeMap, exclude, this.tracker, boundGenerateClassType, cleanName);
                 }
@@ -505,8 +512,7 @@ ${JSON_EXTENSION_DATA_FIELD}
 
           const cleanName = extractCleanName(typeName);
           if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
-            // 반환 타입이므로 isResultType: true - error 필드 추가
-            typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties, true));
+            typeMap.set(cleanName, this.generateClassType(typeName, innerType.properties));
             // 프로퍼티에서 참조되는 named type도 수집 (재귀)
             collectReferencedTypes(innerType.properties, typeMap, exclude, this.tracker, boundGenerateClassType, cleanName);
           }
@@ -521,8 +527,7 @@ ${JSON_EXTENSION_DATA_FIELD}
 
         const cleanName = extractCleanName(typeName);
         if (!typeMap.has(cleanName) && !exclude.has(cleanName)) {
-          // 반환 타입이므로 isResultType: true - error 필드 추가
-          typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties, true));
+          typeMap.set(cleanName, this.generateClassType(typeName, api.returnType.properties));
           // 프로퍼티에서 참조되는 named type도 수집 (재귀)
           collectReferencedTypes(api.returnType.properties, typeMap, exclude, this.tracker, boundGenerateClassType, cleanName);
         }
@@ -540,8 +545,16 @@ ${JSON_EXTENSION_DATA_FIELD}
       }
     }
 
-    // Pending external types 해결: typeDefinitions와 native-modules에서 찾아서 클래스 생성
-    // 타입을 찾을 수 없는 경우 빈 stub 클래스 생성 (SDK 버전 호환성)
+    // 타입 정의 경로로 만들어진 클래스가 참조하는 타입도 같은 방식으로 모은다.
+    // (API 시그니처에서 닿지 않는 타입 정의가 가진 중첩 익명 객체·비공개 named 타입이 빠지지 않도록)
+    for (const def of typeDefinitions ?? []) {
+      if (def.kind === 'interface' && def.properties && def.properties.length > 0) {
+        collectReferencedTypes(def.properties, typeMap, exclude, this.tracker, boundGenerateClassType, def.name);
+      }
+    }
+
+    // Pending external types 해결: typeDefinitions와 번들 선언에서 찾아서 클래스 생성.
+    // 번들에서도 찾을 수 없으면 생성을 중단한다 (빈 stub 클래스로 숨기지 않는다).
     if (this.tracker.pendingExternalTypes.size > 0) {
       // 재귀적으로 추가된 pending types 해결 (최대 10번 반복하여 무한 루프 방지)
       let iteration = 0;
@@ -559,9 +572,9 @@ ${JSON_EXTENSION_DATA_FIELD}
           // 1. typeDefinitions에서 먼저 찾기
           let typeDef = typeDefinitions?.find(t => t.name === typeName);
 
-          // 2. 없으면 native-modules에서 찾기
+          // 2. 없으면 번들 선언에서 직접 찾기
           if (!typeDef && parser) {
-            typeDef = parser.parseNativeModulesType(typeName) || undefined;
+            typeDef = parser.parseBundleType(typeName) || undefined;
           }
 
           if (typeDef && typeDef.kind === 'interface' && typeDef.properties && typeDef.properties.length > 0) {
@@ -575,14 +588,11 @@ ${JSON_EXTENSION_DATA_FIELD}
         iteration++;
       }
 
-      // 찾을 수 없는 타입에 대해 빈 stub 클래스 생성 (SDK 버전 호환성)
-      // 이전 SDK 버전에 없는 타입이 참조되는 경우 컴파일 오류 방지
-      for (const typeName of unresolvedTypes) {
-        if (!typeMap.has(typeName) && !exclude.has(typeName)) {
-          const stubClass = this.generateStubClass(typeName);
-          typeMap.set(typeName, stubClass);
-          console.log(`  [Stub] Generated stub class for unresolved type: ${typeName}`);
-        }
+      if (unresolvedTypes.size > 0) {
+        throw new Error(
+          `web-framework 번들에서 정의를 찾을 수 없는 타입이 있습니다: ${Array.from(unresolvedTypes).join(', ')}\n` +
+            `API 시그니처가 참조하는 타입은 번들 dist/index.d.ts에 선언되어 있어야 합니다.`,
+        );
       }
     }
 
@@ -590,7 +600,9 @@ ${JSON_EXTENSION_DATA_FIELD}
     const { emit: inlineEmit, aliases: enumAliases } = computeEnumAliases(
       this.tracker.inlineEnums,
       parsedStringEnumValues,
+      this.protectedEnumNames,
     );
+    this.enumAliases = enumAliases;
 
     // 타입 1개당 1 유닛으로 반환. alias는 본문 식별자 word-boundary 치환이라 유닛별로 적용해도
     // 전체를 합쳐 적용한 것과 결과가 동일하다 (블록 간 의존 없음). 순서는 기존 단일 파일과 동일:

@@ -183,15 +183,15 @@ public class SerializationTester : MonoBehaviour
         // CheckoutPaymentOptions 테스트
         TestClassSerialization("CheckoutPaymentOptions", new CheckoutPaymentOptions
         {
-            PayToken = "test-token-123"
+            Params = new CheckoutPaymentParams { PayToken = "test-token-123" }
         }, json => json.Contains("test-token-123"));
 
         // EventLogParams 테스트
         TestClassSerialization("EventLogParams", new EventLogParams
         {
             Log_name = "test_event",
-            Log_type = "custom"
-        }, json => json.Contains("test_event"));
+            Log_typeTyped = EventLogParamsLog_type.Event
+        }, json => json.Contains("test_event") && json.Contains("\"event\""));
     }
 
     void TestClassSerialization<T>(string testName, T instance, Func<string, bool> validateJson) where T : class

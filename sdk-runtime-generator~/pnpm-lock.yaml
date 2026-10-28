@@ -12,9 +12,6 @@ importers:
 
   .:
     dependencies:
-      '@apps-in-toss/web-analytics':
-        specifier: 2.10.9
-        version: 2.10.9(@apps-in-toss/web-bridge@2.10.13)
       '@apps-in-toss/web-framework':
         specifier: 3.9.0
         version: 3.9.0(typanion@3.14.0)(typescript@7.0.2)
@@ -165,17 +162,6 @@ packages:
   '@apps-in-toss/cli@3.9.0':
     resolution: {integrity: sha512-snCigprheJojoZRqYtkHoZEYJDg5x5P4Th1MmJnHsUqhGKowr55urJ5ahDmgwFj1HQzTH4Co/df+vcLPlXciIQ==}
     hasBin: true
-
-  '@apps-in-toss/types@2.10.13':
-    resolution: {integrity: sha512-sheSigDuakdt6cAndxo9Dq5uaAOCLQWwUeU0+O0E0muPmh078B1OBbr1LRLT4zijWB+ebhZ5S2AGF/hjeP6VFQ==}
-
-  '@apps-in-toss/web-analytics@2.10.9':
-    resolution: {integrity: sha512-LsQPhdcfWM8ynfj94f6DBu5E80WJayTCdm9l6t62uIXHzvgT2bIsc8PdmVpmC+JpGR0exYSHCLGFIyLvL1tPBQ==}
-    peerDependencies:
-      '@apps-in-toss/web-bridge': '*'
-
-  '@apps-in-toss/web-bridge@2.10.13':
-    resolution: {integrity: sha512-glW/5FYKCvPuwLeHeY3khE18iFpn7e5TZCecztF0RYZueTW3+EcVx9pouT4fHLZwC/rwMdcbbqJqYrKr7Sh8+g==}
 
   '@apps-in-toss/web-framework@3.0.1':
     resolution: {integrity: sha512-cSLQ3GgOih6FLzCa24+hWZp1FuRwlwghrJRqoBHF9iAUtninkHy777uACBYzxmCgZ1+bDbhHgIlRYBqk43eJmQ==}
@@ -936,8 +922,8 @@ packages:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
     engines: {node: 18 || 20 || >=22}
 
-  baseline-browser-mapping@2.11.30:
-    resolution: {integrity: sha512-YJs6Pz17RMNv8HoyKREtCY38E3BV1nPkWVmIb+XN1uHC1Vqt3KZCH/uJH9ZKRoiKb/icZ6tvehyee6RZNbFfRA==}
+  baseline-browser-mapping@2.11.31:
+    resolution: {integrity: sha512-b0k7wXlWjpuL/Uxb/pYlpjY0ej5BjAmurtPUk3eRGuloI4yjK32m8TiKUQ81l1ptcLjKS/KH2+uqIolZti1x4Q==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -1807,16 +1793,6 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/types@2.10.13': {}
-
-  '@apps-in-toss/web-analytics@2.10.9(@apps-in-toss/web-bridge@2.10.13)':
-    dependencies:
-      '@apps-in-toss/web-bridge': 2.10.13
-
-  '@apps-in-toss/web-bridge@2.10.13':
-    dependencies:
-      '@apps-in-toss/types': 2.10.13
-
   '@apps-in-toss/web-framework@3.0.1(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/cli': 3.9.0(typanion@3.14.0)
@@ -2610,7 +2586,7 @@ snapshots:
 
   balanced-match@4.0.4: {}
 
-  baseline-browser-mapping@2.11.30: {}
+  baseline-browser-mapping@2.11.31: {}
 
   brace-expansion@5.0.12:
     dependencies:
@@ -2618,7 +2594,7 @@ snapshots:
 
   browserslist@4.29.4:
     dependencies:
-      baseline-browser-mapping: 2.11.30
+      baseline-browser-mapping: 2.11.31
       caniuse-lite: 1.0.30001819
       electron-to-chromium: 1.5.463
       node-releases: 2.0.60

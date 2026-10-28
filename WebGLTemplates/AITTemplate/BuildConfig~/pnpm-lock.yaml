@@ -20,12 +20,6 @@ importers:
 
   .:
     dependencies:
-      '@apps-in-toss/bridge-core':
-        specifier: 2.10.9
-        version: 2.10.9
-      '@apps-in-toss/web-analytics':
-        specifier: 2.10.9
-        version: 2.10.9(@apps-in-toss/web-bridge@2.10.13)
       '@apps-in-toss/web-framework':
         specifier: 3.9.0
         version: 3.9.0(typanion@3.14.0)(typescript@7.0.2)
@@ -49,9 +43,6 @@ packages:
     resolution: {integrity: sha512-1no0CXOhPEeSCrGduT37KMmCqA6irhowXa0S7AaPHb4RQSHGioR3wvvD7HHBCaUriMYs0EvtqRJfOgYd0ycKlQ==}
     engines: {node: '>=24'}
 
-  '@apps-in-toss/bridge-core@2.10.9':
-    resolution: {integrity: sha512-PKFkPserIDHPvwIwS/89jR4QEVOU4A7MaIQkGBoVu8uY6IBzzp3oPJ6Gad2TRZGYKhC0ydbDw6gSVY3wx+8riw==}
-
   '@apps-in-toss/cli@3.9.0':
     resolution: {integrity: sha512-snCigprheJojoZRqYtkHoZEYJDg5x5P4Th1MmJnHsUqhGKowr55urJ5ahDmgwFj1HQzTH4Co/df+vcLPlXciIQ==}
     hasBin: true
@@ -64,17 +55,6 @@ packages:
     peerDependenciesMeta:
       '@apps-in-toss/web-framework':
         optional: true
-
-  '@apps-in-toss/types@2.10.13':
-    resolution: {integrity: sha512-sheSigDuakdt6cAndxo9Dq5uaAOCLQWwUeU0+O0E0muPmh078B1OBbr1LRLT4zijWB+ebhZ5S2AGF/hjeP6VFQ==}
-
-  '@apps-in-toss/web-analytics@2.10.9':
-    resolution: {integrity: sha512-LsQPhdcfWM8ynfj94f6DBu5E80WJayTCdm9l6t62uIXHzvgT2bIsc8PdmVpmC+JpGR0exYSHCLGFIyLvL1tPBQ==}
-    peerDependencies:
-      '@apps-in-toss/web-bridge': '*'
-
-  '@apps-in-toss/web-bridge@2.10.13':
-    resolution: {integrity: sha512-glW/5FYKCvPuwLeHeY3khE18iFpn7e5TZCecztF0RYZueTW3+EcVx9pouT4fHLZwC/rwMdcbbqJqYrKr7Sh8+g==}
 
   '@apps-in-toss/web-framework@3.9.0':
     resolution: {integrity: sha512-hGg1ri7KYbNZeeEiPFWy0efqv38sDuU8h4Ub/LldBZL/ZJy4D+1Ce3JNSX2qWDeLl+wfbb6hWdK3X9reJjEmPg==}
@@ -546,8 +526,8 @@ packages:
     resolution: {integrity: sha512-FvWoWYfSCM6kRxCSH+MGLHIKKGRL6A6AW7Zek2O32REPQRdg131428uRTKMBYAeRd3XXAaHDS60Wpri7CdKDrA==}
     engines: {node: '>=4'}
 
-  baseline-browser-mapping@2.11.30:
-    resolution: {integrity: sha512-YJs6Pz17RMNv8HoyKREtCY38E3BV1nPkWVmIb+XN1uHC1Vqt3KZCH/uJH9ZKRoiKb/icZ6tvehyee6RZNbFfRA==}
+  baseline-browser-mapping@2.11.31:
+    resolution: {integrity: sha512-b0k7wXlWjpuL/Uxb/pYlpjY0ej5BjAmurtPUk3eRGuloI4yjK32m8TiKUQ81l1ptcLjKS/KH2+uqIolZti1x4Q==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -1082,8 +1062,6 @@ snapshots:
       '@apps-in-toss/ait-format-proto': 1.0.0
       fflate: 0.8.3
 
-  '@apps-in-toss/bridge-core@2.10.9': {}
-
   '@apps-in-toss/cli@3.9.0(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
@@ -1115,16 +1093,6 @@ snapshots:
       - unloader
       - vite
       - webpack
-
-  '@apps-in-toss/types@2.10.13': {}
-
-  '@apps-in-toss/web-analytics@2.10.9(@apps-in-toss/web-bridge@2.10.13)':
-    dependencies:
-      '@apps-in-toss/web-bridge': 2.10.13
-
-  '@apps-in-toss/web-bridge@2.10.13':
-    dependencies:
-      '@apps-in-toss/types': 2.10.13
 
   '@apps-in-toss/web-framework@3.9.0(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
@@ -1558,11 +1526,11 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  baseline-browser-mapping@2.11.30: {}
+  baseline-browser-mapping@2.11.31: {}
 
   browserslist@4.29.4:
     dependencies:
-      baseline-browser-mapping: 2.11.30
+      baseline-browser-mapping: 2.11.31
       caniuse-lite: 1.0.30001819
       electron-to-chromium: 1.5.463
       node-releases: 2.0.60

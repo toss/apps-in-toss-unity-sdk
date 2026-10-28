@@ -234,7 +234,7 @@ jobs:
       fail-fast: false
       # OS당 enabled 머신 5대(macos-1-1~1-5)에서 매트릭스 5개를 병렬 실행
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"]
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -271,7 +271,7 @@ jobs:
       fail-fast: false
       # OS당 enabled 머신 5대(windows-2-1~2-5)에서 매트릭스 5개를 병렬 실행
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"]
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -308,7 +308,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"]
 
     env:
       MOBILE_EMULATION: "true"
@@ -399,7 +399,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "2022.3", "6000.0", "6000.2", "6000.3"]
+        unity-version: ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"]
 
     env:
       TEST_LEVEL: ${{ inputs.test_level || '2' }}

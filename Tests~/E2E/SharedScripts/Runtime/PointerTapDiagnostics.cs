@@ -358,5 +358,10 @@ public class PointerTapDiagnostics : MonoBehaviour,
     /// 스크롤 콘텐츠가 손가락 밑에서 흐르면 실제로 이웃한 동명 위젯으로 넘어가므로 흔한 경우입니다.
     /// TapRecord.OverChanged도 이 문자열을 비교하니, ID가 없으면 신원이 바뀐 것을 놓칩니다.
     /// </summary>
+#if UNITY_6000_6_OR_NEWER
+    // Unity 6.6에서 GetInstanceID()가 에러 수준 obsolete가 됐다.
+    private static string Name(GameObject go) => go != null ? $"{go.name}#{go.GetEntityId()}" : "(none)";
+#else
     private static string Name(GameObject go) => go != null ? $"{go.name}#{go.GetInstanceID()}" : "(none)";
+#endif
 }

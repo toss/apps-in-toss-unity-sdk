@@ -18,7 +18,7 @@ on:
         type: string
         required: true
       unity-version:
-        description: 'Unity version pattern (e.g., 2021.3, 6000.2)'
+        description: 'Unity version pattern (e.g., 2021.3, 6000.6)'
         type: string
         required: true
       web-framework-version:
@@ -143,7 +143,7 @@ jobs:
     # 운영 측 라벨: macos-1-N / windows-2-N → ait-slot-N (N=1..5)
     # 매핑에 없는 버전은 라벨이 "ait-slot-"가 되어 잡이 큐에 남으므로 즉시
     # 발견된다(silent fallback 없음).
-    runs-on: ${{ fromJSON(format('["self-hosted", "{0}", "{1}", "enabled", "ait-slot-{2}"]', inputs.os == 'macos' && 'macOS' || 'Windows', inputs.os == 'macos' && 'ARM64' || 'X64', fromJSON('{"2021.3":"1","2022.3":"2","6000.0":"3","6000.2":"4","6000.3":"5"}')[inputs.unity-version])) }}
+    runs-on: ${{ fromJSON(format('["self-hosted", "{0}", "{1}", "enabled", "ait-slot-{2}"]', inputs.os == 'macos' && 'macOS' || 'Windows', inputs.os == 'macos' && 'ARM64' || 'X64', fromJSON('{"2021.3":"1","2022.3":"2","6000.0":"3","6000.6":"4","6000.3":"5"}')[inputs.unity-version])) }}
     timeout-minutes: 90
     # 동시성 정책: 호출자(test-e2e / preview / release)의 잡 concurrency가 ref
     # 기반 cancel을 담당하므로 reusable workflow는 (os, unity-version) 단위로만

@@ -336,14 +336,14 @@ jobs:
 
           case "$STRATEGY" in
             full)
-              MACOS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
-              WINDOWS='["2021.3","2022.3","6000.0","6000.2","6000.3"]'
+              MACOS='["2021.3","2022.3","6000.0","6000.3","6000.6"]'
+              WINDOWS='["2021.3","2022.3","6000.0","6000.3","6000.6"]'
               SKIP_WIN=false
               SKIP_BUILD=false
               ;;
             standard)
               MACOS='["2021.3","6000.0","6000.3"]'
-              WINDOWS='["2022.3","6000.2"]'
+              WINDOWS='["2022.3","6000.6"]'
               SKIP_WIN=false
               SKIP_BUILD=false
               ;;
@@ -698,9 +698,9 @@ jobs:
 
           | 버전 | 상태 |
           |------|------|
-          | Unity 6000.3 (Unity 6.3) | ✅ 지원 |
-          | Unity 6000.2 (Unity 6 LTS) | ✅ 지원 |
-          | Unity 6000.0 (Unity 6) | ✅ 지원 |
+          | Unity 6000.6 (Unity 6.6) | ✅ 지원 |
+          | Unity 6000.3 (Unity 6.3 LTS) | ✅ 지원 |
+          | Unity 6000.0 (Unity 6 LTS) | ✅ 지원 |
           | Unity 2022.3 LTS | ✅ 지원 |
           | Unity 2021.3 LTS | ✅ 지원 (최소 버전) |
 

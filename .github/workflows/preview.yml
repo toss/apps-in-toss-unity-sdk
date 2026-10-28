@@ -1,5 +1,5 @@
 name: Preview
-run-name: "Preview - ${{ inputs.target_ref }}${{ inputs.targets != 'macos-6000.2' && format(' ({0})', inputs.targets) || '' }}"
+run-name: "Preview - ${{ inputs.target_ref }}${{ inputs.targets != 'macos-6000.6' && format(' ({0})', inputs.targets) || '' }}"
 
 on:
   workflow_dispatch:
@@ -9,9 +9,9 @@ on:
         required: true
         type: string
       targets:
-        description: '빌드 타겟 - 쉼표로 구분 (예: macos-6000.2,windows-2021.3)'
+        description: '빌드 타겟 - 쉼표로 구분 (예: macos-6000.6,windows-2021.3)'
         required: false
-        default: 'macos-6000.2'
+        default: 'macos-6000.6'
         type: string
 
 concurrency:

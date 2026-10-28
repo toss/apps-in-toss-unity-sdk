@@ -110,7 +110,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/216269700/dispatches 
   "ref": "main",
   "inputs": {
     "target_ref": "123",
-    "targets": "macos-6000.3,macos-6000.2,macos-6000.0,macos-2022.3,macos-2021.3"
+    "targets": "macos-6000.6,macos-6000.3,macos-6000.0,macos-2022.3,macos-2021.3"
   }
 }
 EOF
@@ -227,7 +227,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/runs/RUN_ID/rerun-failed-jobs -
 
 대부분 인프라 기인이라 코드 변경 없이 `rerun-failed-jobs` 재실행으로 해결됩니다. Unity 라이선스 결함은 예외입니다. 빌드 로그의 인프라 시그니처 목록은 E2E 매트릭스 실패 분류기 `classify_infra()`(`.github/scripts/e2e/classify-matrix-failures.sh`)에 있습니다.
 
-- **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake·IPC 에러(exit code 42) / `No valid Unity Editor license found`. self-hosted macOS 러너는 버전마다 정해진 `ait-slot-<N>` 라벨로 잡을 라우팅하지만, 슬롯 5개가 실제로는 물리 머신 한 대와 라이선싱 IPC 채널(`LicenseClient-<host>`)을 공유합니다. 그 채널을 먼저 만든 에디터의 번들 클라이언트가 오래된 버전(예 2021.3의 v1.15.x)이면 이후 잡은 entitlement 조회가 비어(`Found 0 entitlement groups`) 라이선스 인증에 실패합니다. `fix-licensing-client.sh`가 EditMode 테스트를 포함해 Unity를 실행하는 모든 경로보다 먼저 돌면서 서명 무효/버전 노후 클라이언트를 이 머신에서 구할 수 있는 가장 최신 서명본으로 자동 교체하므로 보통은 재발하지 않습니다. 그래도 같은 시그니처가 2회 연속이면 자동 교체로도 못 고치는 실제 결함이므로 rerun을 반복하지 말고 에스컬레이션합니다.
+- **Unity 라이선스 충돌** — `Code 8 (또는 Code 10) while verifying Licensing Client signature` / `No ULF license found` / `Token not found in cache` / handshake·IPC 에러(exit code 42) / `No valid Unity Editor license found`. self-hosted macOS 러너는 버전마다 정해진 `ait-slot-<N>` 라벨로 잡을 라우팅하지만, 슬롯 5개가 실제로는 물리 머신 한 대와 라이선싱 IPC 채널(`LicenseClient-<host>`)을 공유합니다. 그 채널을 먼저 만든 에디터의 번들 클라이언트가 오래된 버전(예 2021.3의 v1.15.x)이면 이후 잡은 entitlement 조회가 비어(`Found 0 entitlement groups`) 라이선스 인증에 실패합니다. `fix-licensing-client.sh`가 EditMode 테스트를 포함해 Unity를 실행하는 모든 경로보다 먼저 돌면서 서명 무효/버전 노후 클라이언트를 이 머신에서 구할 수 있는 가장 최신 서명본으로 자동 교체하므로 보통은 재발하지 않습니다. Unity 6000.6 이상은 번들 클라이언트가 새 버전 계열(6000.6.7f1은 1.2.0)이라 숫자로 비교할 수 없어서 교체하지 않고, 교체 후보에서도 뺍니다. 그래도 같은 시그니처가 2회 연속이면 자동 교체로도 못 고치는 실제 결함이므로 rerun을 반복하지 말고 에스컬레이션합니다.
 - **Windows artifact upload finalize transient** — `actions/upload-artifact`가 `successfully finalized` 없이 끝납니다(~1.3%). 재실행으로 해결됩니다.
 - **Unity WebGL Brotli/Gzip 크래시** — `Brotli webgl/Build/...unityweb` 직후 `exit code: 1`. self-hosted 러너의 동시 빌드 경합입니다. E2E CI는 압축을 끄고(`AIT_COMPRESSION_FORMAT="0"`) 돌아 새로 발생하지 않습니다. 로컬 재현은 [테스트 전략](testing.md)의 "로컬 CI 재현"을 참조하세요.
 - **E2E warm-reload `unityInstance` 타임아웃(3-1)** — 리로드 후 `window['unityInstance']`가 `UNITY_WAIT_BUDGET_MS`(25초) 안에 설정되지 않습니다. 시도는 최대 3회(`maxAttempts`)입니다. 재시도 루프는 `Tests~/E2E/tests/lib/reload-retry.js`의 `reloadWithRetry()`이고, 3-1은 `POLICY_WARM_CACHE` 정책을 씁니다. 9-x가 쓰는 `reloadAndWaitForUnity()`는 `POLICY_ISOLATED_PAGE`라 값이 다릅니다. 예산이 75초씩 3회이고 `Failed to download file`도 재시도 대상으로 봅니다.

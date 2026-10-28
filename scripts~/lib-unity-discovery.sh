@@ -7,11 +7,11 @@ get_project_path_for_version() {
     local version_pattern="$1"
 
     case "$version_pattern" in
+        6000.6*)
+            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-6000.6"
+            ;;
         6000.3*)
             echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-6000.3"
-            ;;
-        6000.2*)
-            echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-6000.2"
             ;;
         6000.0*)
             echo "$SCRIPT_DIR/Tests~/E2E/SampleUnityProject-6000.0"
@@ -213,22 +213,22 @@ show_help() {
     echo "    ├── SampleUnityProject-2021.3/   # Unity 2021.3.x용"
     echo "    ├── SampleUnityProject-2022.3/   # Unity 2022.3.x용"
     echo "    ├── SampleUnityProject-6000.0/   # Unity 6000.0.x용"
-    echo "    ├── SampleUnityProject-6000.2/   # Unity 6000.2.x용"
-    echo "    └── SampleUnityProject-6000.3/   # Unity 6000.3.x용"
+    echo "    ├── SampleUnityProject-6000.3/   # Unity 6000.3.x용"
+    echo "    └── SampleUnityProject-6000.6/   # Unity 6000.6.x용"
     echo ""
     echo "Unity 버전 지정:"
     echo "  --unity-version 옵션으로 특정 Unity 버전을 지정할 수 있습니다."
     echo "  지정하지 않으면 우선순위에 따라 자동 선택됩니다."
     echo ""
     echo "  지원 버전 (우선순위 순):"
-    echo "    • Unity 6000.3.x (Unity 6.3)"
-    echo "    • Unity 6000.2.x (Unity 6 LTS)"
-    echo "    • Unity 6000.0.x (Unity 6)"
+    echo "    • Unity 6000.6.x (Unity 6.6 Supported)"
+    echo "    • Unity 6000.3.x (Unity 6.3 LTS)"
+    echo "    • Unity 6000.0.x (Unity 6 LTS)"
     echo "    • Unity 2022.3.x LTS"
     echo "    • Unity 2021.3.x LTS (최소 지원 버전)"
     echo ""
     echo "  예시:"
-    echo "    $0 --unity-build --unity-version 6000.2"
+    echo "    $0 --unity-build --unity-version 6000.6"
     echo "    $0 --all --unity-version 2022.3"
     echo "    $0 --unity-build --parallel   # 모든 버전 병렬 빌드"
     echo "    $0 --list-unity               # 설치된 버전 확인"

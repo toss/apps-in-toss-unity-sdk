@@ -2012,7 +2012,12 @@
         log('IDBFS 포획 완료 (mountpoint=' + mount.mountpoint + ')');
     }
 
+    var trapEntered = false;
+
     function trapFn(Module) {
+        // preRun 배열 양 끝에 같은 trapFn을 두므로(buildPreRunArray) 두 번째 호출은 무시한다.
+        if (trapEntered) return;
+        trapEntered = true;
         state.preRunRan = true;
         api.preRunRan = true;
         // Emscripten callRuntimeCallbacks가 Module을 인자로 넘긴다. 없으면 트랩 불가 → vanilla
@@ -2110,7 +2115,8 @@
 
     /**
      * config.preRun 배열을 만들되, push를 오버라이드해 trapFn이 항상 배열의
-     * "마지막" 원소로 재배치되도록 강제한다.
+     * 맨 앞과 맨 뒤 양쪽에 놓이도록 강제한다(아래 함수 본문 주석: 드레인 순서가
+     * Emscripten 버전마다 반대다). 이 docblock의 이하 설명은 2021.3~6000.3(LIFO) 기준이다.
      *
      * Emscripten의 preRun() 드레인은 Module.preRun을 shift+unshift로 뒤집어 처리한다:
      *   while(Module.preRun.length) __ATPRERUN__.unshift(Module.preRun.shift())
@@ -2128,19 +2134,32 @@
      * 보장한다.
      */
     function buildPreRunArray(existing) {
+        // configure()마다 새 preRun 배열을 만들므로 가드도 인스턴스 단위로 초기화한다.
+        trapEntered = false;
         var arr = [];
-        arr.push = function () {
-            var result = Array.prototype.push.apply(this, arguments);
-            var idx = this.indexOf(trapFn);
-            if (idx !== -1 && idx !== this.length - 1) {
-                this.splice(idx, 1);
-                Array.prototype.push.call(this, trapFn);
+        // trapFn을 배열의 맨 앞과 맨 뒤에 모두 둔다. Emscripten 버전마다 드레인 순서가 달라서
+        // 어느 쪽이 "먼저 실행"인지 빌드 시점에는 알 수 없기 때문이다.
+        //   - 2021.3~6000.3: addOnPreRun이 __ATPRERUN__.unshift → 배열의 마지막 원소가 먼저 실행.
+        //   - 6000.6: addOnPreRun이 onPreRuns.push(FIFO) → 배열의 첫 원소가 먼저 실행.
+        //     (6000.6 framework.js: `var addOnPreRun = (cb) => onPreRuns.push(cb);`)
+        // 마지막에만 두면 6000.6에서 Unity IdbFs prejs가 먼저 돌아 __unityIdbfsMount가
+        // 이미 대입된 뒤 트랩이 설치되고, 그 세션의 PlayerPrefs 영속화가 통째로 꺼진다.
+        // trapFn은 idempotent(trapEntered)라 먼저 도는 쪽만 실제로 일한다.
+        function normalize(a) {
+            for (var i = a.length - 1; i >= 0; i--) {
+                if (a[i] === trapFn) Array.prototype.splice.call(a, i, 1);
             }
-            return result;
+            Array.prototype.unshift.call(a, trapFn);
+            Array.prototype.push.call(a, trapFn);
+        }
+        arr.push = function () {
+            Array.prototype.push.apply(this, arguments);
+            normalize(this);
+            return this.length;
         };
         if (Array.isArray(existing)) arr.push.apply(arr, existing);
         else if (typeof existing === 'function') arr.push(existing);
-        arr.push(trapFn);
+        else normalize(arr);
         return arr;
     }
 

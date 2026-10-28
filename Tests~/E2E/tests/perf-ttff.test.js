@@ -53,7 +53,7 @@ function findHeavyProject() {
   const envPath = process.env.UNITY_PROJECT_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
-  const versionPatterns = ['6000.3', '6000.0', '6000.2', '2022.3', '2021.3'];
+  const versionPatterns = ['6000.6', '6000.3', '6000.0', '2022.3', '2021.3'];
   for (const version of versionPatterns) {
     const projectPath = path.resolve(__dirname, `../HeavySampleUnityProject-${version}`);
     if (fs.existsSync(path.resolve(projectPath, 'ait-build/dist/web'))) {

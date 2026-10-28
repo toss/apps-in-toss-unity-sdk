@@ -8,7 +8,19 @@ Apps in Toss 플랫폼을 위한 Unity SDK입니다. Unity 프로젝트를 Apps 
 - **자동 변환 및 배포**: Unity 프로젝트를 미니앱으로 자동 변환하고 손쉽게 배포
 - **Apps in Toss API**: 결제, 인증, 기기 정보, 위치, 권한 등 모든 Apps in Toss API 지원
 
-Unity 2021.3 이상을 지원하며, Unity 6 이상을 권장합니다.
+Unity 2021.3 이상을 지원하고 Unity 6 LTS 이상을 권장합니다.
+
+CI의 E2E 테스트는 아래 버전으로 macOS와 Windows에서 돌립니다. 새 프로젝트라면 (권장)으로 표시한 LTS 버전 중 하나를 쓰세요.
+
+| Unity 버전 | 구분 |
+|------|------|
+| 6000.3.27f1 | Unity 6.3 LTS (권장) |
+| 6000.0.85f1 | Unity 6 LTS (권장) |
+| 6000.6.7f1 | Unity 6.6 Supported, LTS 아님 |
+| 2022.3.62f3 | Unity 2022 LTS |
+| 2021.3.45f2 | Unity 2021 LTS, 최소 지원 버전 |
+
+같은 계열의 다른 패치 버전도 쓸 수 있지만 CI에서 확인한 건 표에 적은 패치뿐입니다.
 
 ## 문서
 

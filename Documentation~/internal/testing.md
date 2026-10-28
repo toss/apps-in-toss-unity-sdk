@@ -49,7 +49,7 @@ E2E 매트릭스는 아래 5개 버전을 macOS와 Windows 양쪽에서 돌립�
 | 2022.3.62f3 | LTS |
 | 2021.3.45f2 | LTS, 최소 지원 버전 |
 
-각 버전의 정확한 패치는 `Tests~/E2E/SampleUnityProject-<버전>/ProjectSettings/ProjectVersion.txt`가 단일 출처입니다. Tuanjie 엔진도 지원 대상이며, SDK는 2021.3 이상 모든 버전에서 컴파일되어야 합니다.
+각 버전의 정확한 패치는 `Tests~/E2E/SampleUnityProject-<버전>/ProjectSettings/ProjectVersion.txt`가 단일 출처입니다. 버전을 올리면 `README.md`의 테스트 버전 표도 같이 고칩니다. Tuanjie 엔진도 지원 대상이며, SDK는 2021.3 이상 모든 버전에서 컴파일되어야 합니다.
 
 ## 디렉터리
 

@@ -2134,6 +2134,8 @@
      * 보장한다.
      */
     function buildPreRunArray(existing) {
+        // configure()마다 새 preRun 배열을 만들므로 가드도 인스턴스 단위로 초기화한다.
+        trapEntered = false;
         var arr = [];
         // trapFn을 배열의 맨 앞과 맨 뒤에 모두 둔다. Emscripten 버전마다 드레인 순서가 달라서
         // 어느 쪽이 "먼저 실행"인지 빌드 시점에는 알 수 없기 때문이다.

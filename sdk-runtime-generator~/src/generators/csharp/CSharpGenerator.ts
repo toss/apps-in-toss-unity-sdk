@@ -1,6 +1,6 @@
 import { ParsedAPI, GeneratedCode } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
-import { resolveApiCategory, CATEGORY_ORDER } from '../../categories.js';
+import { CATEGORY_ORDER } from '../../categories.js';
 import { loadAllTemplates, getTemplateCache } from './templates.js';
 import { escapeCSharpKeyword, toPascalCase } from './utils.js';
 import { PRIMITIVE_TYPES, EXCLUDED_CALLBACK_TYPES } from './constants.js';
@@ -48,7 +48,7 @@ export class CSharpGenerator {
       if ((paramType === '__type' || paramType === 'object') && param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
         const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
         const apiName = capitalize(api.name);
-        const paramName = capitalize(param.typeNameSeed ?? param.name);
+        const paramName = capitalize(param.name);
         paramType = `${apiName}${paramName}`;
       }
 
@@ -306,123 +306,6 @@ export class CSharpGenerator {
   }
 
   /**
-   * 개별 API의 partial class 파일 생성
-   */
-  async generatePartialApiFile(api: ParsedAPI): Promise<string> {
-    await this.loadTemplates();
-
-    const templates = getTemplateCache();
-    if (!templates.partialApiTemplate) {
-      throw new Error('Partial API template not loaded');
-    }
-
-    // 파라미터 변환
-    const parameters = api.parameters.map(param => {
-      let paramType = mapToCSharpType(param.type);
-
-      // Record<string, object/unknown> → object (하위 호환성)
-      if (paramType === 'Dictionary<string, object>') {
-        paramType = 'object';
-      }
-
-      // 파라미터가 익명 객체(__type, object)인 경우 의미있는 이름 생성
-      if ((paramType === '__type' || paramType === 'object') && param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
-        const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
-        const apiName = capitalize(api.name);
-        const paramName = capitalize(param.typeNameSeed ?? param.name);
-        paramType = `${apiName}${paramName}`;
-      }
-
-      // WebGL DllImport에서 직접 전달 가능한 primitive 타입인지 확인
-      const isPrimitive = PRIMITIVE_TYPES.includes(paramType);
-
-      return {
-        paramName: escapeCSharpKeyword(param.name),
-        paramType,
-        optional: param.optional,
-        description: param.description,
-        isPrimitive,
-      };
-    });
-
-    // C# 규칙: optional 파라미터는 필수 파라미터 뒤에 와야 함
-    parameters.sort((a, b) => {
-      if (a.optional === b.optional) return 0;
-      return a.optional ? 1 : -1;
-    });
-
-    // 반환 타입 변환
-    const returnType = mapToCSharpType(api.returnType);
-
-    // 콜백 타입 결정: 비동기는 Promise 내부 타입, 동기는 반환 타입 직접 사용
-    let callbackType: string;
-    if (api.returnType.kind === 'promise' && api.returnType.promiseType) {
-      callbackType = mapToCSharpType(api.returnType.promiseType);
-    } else {
-      // 동기 함수: 반환 타입을 직접 사용
-      callbackType = mapToCSharpType(api.returnType);
-    }
-
-    // Discriminated Union인 경우 Result 클래스 사용
-    if (api.returnType.kind === 'promise' &&
-        api.returnType.promiseType?.isDiscriminatedUnion) {
-      callbackType = `${api.pascalName}Result`;
-    }
-    // 익명 객체 타입(__type, object)이면 더 구체적인 이름 생성
-    else if (callbackType === '__type' || callbackType === 'object') {
-      // 동기/비동기 함수 모두 처리: promiseType이 있으면 사용, 없으면 returnType 직접 사용
-      const targetType = api.returnType.kind === 'promise'
-        ? api.returnType.promiseType
-        : api.returnType;
-
-      if (targetType && targetType.kind === 'object' &&
-          targetType.properties && targetType.properties.length > 0) {
-        callbackType = `${api.pascalName}Result`;
-      } else if (!targetType || targetType.name === 'void' || targetType.name === 'undefined') {
-        callbackType = 'void';
-      } else {
-        // 이름이 있는 타입이지만 properties가 빈 경우 (예: interface 참조)
-        // -> Result 타입으로 처리
-        callbackType = `${api.pascalName}Result`;
-      }
-    }
-
-    const data = {
-      name: api.name,
-      pascalName: api.pascalName,
-      originalName: api.originalName,
-      description: api.description,
-      returnDescription: api.returnDescription,
-      examples: api.examples,
-      parameters,
-      returnType,
-      isAsync: api.isAsync,
-      callbackType,
-    };
-
-    const generated = templates.partialApiTemplate(data);
-    // 템플릿으로 생성된 코드를 그대로 반환
-    return generated;
-  }
-
-  /**
-   * 모든 API의 partial class 파일들을 Map으로 반환
-   * @returns Map<파일명, 내용>
-   * @deprecated Use generateCategoryFiles() instead for category-based grouping
-   */
-  async generatePartialApiFiles(apis: ParsedAPI[]): Promise<Map<string, string>> {
-    const files = new Map<string, string>();
-
-    for (const api of apis) {
-      const fileName = `AIT.${api.pascalName}.cs`;
-      const content = await this.generatePartialApiFile(api);
-      files.set(fileName, content);
-    }
-
-    return files;
-  }
-
-  /**
    * API를 카테고리별로 그룹핑하여 partial class 파일들을 생성
    * @returns Map<파일명, 내용>
    */
@@ -441,7 +324,7 @@ export class CSharpGenerator {
     const categoryMap = new Map<string, ParsedAPI[]>();
     for (const api of apis) {
       // 카테고리 결정은 resolveApiCategory로 단일화 (CSharpTypeGenerator/index.ts와 동일 규약)
-      const category = resolveApiCategory(api);
+      const category = api.category;
       if (!categoryMap.has(category)) {
         categoryMap.set(category, []);
       }

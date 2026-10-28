@@ -4,7 +4,7 @@ import picocolors from 'picocolors';
 /**
  * 지원되는 타입 목록
  */
-const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never', 'symbol']);
+const SUPPORTED_PRIMITIVES = new Set(['string', 'number', 'boolean', 'void', 'any', 'unknown', 'object', 'null', 'undefined', 'never', 'symbol', 'ArrayBuffer', 'Uint8Array']);
 
 /**
  * C# 타입 매핑 테이블
@@ -178,7 +178,7 @@ export function validateAllTypes(apis: ParsedAPI[]): { success: boolean; errors:
  * 이 타입들은 web-bridge에서 참조되지만 TypeScript 정의가 없어서 object로 매핑됨
  *
  * 참고: InterstitialAd, RewardedAd, ResponseInfo 등의 AdMob 타입은
- * @apps-in-toss/native-modules에 정의되어 있으므로 제외됨 (파서가 자동으로 파싱)
+ * @apps-in-toss/native-modules에 정의되어 있으므로 제외됨 
  */
 const EXTERNAL_TYPES = new Set<string>([
   // 현재 런타임 전용 타입 없음 - 필요시 추가

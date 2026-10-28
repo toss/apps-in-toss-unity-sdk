@@ -1,15 +1,14 @@
 /**
  * 다중 버전 호환성 테스트
  *
- * pnpm alias로 설치된 모든 web-framework 버전에 대해
- * TypeScriptParser가 정상적으로 API를 파싱하는지 검증합니다.
+ * pnpm alias로 설치된 모든 web-framework 3.x 버전에 대해
+ * TypeScriptParser(번들 dist/index.d.ts 입력)가 정상적으로 API를 파싱하는지 검증합니다.
  *
  * 새 버전 추가 시: package.json에 alias만 추가하면 자동으로 테스트 대상에 포함됩니다.
  * 예: "web-framework-3.0.1": "npm:@apps-in-toss/web-framework@3.0.1"
  */
 
 import { describe, test, expect, beforeAll } from 'vitest';
-import { FRAMEWORK_APIS, API_CATEGORIES } from '../../src/categories.js';
 import type { ParsedAPI } from '../../src/types.js';
 import { prepareParameters } from '../../src/generators/csharp/api-data-preparer.js';
 import {
@@ -38,19 +37,11 @@ describe('다중 버전 호환성 테스트', () => {
 
     beforeAll(async () => {
       paths = await resolveVersionPaths(version);
-      // changelog 파이프라인(generate-changelog.ts)과 동일한 옵션 — self-bundle(3.x+)
-      // index.d.ts의 deprecated 최상위 함수(checkoutPayment 등)를 isDeprecated=true로
-      // 보존하고, intersection/제네릭 wrapper 화살표 타입(getServerTime 등)도 감지해서
-      // 파싱한다 (detection.ts detectGlobalFunctions 참고).
-      const isSelfBundle = paths.dtsSource === 'self-bundle';
-      apis = await createParserForVersion(paths).parseAPIs(FRAMEWORK_APIS, {
-        includeDeprecatedGlobals: isSelfBundle,
-        includeWrappedCallables: isSelfBundle,
-      });
+      apis = await createParserForVersion(paths).parseAPIs();
     });
 
-    test('TypeScript 정의 파일 디렉토리를 찾을 수 있어야 함', () => {
-      expect(paths.dtsDir).toBeTruthy();
+    test('번들 index.d.ts를 찾을 수 있어야 함', () => {
+      expect(paths.bundleFile).toBeTruthy();
     });
 
     test('최소 1개 이상 API가 파싱되어야 함', () => {
@@ -67,47 +58,35 @@ describe('다중 버전 호환성 테스트', () => {
     test('핵심 API가 포함되어야 함', () => {
       const apiNames = new Set(apis.map(a => a.name));
 
-      // appLogin은 플랫 함수로 그대로 남아있음 (실측)
+      // 플랫 함수 appLogin과 네임스페이스 멤버가 모두 진입점으로 노출된다
       expect(apiNames.has('appLogin')).toBe(true);
+      expect(apiNames.has('StorageGetItem')).toBe(true);
+      expect(apiNames.has('TossPayAuthorize')).toBe(true);
 
-      // web-framework 자체 dist/index.d.ts(discovery.ts detectSelfContainedDts가
-      // 'self-bundle'로 판정)는 getDeviceId/checkoutPayment를 여전히 최상위 export로
-      // 유지하되 @deprecated JSDoc만 붙인다(실측: 3.0.1 index.d.ts). self-bundle 경로에서
-      // 파서는 이런 deprecated 플랫 함수를 제거하지 않고 isDeprecated=true로 보존한다
-      // (detectGlobalFunctions의 includeDeprecatedGlobals 옵션) — 그래서 getDeviceId/
-      // checkoutPayment 둘 다 여전히 파싱 결과에 존재한다.
+      // 3.x 번들은 getDeviceId/checkoutPayment를 deprecated 최상위 export로 유지한다.
+      // 대체 API가 안내된 경우 isDeprecated=true로 보존한다.
       expect(apiNames.has('getDeviceId')).toBe(true);
       expect(apiNames.has('checkoutPayment')).toBe(true);
-      const flatCheckoutPayment = apis.find(a => a.name === 'checkoutPayment');
-      expect(flatCheckoutPayment?.isDeprecated).toBe(true);
+      expect(apis.find(a => a.name === 'checkoutPayment')?.isDeprecated).toBe(true);
 
-      // TossPay 네임스페이스 객체는 checkoutPayment를 `typeof checkoutPayment`로
-      // 그대로 재노출하며, 이 재노출 지점(TossPay.checkoutPayment)에도 별도로
-      // `@deprecated TossPay.authorize를 사용해주세요` JSDoc이 붙어 있다(실측).
-      // 즉 TossPayCheckoutPayment는 대체 API가 아니라 checkoutPayment와 동일하게
-      // deprecated된 별칭이며, 실제 대체 API는 TossPayAuthorize다.
+      // TossPay.checkoutPayment 재노출 지점에도 별도 @deprecated가 붙어 있다
       expect(apiNames.has('TossPayCheckoutPayment')).toBe(true);
-      const namespacedCheckoutPayment = apis.find(a => a.name === 'TossPayCheckoutPayment');
-      expect(namespacedCheckoutPayment?.isDeprecated).toBe(true);
-      expect(apiNames.has('TossPayAuthorize')).toBe(true);
+      expect(apis.find(a => a.name === 'TossPayCheckoutPayment')?.isDeprecated).toBe(true);
     });
 
-    test('FRAMEWORK_APIS 호환성', () => {
-      const apiNames = new Set(apis.map(a => a.name));
-      for (const name of FRAMEWORK_APIS) {
-        expect(apiNames.has(name), `FRAMEWORK_API '${name}'이(가) v${version}에서 파싱되어야 함`).toBe(true);
-      }
-    });
-
-    test('FRAMEWORK_APIS 속성 검증', () => {
-      for (const name of FRAMEWORK_APIS) {
+    test('FullScreenAd API는 콜백 기반 최상위 export여야 함', () => {
+      for (const name of ['loadFullScreenAd', 'showFullScreenAd']) {
         const api = apis.find(a => a.name === name);
-        if (!api) return; // 이전 테스트에서 실패 처리됨
-
-        expect(api.isCallbackBased).toBe(true);
-        expect(api.isTopLevelExport).toBe(true);
-        expect(api.category).toBe('Advertising');
+        expect(api, `${name}이(가) v${version}에서 파싱되어야 함`).toBeDefined();
+        expect(api!.isCallbackBased).toBe(true);
+        expect(api!.isTopLevelExport).toBe(true);
+        expect(api!.category).toBe('Advertising');
       }
+    });
+
+    test('API 이름이 중복되지 않아야 함', () => {
+      const names = apis.map(a => a.name);
+      expect(new Set(names).size).toBe(names.length);
     });
   });
 
@@ -122,8 +101,8 @@ describe('다중 버전 호환성 테스트', () => {
     const firstPaths = await resolveVersionPaths(first);
     const lastPaths = await resolveVersionPaths(last);
 
-    const firstApis = await createParserForVersion(firstPaths).parseAPIs(FRAMEWORK_APIS);
-    const lastApis = await createParserForVersion(lastPaths).parseAPIs(FRAMEWORK_APIS);
+    const firstApis = await createParserForVersion(firstPaths).parseAPIs();
+    const lastApis = await createParserForVersion(lastPaths).parseAPIs();
 
     expect(
       lastApis.length,
@@ -131,26 +110,14 @@ describe('다중 버전 호환성 테스트', () => {
     ).toBeGreaterThanOrEqual(firstApis.length);
   });
 
-  // FRAMEWORK_APIS ↔ API_CATEGORIES 일관성 검증
-  test('FRAMEWORK_APIS의 모든 항목이 API_CATEGORIES에 매핑되어야 함', () => {
-    const allMappedApis = new Set<string>();
-    for (const categoryApis of Object.values(API_CATEGORIES)) {
-      categoryApis.forEach(api => allMappedApis.add(api));
-    }
-
-    for (const name of FRAMEWORK_APIS) {
-      expect(allMappedApis.has(name), `FRAMEWORK_API '${name}'이(가) API_CATEGORIES에 없음`).toBe(true);
-    }
-  });
-
   // Record<string, object/unknown> 파라미터가 object로 매핑되는지 검증
-  // (하위 호환성: 수동 작성 파일이 object 타입으로 호출하므로 Dictionary<string, object>가 되면 안 됨)
-  describe.each(installedVersions.map(v => ({ version: v })))('v$version Record→object 파라미터 호환성', ({ version }) => {
+  // (열린 사전 파라미터는 object여야 한다: Dictionary<string, object>로 매핑하면 호출부가 깨진다)
+  describe.each(installedVersions.map(v => ({ version: v })))('v$version Record→object 파라미터 매핑', ({ version }) => {
     let apis: ParsedAPI[] = [];
 
     beforeAll(async () => {
       const paths = await resolveVersionPaths(version);
-      apis = await createParserForVersion(paths).parseAPIs(FRAMEWORK_APIS);
+      apis = await createParserForVersion(paths).parseAPIs();
     });
 
     test('모든 API 파라미터에서 Dictionary<string, object>가 생성되지 않아야 함', () => {
@@ -165,9 +132,9 @@ describe('다중 버전 호환성 테스트', () => {
       }
     });
 
-    test('Analytics API 파라미터가 object 타입이어야 함 (수동 파일 호환성)', () => {
+    test('Analytics screen/impression/click 파라미터가 열린 사전(object)이어야 함', () => {
       const analyticsApis = apis.filter(a =>
-        a.name === 'analyticsScreen' || a.name === 'analyticsImpression' || a.name === 'analyticsClick'
+        a.name === 'AnalyticsScreen' || a.name === 'AnalyticsImpression' || a.name === 'AnalyticsClick'
       );
 
       for (const api of analyticsApis) {

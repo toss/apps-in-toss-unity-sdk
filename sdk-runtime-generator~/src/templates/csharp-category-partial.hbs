@@ -26,7 +26,7 @@ namespace AppsInToss
 {{!-- Event subscription API (persistent callback pattern) --}}
 {{#if this.description}}
         /// <summary>
-        /// {{{this.description}}}
+        /// {{docSummary this.description}}
         /// </summary>
 {{/if}}
         /// <param name="onEvent">Event callback when the event is triggered</param>
@@ -75,7 +75,7 @@ namespace AppsInToss
 {{!-- 기존 시그니처 유지: (onEvent, options, onError) --}}
 {{#if this.description}}
         /// <summary>
-        /// {{{this.description}}}
+        /// {{docSummary this.description}}
         /// </summary>
 {{/if}}
         /// <param name="onEvent">이벤트 콜백</param>
@@ -133,7 +133,7 @@ namespace AppsInToss
 {{!-- options 객체를 JSON으로 직렬화하여 전달 --}}
 {{#if this.description}}
         /// <summary>
-        /// {{{this.description}}}
+        /// {{docSummary this.description}}
         /// </summary>
 {{/if}}
         /// <param name="onEvent">이벤트 콜백</param>
@@ -178,7 +178,7 @@ namespace AppsInToss
 {{!-- Callback-based API (loadFullScreenAd, showFullScreenAd pattern) --}}
 {{#if this.description}}
         /// <summary>
-        /// {{{this.description}}}
+        /// {{docSummary this.description}}
         /// </summary>
 {{/if}}
 {{#each this.parameters}}
@@ -220,7 +220,7 @@ namespace AppsInToss
 {{!-- Regular API (one-time callback pattern) --}}
 {{#if this.description}}
         /// <summary>
-        /// {{{this.description}}}
+        /// {{docSummary this.description}}
         /// </summary>
 {{/if}}
 {{#each this.parameters}}
@@ -238,7 +238,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
 {{#if this.isDeprecated}}
-        [Obsolete("{{this.deprecatedMessage}}")]
+        [Obsolete("{{{this.deprecatedMessage}}}")]
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]
@@ -344,7 +344,7 @@ namespace AppsInToss
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
 {{#if this.isDeprecated}}
-        [Obsolete("{{this.deprecatedMessage}}")]
+        [Obsolete("{{{this.deprecatedMessage}}}")]
 {{/if}}
         [Preserve]
         [APICategory("{{../categoryName}}")]

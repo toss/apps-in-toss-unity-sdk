@@ -14,17 +14,43 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
+    public enum TossAdsAttachBannerOptionsTheme
+    {
+        [EnumMember(Value = "light")]
+        Light,
+        [EnumMember(Value = "dark")]
+        Dark,
+        [EnumMember(Value = "auto")]
+        Auto
+    }
+
+    public enum TossAdsAttachBannerOptionsTone
+    {
+        [EnumMember(Value = "blackAndWhite")]
+        BlackAndWhite,
+        [EnumMember(Value = "grey")]
+        Grey
+    }
+
+    public enum TossAdsAttachBannerOptionsVariant
+    {
+        [EnumMember(Value = "card")]
+        Card,
+        [EnumMember(Value = "expanded")]
+        Expanded
+    }
+
     [Serializable]
     [Preserve]
     public class GoogleAdMobLoadAppsInTossAdMobArgs
     {
+        [Preserve]
+        [JsonProperty("options")]
+        public LoadAdMobOptions Options; // optional
         [JsonIgnore]
         public System.Action<LoadAdMobEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
-        [Preserve]
-        [JsonProperty("options")]
-        public LoadAdMobOptions Options; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -33,77 +59,14 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobEvent
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("data")]
-        public AdMobLoadResult Data;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AdMobLoadResult
+    public class LoadAdMobOptions
     {
         [Preserve]
         [JsonProperty("adGroupId")]
         public string AdGroupId;
         [Preserve]
-        [JsonProperty("adUnitId")]
-        public string AdUnitId;
-        [Preserve]
-        [JsonProperty("responseInfo")]
-        public ResponseInfo ResponseInfo;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ResponseInfo
-    {
-        [Preserve]
-        [JsonProperty("adNetworkInfoArray")]
-        public AdNetworkResponseInfo[] AdNetworkInfoArray;
-        [Preserve]
-        [JsonProperty("loadedAdNetworkInfo")]
-        public AdNetworkResponseInfo LoadedAdNetworkInfo;
-        [Preserve]
-        [JsonProperty("responseId")]
-        public string ResponseId;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AdNetworkResponseInfo
-    {
-        [Preserve]
-        [JsonProperty("adSourceId")]
-        public string AdSourceId;
-        [Preserve]
-        [JsonProperty("adSourceName")]
-        public string AdSourceName;
-        [Preserve]
-        [JsonProperty("adSourceInstanceId")]
-        public string AdSourceInstanceId;
-        [Preserve]
-        [JsonProperty("adSourceInstanceName")]
-        public string AdSourceInstanceName;
-        [Preserve]
-        [JsonProperty("adNetworkClassName")]
-        public string AdNetworkClassName;
+        [JsonProperty("referrer")]
+        public string Referrer; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -134,92 +97,15 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadAdMobOptions
-    {
-        [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class GoogleAdMobShowAppsInTossAdMobArgs
     {
+        [Preserve]
+        [JsonProperty("options")]
+        public ShowAdMobOptions Options; // optional
         [JsonIgnore]
         public System.Action<ShowAdMobEvent> OnEvent;
         [JsonIgnore]
         public System.Action<Error> OnError;
-        [Preserve]
-        [JsonProperty("options")]
-        public ShowAdMobOptions Options; // optional
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowAdMobEvent
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("data")]
-        public ShowAdMobEventData Data;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class ShowAdMobEventData
-    {
-        [Preserve]
-        [JsonProperty("unitType")]
-        public string UnitType;
-        [Preserve]
-        [JsonProperty("unitAmount")]
-        public double UnitAmount;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AdUserEarnedReward
-    {
-        [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        [Preserve]
-        [JsonProperty("data")]
-        public AdUserEarnedRewardData Data;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AdUserEarnedRewardData
-    {
-        [Preserve]
-        [JsonProperty("unitType")]
-        public string UnitType;
-        [Preserve]
-        [JsonProperty("unitAmount")]
-        public double UnitAmount;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -285,7 +171,7 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("theme")]
-        public string Theme; // optional
+        public NavigationBarTheme? Theme; // optional
         [Preserve]
         [JsonProperty("padding")]
         public string Padding; // optional
@@ -424,13 +310,13 @@ namespace AppsInToss
     {
         [Preserve]
         [JsonProperty("theme")]
-        public string Theme; // optional
+        public TossAdsAttachBannerOptionsTheme? Theme; // optional
         [Preserve]
         [JsonProperty("tone")]
-        public string Tone; // optional
+        public TossAdsAttachBannerOptionsTone? Tone; // optional
         [Preserve]
         [JsonProperty("variant")]
-        public string Variant; // optional
+        public TossAdsAttachBannerOptionsVariant? Variant; // optional
         [Preserve]
         [JsonProperty("callbacks")]
         public BannerSlotCallbacks Callbacks; // optional
@@ -446,8 +332,6 @@ namespace AppsInToss
     {
         [JsonIgnore]
         public System.Action Destroy;
-        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
-        public string error;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -456,11 +340,30 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class LoadFullScreenAdOptions
+    public class ShowFullScreenAdEvent
     {
         [Preserve]
-        [JsonProperty("adGroupId")]
-        public string AdGroupId;
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("data")]
+        public ShowFullScreenAdEventData Data; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class ShowFullScreenAdEventData
+    {
+        [Preserve]
+        [JsonProperty("unitType")]
+        public string UnitType;
+        [Preserve]
+        [JsonProperty("unitAmount")]
+        public double UnitAmount;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -482,6 +385,36 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class LoadFullScreenAdOptions
+    {
+        [Preserve]
+        [JsonProperty("adGroupId")]
+        public string AdGroupId;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class LoadFullScreenAdParams
+    {
+        [Preserve]
+        [JsonProperty("options")]
+        public LoadFullScreenAdOptions Options;
+        [JsonIgnore]
+        public System.Action<LoadFullScreenAdEvent> OnEvent;
+        [JsonIgnore]
+        public System.Action<object> OnError;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class ShowFullScreenAdOptions
     {
         [Preserve]
@@ -493,40 +426,56 @@ namespace AppsInToss
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
-    /// <summary>
-    /// Data for userEarnedReward event
-    /// </summary>
     [Serializable]
     [Preserve]
-    public class ShowFullScreenAdEventData
+    public class ShowFullScreenAdParams
     {
         [Preserve]
-        [JsonProperty("unitType")]
-        public string UnitType;
-        [Preserve]
-        [JsonProperty("unitAmount")]
-        public double UnitAmount;
+        [JsonProperty("options")]
+        public ShowFullScreenAdOptions Options;
+        [JsonIgnore]
+        public System.Action<ShowFullScreenAdEvent> OnEvent;
+        [JsonIgnore]
+        public System.Action<object> OnError;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
 
-    /// <summary>
-    /// Full screen ad event (discriminated union)
-    /// </summary>
     [Serializable]
     [Preserve]
-    public class ShowFullScreenAdEvent
+    public class TossAdsAttachBannerResult
     {
-        /// <summary>Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested</summary>
+        [JsonIgnore]
+        public System.Action Destroy;
+
         [Preserve]
-        [JsonProperty("type")]
-        public string Type;
-        /// <summary>Event data (only for userEarnedReward)</summary>
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class TossAdsInitializeOptions
+    {
         [Preserve]
-        [JsonProperty("data")]
-        public ShowFullScreenAdEventData Data; // optional
+        [JsonProperty("callbacks")]
+        public TossAdsInitializeOptionsCallbacks Callbacks; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class TossAdsInitializeOptionsCallbacks
+    {
+        [JsonIgnore]
+        public System.Action OnInitialized; // optional
+        [JsonIgnore]
+        public System.Action<Error> OnInitializationFailed; // optional
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

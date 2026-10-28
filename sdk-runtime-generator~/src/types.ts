@@ -44,6 +44,35 @@ export interface ParsedAPI {
   callbackEventType?: string; // 콜백 이벤트 타입 (예: LoadAdMobEvent)
   // 중첩 콜백 지원 (options.processProductGrant 등)
   nestedCallbacks?: NestedCallback[];
+  /**
+   * window.AppsInToss 기준 호출 경로 (예: 'Device.getContacts.getPermission').
+   * 없으면 namespace/originalName으로 유도한다 (getApiCallPath 참고).
+   * 함수의 하위 멤버(isSupported/getPermission/openPermissionDialog)처럼 이름 규약만으로
+   * 경로를 만들 수 없는 API가 지정한다.
+   */
+  callPath?: string;
+  /** 호출이 아니라 프로퍼티 읽기(Device.locale 등)로 값을 얻는 API */
+  isProperty?: boolean;
+  /**
+   * addEventListener가 아니라 `X({ onEvent, onError })`를 직접 호출하는 구독 API
+   * (SafeArea.subscribe, Game.subscribeInfoOverlayHidden). isEventSubscription과 함께 쓴다.
+   */
+  isDirectSubscribe?: boolean;
+  /** 직접 구독 API의 인자 객체가 onError를 받는지 (SafeArea.subscribe는 받지 않는다) */
+  directSubscribeHasOnError?: boolean;
+  /** 다른 API의 하위 멤버(isSupported 등)일 때 기반 API의 C# 이름 */
+  baseApiName?: string;
+}
+
+/**
+ * window.AppsInToss 기준 API 호출 경로를 반환한다.
+ * - callPath가 있으면 그대로
+ * - 네임스페이스 API: `<Namespace>.<member>`
+ * - 최상위 API: `<name>`
+ */
+export function getApiCallPath(api: Pick<ParsedAPI, 'callPath' | 'namespace' | 'originalName'>): string {
+  if (api.callPath) return api.callPath;
+  return api.namespace ? `${api.namespace}.${api.originalName}` : api.originalName;
 }
 
 /**
@@ -62,13 +91,6 @@ export interface NestedCallback {
  */
 export interface ParsedParameter {
   name: string;
-  /**
-   * 익명 객체 파라미터의 C# 타입명(`<Api><Param>`) 합성에 쓰는 이름.
-   * 파라미터 이름 복구(param-name-recovery.ts)로 `args_0`이 실제 이름으로 바뀌어도
-   * 이미 공개된 타입명(예: IAPCompleteProductGrantArgs_0)이 바뀌지 않도록, 복구 전
-   * 이름을 보존한다. 없으면 name을 그대로 쓴다.
-   */
-  typeNameSeed?: string;
   type: ParsedType;
   optional: boolean;
   description?: string;
@@ -140,29 +162,6 @@ export interface GeneratedCode {
   api: ParsedAPI;
   csharp: string;
   jslib: string;
-}
-
-/**
- * API의 소스 파일 경로로부터 @apps-in-toss/web-analytics 패키지 소속 여부를 판별.
- * 판별 기준: api.file 경로에 'web-analytics' 문자열이 포함되어 있는지 확인.
- *
- * 이 방식은 node_modules 경로 구조(symlink 해소 후 realpath 포함)에 의존하며,
- * web-analytics 패키지의 .d.ts 파일이 항상 'web-analytics' 경로 세그먼트를
- * 포함한다는 가정 하에 동작합니다.
- */
-export function isFromWebAnalytics(api: ParsedAPI): boolean {
-  return api.file.includes('web-analytics');
-}
-
-/**
- * API의 소스 패키지에 대응하는 npm import 경로를 반환.
- * web-analytics 소속 API는 '@apps-in-toss/web-analytics',
- * 그 외는 '@apps-in-toss/web-framework'에서 import합니다.
- */
-export function getApiImportSource(api: ParsedAPI): string {
-  return isFromWebAnalytics(api)
-    ? '@apps-in-toss/web-analytics'
-    : '@apps-in-toss/web-framework';
 }
 
 /**

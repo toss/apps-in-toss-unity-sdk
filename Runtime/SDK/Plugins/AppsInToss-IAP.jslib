@@ -83,6 +83,29 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    __IAPCreateOneTimePurchaseOrderIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.createOneTimePurchaseOrder.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
     __IAPCreateSubscriptionPurchaseOrder_Internal: function(params, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
         var typeNameStr = UTF8ToString(typeName);
@@ -160,6 +183,29 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    __IAPCreateSubscriptionPurchaseOrderIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.createSubscriptionPurchaseOrder.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
     __IAPGetProductItemList_Internal: function(callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
@@ -204,6 +250,29 @@ mergeInto(LibraryManager.library, {
                 });
         } catch (error) {
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getProductItemList sync error:', error);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __IAPGetProductItemListIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.getProductItemList.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -266,15 +335,39 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    __IAPGetCompletedOrRefundedOrders_Internal: function(callbackId, typeName) {
+    __IAPGetPendingOrdersIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.getPendingOrders.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __IAPGetCompletedOrRefundedOrders_Internal: function(params, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
         var typeNameStr = UTF8ToString(typeName);
 
         if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPGetCompletedOrRefundedOrders called, callbackId:', callback);
+        if (window.__AIT_VERBOSE) console.log('[AIT jslib] IAPGetCompletedOrRefundedOrders raw param params:', UTF8ToString(params));
 
         try {
-            var promiseResult = window.AppsInToss.IAP.getCompletedOrRefundedOrders();
+            var promiseResult = window.AppsInToss.IAP.getCompletedOrRefundedOrders(JSON.parse(UTF8ToString(params)));
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getCompletedOrRefundedOrders returned:', promiseResult, 'isPromise:', promiseResult && typeof promiseResult.then === 'function');
 
             if (!promiseResult || typeof promiseResult.then !== 'function') {
@@ -310,6 +403,29 @@ mergeInto(LibraryManager.library, {
                 });
         } catch (error) {
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getCompletedOrRefundedOrders sync error:', error);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __IAPGetCompletedOrRefundedOrdersIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.getCompletedOrRefundedOrders.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,
@@ -373,6 +489,29 @@ mergeInto(LibraryManager.library, {
         }
     },
 
+    __IAPCompleteProductGrantIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.completeProductGrant.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
     __IAPGetSubscriptionInfo_Internal: function(args, callbackId, typeName) {
         // 비동기 함수 (Promise 반환)
         var callback = UTF8ToString(callbackId);
@@ -418,6 +557,29 @@ mergeInto(LibraryManager.library, {
                 });
         } catch (error) {
             if (window.__AIT_VERBOSE) console.log('[AIT jslib] getSubscriptionInfo sync error:', error);
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: false, data: '', error: error.message || String(error) })
+            });
+            setTimeout(function() { SendMessage('AITCore', 'OnAITCallback', payload); }, 0);
+        }
+    },
+
+    __IAPGetSubscriptionInfoIsSupported_Internal: function(callbackId, typeName) {
+        // 동기 함수 (즉시 값 반환)
+        var callback = UTF8ToString(callbackId);
+        var typeNameStr = UTF8ToString(typeName);
+
+        try {
+            var result = window.AppsInToss.IAP.getSubscriptionInfo.isSupported();
+            var payload = JSON.stringify({
+                CallbackId: callback,
+                TypeName: typeNameStr,
+                Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+            });
+            SendMessage('AITCore', 'OnAITCallback', payload);
+        } catch (error) {
             var payload = JSON.stringify({
                 CallbackId: callback,
                 TypeName: typeNameStr,

@@ -5,7 +5,7 @@
  * 타입 안전한 jslib 브릿지 코드를 생성합니다.
  */
 
-import { ParsedAPI, ParsedType, getApiImportSource } from '../types.js';
+import { ParsedAPI, ParsedType, getApiCallPath } from '../types.js';
 
 /**
  * jslib 생성 결과
@@ -162,34 +162,15 @@ ${functions}
    */
   private generateApiImports(apis: ParsedAPI[]): string {
     const imports: string[] = [];
-    const seenNamespaces = new Set<string>();
-    const seenTopLevelApis = new Set<string>();
+    const seenRoots = new Set<string>();
 
     for (const api of apis) {
-      if (api.namespace) {
-        // 네임스페이스 API (Storage, IAP, Analytics 등)
-        if (!seenNamespaces.has(api.namespace)) {
-          imports.push(`import type { ${api.namespace} } from '${getApiImportSource(api)}';`);
-          seenNamespaces.add(api.namespace);
-        }
-      } else if (api.isTopLevelExport) {
-        // Top-level export API (web-framework에서 직접 export)
-        if (!seenTopLevelApis.has(api.originalName)) {
-          imports.push(`import type { ${api.originalName} } from '@apps-in-toss/web-framework';`);
-          seenTopLevelApis.add(api.originalName);
-        }
-      } else if (!api.isEventSubscription) {
-        // 일반 API 함수
-        imports.push(`import type { ${api.originalName} } from '@apps-in-toss/web-framework';`);
-      }
-    }
-
-    // 이벤트 API의 네임스페이스들
-    for (const api of apis) {
-      if (api.isEventSubscription && api.namespace && !seenNamespaces.has(api.namespace)) {
-        // 이벤트 네임스페이스는 별도 처리 필요할 수 있음
-        seenNamespaces.add(api.namespace);
-      }
+      // 호출 경로의 루트(네임스페이스 또는 top-level 함수)를 타입 import 한다.
+      // 하위 멤버(isSupported 등)는 기반 API의 루트를 쓴다.
+      const root = getApiCallPath(api).split('.')[0];
+      if (seenRoots.has(root)) continue;
+      seenRoots.add(root);
+      imports.push(`import type { ${root} } from '@apps-in-toss/web-framework';`);
     }
 
     return imports.join('\n');
@@ -200,24 +181,13 @@ ${functions}
    */
   private generateWindowType(apis: ParsedAPI[]): string {
     const members: string[] = [];
-    const seenNamespaces = new Set<string>();
-    const seenApis = new Set<string>();
+    const seenRoots = new Set<string>();
 
     for (const api of apis) {
-      if (api.namespace) {
-        // 네임스페이스 API
-        if (!seenNamespaces.has(api.namespace)) {
-          members.push(`    ${api.namespace}: typeof ${api.namespace};`);
-          seenNamespaces.add(api.namespace);
-        }
-      } else if (!api.isEventSubscription) {
-        // 일반 API 함수 (top-level export 포함)
-        // top-level export도 window.AppsInToss에서 호출하므로 포함
-        if (!seenApis.has(api.originalName)) {
-          members.push(`    ${api.originalName}: typeof ${api.originalName};`);
-          seenApis.add(api.originalName);
-        }
-      }
+      const root = getApiCallPath(api).split('.')[0];
+      if (seenRoots.has(root)) continue;
+      seenRoots.add(root);
+      members.push(`    ${root}: typeof ${root};`);
     }
 
     return members.join('\n');
@@ -231,9 +201,12 @@ ${functions}
     const seen = new Set<string>();
 
     for (const api of apis) {
-      if (api.isTopLevelExport && !seen.has(api.originalName)) {
-        members.push(`  ${api.originalName}: typeof ${api.originalName};`);
-        seen.add(api.originalName);
+      if (!api.isTopLevelExport) continue;
+      // 하위 멤버(isSupported 등)는 기반 함수의 루트를 쓴다.
+      const root = getApiCallPath(api).split('.')[0];
+      if (!seen.has(root)) {
+        members.push(`  ${root}: typeof ${root};`);
+        seen.add(root);
       }
     }
 
@@ -316,16 +289,15 @@ import type { ${sortedTypes.join(', ')} } from '@apps-in-toss/web-framework';`;
       : 'callbackId: number, typeName: number';
 
     // API 호출 표현식 (Parameters<typeof xxx> 타입 추출에 사용)
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     const jsConversions = effectiveParams.map((p, index) =>
       `  const ${p.name}Val = ${this.getJSConversionTs(p.name, p.type, index, apiCallExpr)};`
     ).join('\n');
 
     const apiCallParams = effectiveParams.map(p => `${p.name}Val`).join(', ');
-    const apiCall = `${apiCallExpr}(${apiCallParams})`;
+    // 프로퍼티 API(Device.locale 등)는 호출이 아니라 읽기
+    const apiCall = api.isProperty ? apiCallExpr : `${apiCallExpr}(${apiCallParams})`;
 
     if (api.isAsync) {
       return this.generateAsyncTypescriptFunction(api, paramList, jsConversions, apiCall);
@@ -488,9 +460,9 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
   console.log('[AIT jslib] ${api.name} subscribing, id:', subId);
 
   try {
-    const unsubscribe = window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {
+    const unsubscribe = ${this.eventSubscribeCall(api, true)}
 ${onEventHandler}
-        onError: (error: Error) => {
+        onError: (error: any) => {
           console.log('[AIT jslib] ${api.eventName} error:', error);
           const payload = JSON.stringify({
             CallbackId: subId,
@@ -556,11 +528,7 @@ ${onEventHandler}
 
     // API 호출 표현식
     // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
-    const apiCallExpr = api.isTopLevelExport
-      ? `window.AppsInToss.${api.originalName}`
-      : api.namespace
-        ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-        : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     // 파라미터 변환 코드
     const jsConversions = dataParams.map(p =>
@@ -641,9 +609,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
    */
   private generateTypescriptNamespaceCallbackFunction(api: ParsedAPI): string {
     // API 호출 표현식: 네임스페이스가 있으면 AppsInToss.Namespace.method, 없으면 AppsInToss.method
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     return `export const __${api.name}_Internal = (options: number, subscriptionId: number, typeName: number): void => {
   const subId = UTF8ToString(subscriptionId);
@@ -787,9 +753,7 @@ ${jsConversions ? '\n' + jsConversions + '\n' : ''}
     const paramList = ['params', 'subscriptionId', 'typeName'].join(', ');
 
     // API 호출 표현식
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     // 중첩 콜백 생성 코드
     const nestedCallbacksCode = api.nestedCallbacks!.map(nc => {
@@ -904,11 +868,7 @@ ${nestedCallbacksCode}
 
     // API 호출 표현식
     // top-level export는 window에서 직접 호출, 네임스페이스 API는 AppsInToss에서 호출
-    const apiCallExpr = api.isTopLevelExport
-      ? `window.AppsInToss.${api.originalName}`
-      : api.namespace
-        ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-        : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     // 파라미터 변환 코드
     const paramConversions = dataParams.map(p =>
@@ -989,9 +949,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
    */
   private generateNamespaceCallbackBasedFunction(api: ParsedAPI): string {
     // API 호출 표현식: 네임스페이스가 있으면 AppsInToss.Namespace.method, 없으면 AppsInToss.method
-    const apiCallExpr = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}`
-      : `window.AppsInToss.${api.originalName}`;
+    const apiCallExpr = `window.AppsInToss.${getApiCallPath(api)}`;
 
     return `    __${api.name}_Internal: function(options, subscriptionId, typeName) {
         var subId = UTF8ToString(subscriptionId);
@@ -1073,9 +1031,8 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
 
     // 파라미터 변환을 인라인으로 처리 (중간 변수 없이)
     const apiCallParams = effectiveParams.map(p => this.getJSConversion(p.name, p.type)).join(', ');
-    const apiCall = api.namespace
-      ? `window.AppsInToss.${api.namespace}.${api.originalName}(${apiCallParams})`
-      : `window.AppsInToss.${api.originalName}(${apiCallParams})`;
+    const callTarget = `window.AppsInToss.${getApiCallPath(api)}`;
+    const apiCall = api.isProperty ? callTarget : `${callTarget}(${apiCallParams})`;
 
     if (api.isAsync) {
       return this.generateAsyncFunction(api, paramList, paramLogs, apiCall);
@@ -1197,6 +1154,24 @@ ${resultHandling}
   }
 
   /**
+   * 이벤트 구독 호출의 여는 부분을 만든다 (`... ({` 까지, 닫는 `});`은 호출부가 붙인다).
+   * - addEventListener 방식: `<ns>.addEventListener('<event>', {`
+   * - 직접 구독 방식: `<path>({` (SafeArea.subscribe, Game.subscribeInfoOverlayHidden)
+   * @param forTypeCheck TS 타입 검사용이면 true. onError를 받지 않는 직접 구독 API는
+   *   인자 타입에 onError가 없어 excess property 오류가 나므로 인자를 unknown으로 받는 함수로 단언한다.
+   */
+  private eventSubscribeCall(api: ParsedAPI, forTypeCheck = false): string {
+    if (!api.isDirectSubscribe) {
+      return `window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {`;
+    }
+    const target = `window.AppsInToss.${getApiCallPath(api)}`;
+    if (forTypeCheck && !api.directSubscribeHasOnError) {
+      return `(${target} as (args: unknown) => () => void)({`;
+    }
+    return `${target}({`;
+  }
+
+  /**
    * 이벤트 구독 함수 생성 (JavaScript)
    */
   private generateEventFunction(api: ParsedAPI): string {
@@ -1242,7 +1217,7 @@ ${resultHandling}
 
         try {
             // Subscribe to event
-            var unsubscribe = window.AppsInToss.${api.namespace}.addEventListener('${api.eventName}', {
+            var unsubscribe = ${this.eventSubscribeCall(api)}
 ${onEventHandler}
                 onError: function(error) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.eventName} error:', error);

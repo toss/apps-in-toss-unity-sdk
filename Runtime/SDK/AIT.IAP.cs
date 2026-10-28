@@ -22,7 +22,9 @@ namespace AppsInToss
     public static partial class AIT
     {
         /// <summary>
-        /// * 특정 인앱결제 주문서 페이지로 이동해요. 사용자가 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요. 사용자의 결제는 이동한 페이지에서 진행돼요. 만약 결제 중에 에러가 발생하면 에러 유형에 따라 에러 페이지로 이동해요.
+        /// 단건 인앱결제 주문서 페이지로 이동해요.
+        /// 반환되는 cleanup 함수는 결제 흐름이 끝나면 반드시 호출해야 해요.
+        /// 상품 식별자는 `sku`를 사용하세요. (`productId`는 deprecated)
         /// </summary>
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="options">옵션</param>
@@ -73,7 +75,62 @@ namespace AppsInToss
         private static extern void __IAPCreateOneTimePurchaseOrder_Internal(string options, string subscriptionId, string typeName);
 #endif
         /// <summary>
-        /// * 구독 인앱결제 주문서 페이지로 이동해요. 사용자가 구독 상품 구매 버튼을 누르는 상황 등에 사용할 수 있어요.
+        /// 현재 앱 버전과 환경에서 `IAP.createOneTimePurchaseOrder`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPCreateOneTimePurchaseOrderIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPCreateOneTimePurchaseOrderIsSupported"
+            );
+            __IAPCreateOneTimePurchaseOrderIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCreateOneTimePurchaseOrderIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPCreateOneTimePurchaseOrderIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPCreateOneTimePurchaseOrderIsSupported"
+            );
+            __IAPCreateOneTimePurchaseOrderIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCreateOneTimePurchaseOrderIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPCreateOneTimePurchaseOrderIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 구독 인앱결제 주문서 페이지로 이동해요.
+        /// 반환되는 cleanup 함수는 결제 흐름이 끝나면 반드시 호출해야 해요.
         /// </summary>
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="options">옵션</param>
@@ -124,7 +181,61 @@ namespace AppsInToss
         private static extern void __IAPCreateSubscriptionPurchaseOrder_Internal(string options, string subscriptionId, string typeName);
 #endif
         /// <summary>
-        /// 인앱결제로 구매할 수 있는 상품 목록을 가져와요. 상품 목록 화면에 진입할 때 호출해요.
+        /// 현재 앱 버전과 환경에서 `IAP.createSubscriptionPurchaseOrder`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPCreateSubscriptionPurchaseOrderIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPCreateSubscriptionPurchaseOrderIsSupported"
+            );
+            __IAPCreateSubscriptionPurchaseOrderIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCreateSubscriptionPurchaseOrderIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPCreateSubscriptionPurchaseOrderIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPCreateSubscriptionPurchaseOrderIsSupported"
+            );
+            __IAPCreateSubscriptionPurchaseOrderIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCreateSubscriptionPurchaseOrderIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPCreateSubscriptionPurchaseOrderIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 구매 가능한 상품 목록을 가져와요.
         /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -178,7 +289,61 @@ namespace AppsInToss
         private static extern void __IAPGetProductItemList_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 대기 중인 주문 목록을 가져와요. 이 함수를 사용하면 결제가 아직 완료되지 않은 주문 정보를 확인할 수 있어요.
+        /// 현재 앱 버전과 환경에서 `IAP.getProductItemList`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPGetProductItemListIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetProductItemListIsSupported"
+            );
+            __IAPGetProductItemListIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetProductItemListIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPGetProductItemListIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetProductItemListIsSupported"
+            );
+            __IAPGetProductItemListIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetProductItemListIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPGetProductItemListIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 결제는 완료됐지만 상품이 아직 지급되지 않은 주문 목록을 가져와요.
         /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -232,7 +397,7 @@ namespace AppsInToss
         private static extern void __IAPGetPendingOrders_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 인앱결제로 구매하거나 환불한 주문 목록을 가져와요.
+        /// 현재 앱 버전과 환경에서 `IAP.getPendingOrders`를 사용할 수 있는지 확인해요.
         /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -240,7 +405,61 @@ namespace AppsInToss
         [Preserve]
         [APICategory("IAP")]
 #if UNITY_6000_0_OR_NEWER
-        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)
+        public static async Awaitable<bool> IAPGetPendingOrdersIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetPendingOrdersIsSupported"
+            );
+            __IAPGetPendingOrdersIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetPendingOrdersIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPGetPendingOrdersIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetPendingOrdersIsSupported"
+            );
+            __IAPGetPendingOrdersIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetPendingOrdersIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPGetPendingOrdersIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 완료·환불된 주문 목록을 가져와요. `hasNext` / `nextKey`로 페이지네이션해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(IAPGetCompletedOrRefundedOrdersParams paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var acs = new AwaitableCompletionSource<CompletedOrRefundedOrdersResult>();
@@ -250,7 +469,7 @@ namespace AppsInToss
                 timeoutMs,
                 "IAPGetCompletedOrRefundedOrders"
             );
-            __IAPGetCompletedOrRefundedOrders_Internal(callbackId, "CompletedOrRefundedOrdersResult");
+            __IAPGetCompletedOrRefundedOrders_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "CompletedOrRefundedOrdersResult");
             return await acs.Awaitable;
 #else
             // Unity Editor mock implementation (Unity 6+)
@@ -260,7 +479,7 @@ namespace AppsInToss
 #endif
         }
 #else
-        public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)
+        public static async Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(IAPGetCompletedOrRefundedOrdersParams paramsParam = null, int timeoutMs = 0)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
             var tcs = new TaskCompletionSource<CompletedOrRefundedOrdersResult>();
@@ -270,7 +489,7 @@ namespace AppsInToss
                 timeoutMs,
                 "IAPGetCompletedOrRefundedOrders"
             );
-            __IAPGetCompletedOrRefundedOrders_Internal(callbackId, "CompletedOrRefundedOrdersResult");
+            __IAPGetCompletedOrRefundedOrders_Internal(AITJsonSettings.Serialize(paramsParam), callbackId, "CompletedOrRefundedOrdersResult");
             return await tcs.Task;
 #else
             // Unity Editor mock implementation
@@ -283,10 +502,64 @@ namespace AppsInToss
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
-        private static extern void __IAPGetCompletedOrRefundedOrders_Internal(string callbackId, string typeName);
+        private static extern void __IAPGetCompletedOrRefundedOrders_Internal(string paramsParam, string callbackId, string typeName);
 #endif
         /// <summary>
-        /// 상품 지급 처리를 완료했다는 메시지를 앱에 전달해요. 이 함수를 사용하면 결제가 완료된 주문의 상품 지급이 정상적으로 완료되었음을 알릴 수 있어요.
+        /// 현재 앱 버전과 환경에서 `IAP.getCompletedOrRefundedOrders`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPGetCompletedOrRefundedOrdersIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetCompletedOrRefundedOrdersIsSupported"
+            );
+            __IAPGetCompletedOrRefundedOrdersIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetCompletedOrRefundedOrdersIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPGetCompletedOrRefundedOrdersIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetCompletedOrRefundedOrdersIsSupported"
+            );
+            __IAPGetCompletedOrRefundedOrdersIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetCompletedOrRefundedOrdersIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPGetCompletedOrRefundedOrdersIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 상품 지급 완료를 앱에 알려요. `{ params: { orderId } }` 형태이며, 지급 완료 여부(boolean)를 반환해요.
         /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -339,6 +612,63 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __IAPCompleteProductGrant_Internal(string args, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `IAP.completeProductGrant`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPCompleteProductGrantIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPCompleteProductGrantIsSupported"
+            );
+            __IAPCompleteProductGrantIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCompleteProductGrantIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPCompleteProductGrantIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPCompleteProductGrantIsSupported"
+            );
+            __IAPCompleteProductGrantIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPCompleteProductGrantIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPCompleteProductGrantIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 구독 주문의 현재 상태 정보를 가져와요. `{ params: { orderId } }` 형태예요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -389,6 +719,60 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __IAPGetSubscriptionInfo_Internal(string args, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `IAP.getSubscriptionInfo`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("IAP")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> IAPGetSubscriptionInfoIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "IAPGetSubscriptionInfoIsSupported"
+            );
+            __IAPGetSubscriptionInfoIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetSubscriptionInfoIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> IAPGetSubscriptionInfoIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "IAPGetSubscriptionInfoIsSupported"
+            );
+            __IAPGetSubscriptionInfoIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] IAPGetSubscriptionInfoIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __IAPGetSubscriptionInfoIsSupported_Internal(string callbackId, string typeName);
 #endif
     }
 }

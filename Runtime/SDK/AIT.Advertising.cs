@@ -53,6 +53,60 @@ namespace AppsInToss
         private static extern void __GoogleAdMobLoadAppsInTossAdMob_Internal(string options, string subscriptionId, string typeName);
 #endif
         /// <summary>
+        /// 현재 앱 버전과 환경에서 `GoogleAdMob.loadAppsInTossAdMob`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> GoogleAdMobLoadAppsInTossAdMobIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "GoogleAdMobLoadAppsInTossAdMobIsSupported"
+            );
+            __GoogleAdMobLoadAppsInTossAdMobIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobLoadAppsInTossAdMobIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> GoogleAdMobLoadAppsInTossAdMobIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GoogleAdMobLoadAppsInTossAdMobIsSupported"
+            );
+            __GoogleAdMobLoadAppsInTossAdMobIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobLoadAppsInTossAdMobIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobLoadAppsInTossAdMobIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
         /// 광고를 사용자에게 노출해요. 이 함수는 `loadAppsInTossAdMob` 로 미리 불러온 광고를 실제로 사용자에게 노출해요.
         /// </summary>
         /// <param name="onEvent">이벤트 콜백</param>
@@ -82,6 +136,60 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __GoogleAdMobShowAppsInTossAdMob_Internal(string options, string subscriptionId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `GoogleAdMob.showAppsInTossAdMob`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> GoogleAdMobShowAppsInTossAdMobIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "GoogleAdMobShowAppsInTossAdMobIsSupported"
+            );
+            __GoogleAdMobShowAppsInTossAdMobIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobShowAppsInTossAdMobIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> GoogleAdMobShowAppsInTossAdMobIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GoogleAdMobShowAppsInTossAdMobIsSupported"
+            );
+            __GoogleAdMobShowAppsInTossAdMobIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobShowAppsInTossAdMobIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobShowAppsInTossAdMobIsSupported_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
         /// 이 함수는 `loadAppsInTossAdMob` 로 광고가 잘 불러와졌는지 확인해요.
@@ -137,6 +245,60 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __GoogleAdMobIsAppsInTossAdMobLoaded_Internal(string options, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `GoogleAdMob.isAppsInTossAdMobLoaded`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> GoogleAdMobIsAppsInTossAdMobLoadedIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "GoogleAdMobIsAppsInTossAdMobLoadedIsSupported"
+            );
+            __GoogleAdMobIsAppsInTossAdMobLoadedIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobIsAppsInTossAdMobLoadedIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> GoogleAdMobIsAppsInTossAdMobLoadedIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "GoogleAdMobIsAppsInTossAdMobLoadedIsSupported"
+            );
+            __GoogleAdMobIsAppsInTossAdMobLoadedIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] GoogleAdMobIsAppsInTossAdMobLoadedIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __GoogleAdMobIsAppsInTossAdMobLoadedIsSupported_Internal(string callbackId, string typeName);
+#endif
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -188,10 +350,64 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsInitialize_Internal(string options, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `TossAds.initialize`를 사용할 수 있는지 확인해요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
-        [Obsolete("attach는 더 이상 권장되지 않습니다. attachBanner를 사용해주세요.")]
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> TossAdsInitializeIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsInitializeIsSupported"
+            );
+            __TossAdsInitializeIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsInitializeIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> TossAdsInitializeIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsInitializeIsSupported"
+            );
+            __TossAdsInitializeIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsInitializeIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsInitializeIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Obsolete("Use TossAdsAttachBanner")]
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER
@@ -239,6 +455,61 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsAttach_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `TossAds.attach`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Obsolete("Use TossAdsAttachBannerIsSupported")]
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> TossAdsAttachIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsAttachIsSupported"
+            );
+            __TossAdsAttachIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> TossAdsAttachIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsAttachIsSupported"
+            );
+            __TossAdsAttachIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsAttachIsSupported_Internal(string callbackId, string typeName);
 #endif
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -292,6 +563,60 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsAttachBanner_Internal(string adGroupId, string target, string options, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `TossAds.attachBanner`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> TossAdsAttachBannerIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsAttachBannerIsSupported"
+            );
+            __TossAdsAttachBannerIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBannerIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> TossAdsAttachBannerIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsAttachBannerIsSupported"
+            );
+            __TossAdsAttachBannerIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsAttachBannerIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsAttachBannerIsSupported_Internal(string callbackId, string typeName);
+#endif
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -342,6 +667,60 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsDestroy_Internal(string slotId, string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `TossAds.destroy`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> TossAdsDestroyIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsDestroyIsSupported"
+            );
+            __TossAdsDestroyIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> TossAdsDestroyIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsDestroyIsSupported"
+            );
+            __TossAdsDestroyIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsDestroyIsSupported_Internal(string callbackId, string typeName);
 #endif
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -394,6 +773,64 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsDestroyAll_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `TossAds.destroyAll`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> TossAdsDestroyAllIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "TossAdsDestroyAllIsSupported"
+            );
+            __TossAdsDestroyAllIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyAllIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> TossAdsDestroyAllIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "TossAdsDestroyAllIsSupported"
+            );
+            __TossAdsDestroyAllIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] TossAdsDestroyAllIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __TossAdsDestroyAllIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 전면 광고를 미리 불러와서, 보여줄 시점에 바로 노출할 수 있도록 준비해요.
+        /// `isSupported()`로 지원 여부를 확인할 수 있어요.
+        /// </summary>
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="onError">에러 콜백</param>
         /// <returns>구독 취소를 위한 Action</returns>
@@ -422,6 +859,64 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __loadFullScreenAd_Internal(string adGroupId, string subscriptionId, string typeName);
 #endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `loadFullScreenAd`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> LoadFullScreenAdIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "LoadFullScreenAdIsSupported"
+            );
+            __loadFullScreenAdIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] LoadFullScreenAdIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> LoadFullScreenAdIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "LoadFullScreenAdIsSupported"
+            );
+            __loadFullScreenAdIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] LoadFullScreenAdIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __loadFullScreenAdIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 미리 불러온 전면 광고를 사용자에게 노출해요.
+        /// `isSupported()`로 지원 여부를 확인할 수 있어요.
+        /// </summary>
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="onError">에러 콜백</param>
         /// <returns>구독 취소를 위한 Action</returns>
@@ -449,6 +944,60 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __showFullScreenAd_Internal(string adGroupId, string subscriptionId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `showFullScreenAd`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Advertising")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> ShowFullScreenAdIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "ShowFullScreenAdIsSupported"
+            );
+            __showFullScreenAdIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] ShowFullScreenAdIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> ShowFullScreenAdIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "ShowFullScreenAdIsSupported"
+            );
+            __showFullScreenAdIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] ShowFullScreenAdIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __showFullScreenAdIsSupported_Internal(string callbackId, string typeName);
 #endif
     }
 }

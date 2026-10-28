@@ -15,12 +15,6 @@
 //   [TestCaseSource]로 그대로 소비해 AIT 타입에 각 메서드가 존재하는지
 //   검증한다.
 //
-// sdk_version_override 호환성 매트릭스(구 web-framework로 Runtime/SDK 재생성)를
-// 지원해야 하므로, 이 배열의 버전 종속 항목은 RuntimeAPITester.TestAllSDKAPIs()의
-// 호출부와 정확히 동일한 #if 가드(AIT_SDK_1_7_1_OR_LATER / AIT_SDK_3_0_OR_LATER)로
-// 감싼다. 두 파일의 전처리 조건이 어긋나면 VerifyCatalogConsistency가 오탐 드리프트를
-// 낸다.
-//
 // OnVisibilityChangedByTransparentServiceWeb은 web-framework 3.0.0에서
 // 제거된 API라 이 목록에 포함하지 않는다 — 리플렉션 존재 여부에 따라
 // 양쪽 테스트에서 조건부로만 다뤄진다(기존 동작 유지).
@@ -35,9 +29,8 @@ namespace AppsInToss
     public static class APITestCatalog
     {
         /// <summary>
-        /// 이 하네스가 검증하는 모든 SDK API 이름. (3.0 풀빌드 기준 51개: 기존 39개 +
-        /// SDK 3.0 신규 표면 12개. 버전 종속 항목은 #if로 감싸져 있어 sdk_version_override
-        /// 매트릭스에서는 해당 버전에 실제로 존재하는 만큼만 포함된다.)
+        /// 이 하네스가 검증하는 SDK API 이름. 파라미터 없이 무인으로 호출해도 안전한 API와
+        /// 더미 인자로 호출 가능한 API만 포함한다.
         /// </summary>
         public static readonly string[] AllAPINames = new string[]
         {
@@ -47,9 +40,7 @@ namespace AppsInToss
             "GetDeviceId",
             "GetLocale",
             "GetNetworkStatus",
-#if AIT_SDK_1_7_1_OR_LATER
             "GetOperationalEnvironment",
-#endif
             "GetPlatformOS",
             "GetSchemeUri",
             "GetTossAppVersion",
@@ -77,10 +68,8 @@ namespace AppsInToss
             "GenerateHapticFeedback",
             "SetDeviceOrientation",
             "SetIosSwipeGestureEnabled",
-#if AIT_SDK_1_7_1_OR_LATER
             "SetScreenAwakeMode",
             "SetSecureScreen",
-#endif
             "CheckoutPayment",
             "FetchAlbumPhotos",
             "OpenCamera",
@@ -98,7 +87,6 @@ namespace AppsInToss
             // Action(콜백 구독) 반환 API(SafeAreaInsetsSubscribe 등)는 이 하네스가
             // 다루지 않는다 — 다른 하네스(InteractiveAPITester 등)의 몫이다.
             // =====================================================================
-#if AIT_SDK_3_0_OR_LATER
             "EnvGetDeploymentId",
             "GetAppsInTossGlobals",
             "IsMinVersionSupported",
@@ -111,7 +99,20 @@ namespace AppsInToss
             "PartnerRemoveAccessoryButton",
             "FetchAlbumItems",
             "SafeAreaInsetsGet",
-#endif
+
+            // 3.x 번들의 네임스페이스 멤버와 보조 API 중 무인 실행에 안전한 조회형
+            "EnvironmentDeviceId",
+            "EnvironmentGroupId",
+            "EnvironmentEnvironment",
+            "EnvironmentTossAppVersion",
+            "EnvironmentDeploymentId",
+            "EnvironmentInitialURL",
+            "EnvironmentGetNetworkStatus",
+            "DeviceLocale",
+            "DeviceOs",
+            "SafeAreaGet",
+            "GetSafeAreaInsets",
+            "StorageGetItemsIsSupported",
         };
     }
 }

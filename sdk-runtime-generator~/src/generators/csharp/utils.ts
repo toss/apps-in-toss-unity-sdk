@@ -55,6 +55,29 @@ export function xmlSafe(text: string): string {
 }
 
 /**
+ * 여러 줄 설명을 XML 주석 한 줄씩(`///` 접두 없이)으로 나눈다. 줄 구조는 유지하고
+ * XML 특수 문자만 이스케이프한다. 번들 JSDoc은 여러 줄 설명이 많아서, 첫 줄만 `///`가
+ * 붙고 나머지가 주석 밖으로 새면 컴파일이 깨진다.
+ */
+export function xmlSafeLines(text: string): string[] {
+  if (!text) return [];
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.trimEnd().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+  while (lines.length > 0 && lines[0].trim() === '') lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines;
+}
+
+/** 타입(클래스/enum) 선언 위에 붙일 `<summary>` 블록. 설명이 없으면 빈 문자열 */
+export function typeSummaryBlock(description: string | undefined, indent = '    '): string {
+  const lines = xmlSafeLines(description ?? '');
+  if (lines.length === 0) return '';
+  const body = lines.map(line => `${indent}/// ${line}`.trimEnd()).join('\n');
+  return `${indent}/// <summary>\n${body}\n${indent}/// </summary>\n`;
+}
+
+/**
  * 타입 이름에서 cleanName 추출
  * import 경로, union 타입, 특수 문자 등을 정리
  * @param name 타입 이름

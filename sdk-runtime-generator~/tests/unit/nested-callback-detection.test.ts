@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { Project } from 'ts-morph';
 import { parseType } from '../../src/parser/type-parser.js';
-import { detectNestedCallbacks } from '../../src/parser/namespace-parser.js';
+import { detectNestedCallbacks } from '../../src/parser/callback-patterns.js';
 
 // detectNestedCallbacks의 지원 형태 가드 회귀 방지 테스트.
 //

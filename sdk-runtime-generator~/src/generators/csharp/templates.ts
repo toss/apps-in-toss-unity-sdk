@@ -2,7 +2,7 @@ import Handlebars from 'handlebars';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { xmlSafe } from './utils.js';
+import { xmlSafe, xmlSafeLines } from './utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +17,6 @@ interface TemplateCache {
   apiTemplate?: HandlebarsTemplateDelegate;
   classTemplate?: HandlebarsTemplateDelegate;
   coreTemplate?: HandlebarsTemplateDelegate;
-  partialApiTemplate?: HandlebarsTemplateDelegate;
   mainTemplate?: HandlebarsTemplateDelegate;
   categoryPartialTemplate?: HandlebarsTemplateDelegate;
   unionResultTemplate?: HandlebarsTemplateDelegate;
@@ -49,6 +48,11 @@ export function registerHelpers(): void {
   });
 
   // XML 주석용 텍스트 변환 (마크다운 제거)
+  // 여러 줄 summary: 줄마다 `/// `를 붙여 주석 밖으로 새지 않게 한다 (3.x 번들 JSDoc은 여러 줄 설명이 많다)
+  Handlebars.registerHelper('docSummary', function(text: string) {
+    if (!text) return '';
+    return new Handlebars.SafeString(xmlSafeLines(text).join('\n        /// '));
+  });
   Handlebars.registerHelper('xmlSafe', function(text: string) {
     return new Handlebars.SafeString(xmlSafe(text));
   });
@@ -97,9 +101,6 @@ export async function loadAllTemplates(): Promise<TemplateCache> {
   }
   if (!templateCache.coreTemplate) {
     templateCache.coreTemplate = await loadTemplate('csharp-core');
-  }
-  if (!templateCache.partialApiTemplate) {
-    templateCache.partialApiTemplate = await loadTemplate('csharp-partial-api');
   }
   if (!templateCache.mainTemplate) {
     templateCache.mainTemplate = await loadTemplate('csharp-main');

@@ -132,6 +132,7 @@ export function generateNestedClassType(
   nestedTypes: Map<string, string>
 ): string {
   const fields = properties
+    .filter(prop => prop.type.name !== 'never' && mapToCSharpType(prop.type) !== 'never') // `options?: never`는 값이 없다는 표시라 필드로 옮기지 않는다
     .map(prop => {
       let type = mapToCSharpType(prop.type);
       // 중첩 익명 객체는 생성된 클래스 이름 사용
@@ -200,7 +201,7 @@ export function collectReferencedTypes(
   typeMap: Map<string, string>,
   exclude: Set<string>,
   tracker: InlineTypeTracker,
-  generateClassType: (name: string, properties: any[], isResultType?: boolean) => string,
+  generateClassType: (name: string, properties: any[]) => string,
   parentTypeName?: string
 ): void {
   for (const prop of properties) {
@@ -290,6 +291,7 @@ export function collectReferencedTypes(
       // → 외부 타입으로 큐잉하여 type definitions에서 해결
       // kind 조건 없음: 'object', 'union', 'unknown' 등 어떤 kind든 named reference면 큐잉
       else if (elementType.name &&
+               elementType.kind !== 'primitive' &&
                elementType.name !== '__type' &&
                elementType.name !== 'object' &&
                !elementType.name.startsWith('{')) {
@@ -353,7 +355,7 @@ export function collectFunctionParamTypes(
   typeMap: Map<string, string>,
   exclude: Set<string>,
   tracker: InlineTypeTracker,
-  generateClassType: (name: string, properties: any[], isResultType?: boolean) => string,
+  generateClassType: (name: string, properties: any[]) => string,
   contextName?: string
 ): void {
   // Union 타입 처리 (ContactsViralEvent = RewardFromContactsViralEvent | ContactsViralSuccessEvent)

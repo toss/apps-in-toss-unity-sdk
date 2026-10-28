@@ -22,28 +22,14 @@ namespace AppsInToss
         [JsonProperty("top")]
         public double Top;
         [Preserve]
-        [JsonProperty("bottom")]
-        public double Bottom;
-        [Preserve]
         [JsonProperty("left")]
         public double Left;
         [Preserve]
         [JsonProperty("right")]
         public double Right;
-        /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
-        public string error;
-
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class SafeAreaInsetsSubscribe__0
-    {
-        [JsonIgnore]
-        public System.Action<SafeAreaInsets> OnEvent;
+        [JsonProperty("bottom")]
+        public double Bottom;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

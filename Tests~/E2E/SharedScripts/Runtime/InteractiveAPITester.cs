@@ -110,9 +110,7 @@ public class InteractiveAPITester : MonoBehaviour
         _tapDiagnosticsTester?.SetupUI(subTesterContainer);
 
         // Safe Area Insets 적용 (Apps in Toss 플랫폼)
-#if AIT_SDK_1_7_1_OR_LATER
         ApplySafeAreaInsetsAsync();
-#endif
     }
 
     void Update()
@@ -127,7 +125,6 @@ public class InteractiveAPITester : MonoBehaviour
         _ui?.Destroy();
     }
 
-#if AIT_SDK_1_7_1_OR_LATER
     private async void ApplySafeAreaInsetsAsync()
     {
         Rect unitySafeArea = Screen.safeArea;
@@ -154,7 +151,6 @@ public class InteractiveAPITester : MonoBehaviour
             Debug.LogWarning($"[InteractiveAPITester] SafeAreaInsetsGet failed: {ex.Message}, using Unity Screen.safeArea as fallback");
         }
     }
-#endif
 
     // ─── API 선택 / 실행 ───
 

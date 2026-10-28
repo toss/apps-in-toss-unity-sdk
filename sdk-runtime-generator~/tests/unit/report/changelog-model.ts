@@ -2,12 +2,11 @@
  * API Changelog 모델
  *
  * 버전별 ParsedAPI[] 데이터를 받아 HTML·마크다운 렌더러가 공유하는 중간 표현
- * (ChangelogModel)으로 변환한다. diff 계산(추가/제거/변경 API)과 EXCLUDED_APIS 필터링을
- * 이 진입점 한 곳에 모아, HTML과 마크다운 양쪽이 항상 동일한 데이터를 보도록 한다.
+ * (ChangelogModel)으로 변환한다. diff 계산(추가/제거/변경 API)을 이 진입점 한 곳에 모아,
+ * HTML과 마크다운 양쪽이 항상 동일한 데이터를 보도록 한다.
  */
 
 import type { ParsedAPI } from '../../../src/types.js';
-import { getCategory, EXCLUDED_APIS, CHANGELOG_ONLY_CATEGORIES } from '../../../src/categories.js';
 import { mapToCSharpType } from '../../../src/validators/types.js';
 
 export interface SerializedParam {
@@ -38,17 +37,14 @@ export interface SerializedAPI {
 }
 
 function serializeAPI(api: ParsedAPI, versions: string[]): SerializedAPI {
-  const category = getCategory(api.name, true, CHANGELOG_ONLY_CATEGORIES);
-  // file은 리포트 표시용 category가 아니라 C# 생성기와 동일한 분류(getCategory 기본 맵)를
-  // 따라야 한다 — HTML 렌더러가 이 값으로 Runtime/SDK/<file> 딥링크를 만들기 때문에,
-  // CHANGELOG_ONLY_CATEGORIES로 재분류된 이름을 쓰면 실존하지 않는 .cs 파일(404)을 가리킨다.
-  const generatorCategory = getCategory(api.name, false);
+  // 카테고리는 파서가 API마다 정한 값이며 C# 생성기의 파일 분류(AIT.<Category>.cs)와 같다.
+  const category = api.category;
   return {
     name: api.name,
     pascalName: api.pascalName,
     displayName: 'AIT.' + api.pascalName,
     category,
-    file: 'AIT.' + generatorCategory + '.cs',
+    file: 'AIT.' + category + '.cs',
     description: api.description,
     returnDescription: api.returnDescription,
     examples: api.examples,
@@ -146,21 +142,12 @@ export interface ChangelogModel {
 
 /**
  * 버전별 ParsedAPI[] 데이터로부터 ChangelogModel을 만든다.
- *
- * EXCLUDED_APIS(SDK 생성에서 제외되는 API, src/categories.ts)에 속한 API는 여기서
- * 걸러낸다 — C# 생성기가 애초에 만들지 않는 API가 changelog에 나타나면 혼란을
- * 주므로, HTML·마크다운 양쪽에 일관되게 반영하기 위해 이 모델 진입점 한 곳에서
- * 필터링한다(목록 복제 대신 categories.ts에서 직접 import).
  */
 export function buildChangelogModel(
   versionApis: Map<string, ParsedAPI[]>,
   categoryOrder: string[],
 ): ChangelogModel {
-  const excludedSet = new Set(EXCLUDED_APIS);
-  const filteredVersionApis = new Map<string, ParsedAPI[]>();
-  for (const [version, apis] of versionApis) {
-    filteredVersionApis.set(version, apis.filter(api => !excludedSet.has(api.name)));
-  }
+  const filteredVersionApis = versionApis;
 
   const versions = [...filteredVersionApis.keys()];
 
@@ -209,9 +196,8 @@ export function buildChangelogModel(
     }
     modified.sort((a, b) => a.name.localeCompare(b.name));
 
-    // 변화가 없는 전이(add/remove/modify 전부 0)도 push한다 — 예: pnpm store 폴백으로
-    // 직전 버전과 동일한 dtsDir을 읽게 되는 경우(3.0.1처럼 sibling web-bridge가 rename되어
-    // 못 찾을 때)에도 해당 버전이 diff 목록에서 통째로 빠지지 않도록 하기 위함. 렌더러가
+    // 변화가 없는 전이(add/remove/modify 전부 0)도 push한다 — API 표면이 직전 버전과
+    // 같은 버전도 diff 목록에서 통째로 빠지지 않도록 하기 위함이다. 렌더러가
     // 각자의 형식에 맞게 빈 diff를 다룬다(HTML은 스킵해 기존 형태 보존, 마크다운은
     // "변경 없음."으로 표시).
     diffs.push({
@@ -224,12 +210,12 @@ export function buildChangelogModel(
     });
   }
 
-  // 카테고리별 API 그룹핑 (버전별) — getCategory()로 정확한 분류
+  // 카테고리별 API 그룹핑 (버전별) — 파서가 정한 api.category 기준
   const catalog = new Map<string, Map<string, string[]>>();
   for (const [version, apis] of filteredVersionApis) {
     const catMap = new Map<string, string[]>();
     for (const api of apis) {
-      const cat = getCategory(api.name, true, CHANGELOG_ONLY_CATEGORIES);
+      const cat = api.category;
       if (!catMap.has(cat)) catMap.set(cat, []);
       catMap.get(cat)!.push(api.name);
     }

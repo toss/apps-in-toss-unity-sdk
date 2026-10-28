@@ -16,9 +16,8 @@ namespace AppsInToss
 {
     [Serializable]
     [Preserve]
-    public class CheckoutPaymentOptions
+    public class CheckoutPaymentParams
     {
-        /// <summary>결제 토큰이에요.</summary>
         [Preserve]
         [JsonProperty("payToken")]
         public string PayToken;
@@ -30,13 +29,92 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class RequestTossPayPaysBillingParams
+    {
+        [Preserve]
+        [JsonProperty("wrappedToken")]
+        public string WrappedToken;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class TossPayCheckoutPaymentOptions
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public CheckoutPaymentParams Params;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class TossPayRequestTossPayPaysBillingOptions
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public RequestTossPayPaysBillingParams Params;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class CheckoutPaymentOptions
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public CheckoutPaymentParams Params;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RequestTossPayPaysBillingOptions
+    {
+        [Preserve]
+        [JsonProperty("params")]
+        public RequestTossPayPaysBillingParams Params;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class CheckoutPaymentResult
     {
-        /// <summary>인증이 성공했는지 여부예요.</summary>
         [Preserve]
         [JsonProperty("success")]
         public bool Success;
-        /// <summary>인증이 실패했을 경우의 이유예요.</summary>
+        [Preserve]
+        [JsonProperty("reason")]
+        public string Reason; // optional
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class RequestTossPayPaysBillingResult
+    {
+        [Preserve]
+        [JsonProperty("success")]
+        public bool Success;
         [Preserve]
         [JsonProperty("reason")]
         public string Reason; // optional

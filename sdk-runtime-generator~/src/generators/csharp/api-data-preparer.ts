@@ -89,7 +89,7 @@ export function prepareParameters(api: ParsedAPI): PreparedParameter[] {
           param.type.kind === 'object' && param.type.properties && param.type.properties.length > 0) {
         const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
         const apiName = capitalize(api.name);
-        const paramName = capitalize(param.typeNameSeed ?? param.name);
+        const paramName = capitalize(param.name);
         paramType = `${apiName}${paramName}`;
       }
 
@@ -321,7 +321,15 @@ export function getNestedCallbackEventType(api: ParsedAPI): string | undefined {
   if (api.parameters.length > 0 && api.parameters[0].type.kind === 'object') {
     const onEventProp = api.parameters[0].type.properties?.find(p => p.name === 'onEvent');
     if (onEventProp && onEventProp.type.kind === 'function' && onEventProp.type.functionParams?.[0]) {
-      return mapToCSharpType(onEventProp.type.functionParams[0]);
+      const fp0 = onEventProp.type.functionParams[0];
+      // 인라인 익명 이벤트 객체는 type-collector가 등록한 ...OnEventParam 클래스를 쓴다
+      // (extractCallbackTypes와 같은 규칙. object로 무너뜨리지 않는다)
+      const parentName = api.parameters[0].type.name;
+      const parentIsAnonymous = !parentName || parentName === '__type' || parentName === 'object' || parentName.startsWith('{');
+      if (isInlineAnonymousObjectParam(fp0) && !parentIsAnonymous) {
+        return functionParamTypeName(extractCleanName(parentName), 'onEvent');
+      }
+      return mapToCSharpType(fp0);
     }
   }
   return 'object';

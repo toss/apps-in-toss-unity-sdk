@@ -198,7 +198,6 @@ public class E2ETestTrigger : MonoBehaviour
         // 테스트용 콜백을 사전 등록한다. AITCore.Instance 접근이 "AITCore" GameObject를
         // 생성하므로 이후 SendMessage('AITCore','OnNestedCallback', ...)가 도달한다.
         // Playwright가 이 콜백들을 직접 구동하고 __AITRespondToNestedCallback 응답을 관찰한다.
-#if AIT_SDK_1_7_OR_LATER
         try
         {
             // 즉시 true 반환 — 동기 dispatch가 SendMessage와 같은 스택에서 곧바로 응답함을 검증.
@@ -216,7 +215,6 @@ public class E2ETestTrigger : MonoBehaviour
         {
             Debug.LogWarning($"[E2ETestTrigger] Failed to register nested callbacks: {e.Message}");
         }
-#endif
     }
 
     /// <summary>

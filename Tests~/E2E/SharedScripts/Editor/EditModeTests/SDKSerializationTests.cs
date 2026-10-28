@@ -105,14 +105,14 @@ public class SDKSerializationTests
     [Test]
     public void ClassSerialization_CheckoutPaymentOptions_RoundTrip()
     {
-        var original = new CheckoutPaymentOptions { PayToken = "test-token-123" };
+        var original = new CheckoutPaymentOptions { Params = new CheckoutPaymentParams { PayToken = "test-token-123" } };
         AssertClassRoundTrip(original);
     }
 
     [Test]
     public void ClassSerialization_EventLogParams_RoundTrip()
     {
-        var original = new EventLogParams { Log_name = "test_event", Log_type = "custom" };
+        var original = new EventLogParams { Log_name = "test_event", Log_type = EventLogParamsLog_type.Event };
         AssertClassRoundTrip(original);
     }
 

@@ -521,9 +521,11 @@ namespace AppsInToss
     [Preserve]
     public class ContactEntity
     {
+        /// <summary>연락처 이름이에요.</summary>
         [Preserve]
         [JsonProperty("name")]
         public string Name;
+        /// <summary>연락처 전화번호로, 문자열 형식이에요.</summary>
         [Preserve]
         [JsonProperty("phoneNumber")]
         public string PhoneNumber;
@@ -704,9 +706,11 @@ namespace AppsInToss
     [Preserve]
     public class ImageResponse
     {
+        /// <summary>가져온 사진의 고유 ID예요.</summary>
         [Preserve]
         [JsonProperty("id")]
         public string Id;
+        /// <summary>사진의 데이터 URI예요. base64 옵션이 true인 경우 Base64 문자열로 반환돼요.</summary>
         [Preserve]
         [JsonProperty("dataUri")]
         public string DataUri;
@@ -755,21 +759,27 @@ namespace AppsInToss
     [Preserve]
     public class LocationCoords
     {
+        /// <summary>위도</summary>
         [Preserve]
         [JsonProperty("latitude")]
         public double Latitude;
+        /// <summary>경도</summary>
         [Preserve]
         [JsonProperty("longitude")]
         public double Longitude;
+        /// <summary>높이</summary>
         [Preserve]
         [JsonProperty("altitude")]
         public double Altitude;
+        /// <summary>위치 정확도</summary>
         [Preserve]
         [JsonProperty("accuracy")]
         public double Accuracy;
+        /// <summary>고도 정확도</summary>
         [Preserve]
         [JsonProperty("altitudeAccuracy")]
         public double AltitudeAccuracy;
+        /// <summary>방향</summary>
         [Preserve]
         [JsonProperty("heading")]
         public double Heading;
@@ -791,13 +801,120 @@ namespace AppsInToss
         public Dictionary<string, object> LocalStorage;
         [Preserve]
         [JsonProperty("indexedDB")]
-        public object[] IndexedDB;
+        public OriginStorageDumpIndexedDB[] IndexedDB;
         [Preserve]
         [JsonProperty("opfs")]
         public OriginStorageDumpOpfs Opfs;
         [Preserve]
         [JsonProperty("errors")]
-        public object[] Errors;
+        public OriginStorageDumpError[] Errors;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OriginStorageDumpIndexedDBObjectStoreIndex
+    {
+        [Preserve]
+        [JsonProperty("name")]
+        public string Name;
+        [Preserve]
+        [JsonProperty("keyPath")]
+        public string KeyPath;
+        [Preserve]
+        [JsonProperty("multiEntry")]
+        public bool MultiEntry;
+        [Preserve]
+        [JsonProperty("unique")]
+        public bool Unique;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OriginStorageDumpIndexedDBObjectStoreRecord
+    {
+        [Preserve]
+        [JsonProperty("key")]
+        public object Key;
+        [Preserve]
+        [JsonProperty("primaryKey")]
+        public object PrimaryKey;
+        [Preserve]
+        [JsonProperty("value")]
+        public object Value;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OriginStorageDumpIndexedDBObjectStore
+    {
+        [Preserve]
+        [JsonProperty("name")]
+        public string Name;
+        [Preserve]
+        [JsonProperty("keyPath")]
+        public string KeyPath;
+        [Preserve]
+        [JsonProperty("autoIncrement")]
+        public bool AutoIncrement;
+        [Preserve]
+        [JsonProperty("indexes")]
+        public OriginStorageDumpIndexedDBObjectStoreIndex[] Indexes;
+        [Preserve]
+        [JsonProperty("records")]
+        public OriginStorageDumpIndexedDBObjectStoreRecord[] Records;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OriginStorageDumpIndexedDB
+    {
+        [Preserve]
+        [JsonProperty("name")]
+        public string Name;
+        [Preserve]
+        [JsonProperty("version")]
+        public double Version;
+        [Preserve]
+        [JsonProperty("objectStores")]
+        public OriginStorageDumpIndexedDBObjectStore[] ObjectStores;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OriginStorageDumpOpfsFile
+    {
+        [Preserve]
+        [JsonProperty("path")]
+        public string Path;
+        [Preserve]
+        [JsonProperty("type")]
+        public string Type;
+        [Preserve]
+        [JsonProperty("lastModified")]
+        public double LastModified;
+        [Preserve]
+        [JsonProperty("data")]
+        public byte[] Data;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]
@@ -813,7 +930,23 @@ namespace AppsInToss
         public string[] Directories;
         [Preserve]
         [JsonProperty("files")]
-        public object[] Files;
+        public OriginStorageDumpOpfsFile[] Files;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class OriginStorageDumpError
+    {
+        [Preserve]
+        [JsonProperty("storage")]
+        public string Storage;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
 
         [Preserve]
         [Newtonsoft.Json.JsonExtensionData]

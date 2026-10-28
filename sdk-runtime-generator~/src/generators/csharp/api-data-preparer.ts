@@ -1,8 +1,14 @@
 import { ParsedAPI } from '../../types.js';
 import { mapToCSharpType } from '../../validators/types.js';
-import { escapeCSharpKeyword, toPascalCase, xmlSafe, functionParamTypeName, extractCleanName } from './utils.js';
+import { escapeCSharpKeyword, escapeObsoleteMessage, toPascalCase, xmlSafe,functionParamTypeName, extractCleanName } from './utils.js';
 import { isInlineAnonymousObjectParam } from './type-collector.js';
 import { PRIMITIVE_TYPES } from './constants.js';
+
+/**
+ * 이전 SDK에서 `(int timeoutMs = 0)`만 받다가 선택 파라미터가 앞에 붙은 API.
+ * 첫 파라미터가 선택(null 허용)이어야 한다. 새 시그니처만 두면 `Api(5000)`이 컴파일되지 않는다.
+ */
+const COMPAT_TIMEOUT_ONLY_OVERLOADS = new Set<string>(['IAPGetCompletedOrRefundedOrders']);
 
 /**
  * 준비된 파라미터 데이터
@@ -51,6 +57,8 @@ export interface PreparedApiData {
   nestedCallbackOptionsType?: string;
   nestedCallbackEventType?: string;
   /** options.callbacks 묶음을 받는 API (TossAds.initialize/attach/attachBanner) */
+  /** 예전에 `(int timeoutMs)`만 받던 API: 같은 호출이 계속 컴파일되도록 오버로드를 하나 더 낸다 */
+  compatTimeoutOnlyOverload?: boolean;
   hasCallbackBag?: boolean;
   callbackBag?: {
     /** 묶음을 가진 파라미터 이름과 C# 타입 */
@@ -374,11 +382,7 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
   // deprecated 메시지의 줄바꿈 제거 (C# [Obsolete] 어트리뷰트에서 줄바꿈 불가)
   let deprecatedMessage = api.deprecatedMessage;
   if (deprecatedMessage) {
-    deprecatedMessage = deprecatedMessage
-      .replace(/\n/g, ' ')  // 줄바꿈을 공백으로
-      .replace(/\s+/g, ' ') // 연속 공백을 하나로
-      .replace(/"/g, '\\"') // 큰따옴표 이스케이프
-      .trim();
+    deprecatedMessage = escapeObsoleteMessage(deprecatedMessage);
   }
 
   // 이벤트 데이터 타입 결정
@@ -443,6 +447,7 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     nestedCallbackOptionsType: getNestedCallbackOptionsType(api),
     nestedCallbackEventType: getNestedCallbackEventType(api),
     // options.callbacks 묶음 API 지원
+    compatTimeoutOnlyOverload: COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) || undefined,
     hasCallbackBag: !!api.callbackBag,
     callbackBag: api.callbackBag
       ? (() => {

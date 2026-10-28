@@ -342,9 +342,11 @@ namespace AppsInToss
     [Preserve]
     public class ShowFullScreenAdEvent
     {
+        /// <summary>Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested</summary>
         [Preserve]
         [JsonProperty("type")]
         public string Type;
+        /// <summary>Event data (only for userEarnedReward)</summary>
         [Preserve]
         [JsonProperty("data")]
         public ShowFullScreenAdEventData Data; // optional

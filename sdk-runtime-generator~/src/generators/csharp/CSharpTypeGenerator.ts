@@ -12,6 +12,7 @@ import {
   generateFieldDeclaration,
   generateNestedClassType,
   collectNestedTypes,
+  anonymousArrayElementClassName,
   collectReferencedTypes,
   collectFunctionParamTypes,
   collectNestedTypesForTypeDefinition,
@@ -161,6 +162,14 @@ export class CSharpTypeGenerator {
             (prop.type.name === '__type' || prop.type.name === 'object' || prop.type.name.startsWith('{'))) {
           // 중첩 클래스 이름 생성
           type = `${typeDef.name}${capitalize(prop.name)}`;
+        }
+        // 익명 객체 배열은 생성된 요소 클래스 이름 + []
+        else if (prop.type.kind === 'array' &&
+            prop.type.elementType?.kind === 'object' &&
+            prop.type.elementType.properties &&
+            prop.type.elementType.properties.length > 0 &&
+            (prop.type.elementType.name === '__type' || prop.type.elementType.name === 'object' || prop.type.elementType.name.startsWith('{'))) {
+          type = `${anonymousArrayElementClassName(typeDef.name, prop.name)}[]`;
         }
 
         const description = generateFieldDoc(prop.name, prop.description);
@@ -312,8 +321,7 @@ export class CSharpTypeGenerator {
             prop.type.elementType.properties &&
             prop.type.elementType.properties.length > 0 &&
             (prop.type.elementType.name === '__type' || prop.type.elementType.name === 'object' || prop.type.elementType.name.startsWith('{'))) {
-          const propNameSingular = prop.name.endsWith('s') ? prop.name.slice(0, -1) : prop.name;
-          type = `${cleanName}${capitalize(propNameSingular)}[]`;
+          type = `${anonymousArrayElementClassName(cleanName, prop.name)}[]`;
         }
         const description = generateFieldDoc(prop.name, prop.description);
         return `${description}${generateFieldDeclaration(prop.name, type, prop.optional)}`;

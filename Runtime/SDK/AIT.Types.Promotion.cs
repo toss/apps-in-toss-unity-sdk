@@ -48,6 +48,35 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public class GrantPromotionRewardErrorResponse
+    {
+        [Preserve]
+        [JsonProperty("code")]
+        public string Code;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public class GrantPromotionRewardErrorResult
+    {
+        [Preserve]
+        [JsonProperty("errorCode")]
+        public string ErrorCode;
+        [Preserve]
+        [JsonProperty("message")]
+        public string Message;
+
+        [Preserve]
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public class GrantPromotionRewardParams
     {
         [Preserve]

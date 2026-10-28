@@ -61,7 +61,6 @@ export const TOP_LEVEL_API_CATEGORIES: Record<string, string[]> = {
 
 /** 네임스페이스 export 이름 -> 카테고리 */
 export const NAMESPACE_CATEGORIES: Record<string, string> = {
-  Ads: 'Advertising',
   Analytics: 'Analytics',
   Clipboard: 'Clipboard',
   Device: 'Device',
@@ -170,6 +169,9 @@ export const FLATTENED_OPTIONS_CALLBACK_APIS: string[] = ['loadFullScreenAd', 's
  * 키는 생성되는 C# API 이름(네임스페이스+PascalCase), 값은 [Obsolete] 메시지.
  */
 export const DEPRECATED_API_OVERRIDES: Record<string, string> = {
+  // d.ts의 @deprecated 문구를 이전 SDK의 [Obsolete] 문구 그대로 유지한다
+  'TossAdsAttach':
+    'attach는 더 이상 권장되지 않습니다. attachBanner를 사용해주세요.',
   'TossAdsAttachBanner':
     'CSS 셀렉터 기반 attachBanner는 더 이상 권장되지 않습니다. AITBannerAdView 컴포넌트 또는 AITBannerAd.Show를 사용해주세요.',
 };

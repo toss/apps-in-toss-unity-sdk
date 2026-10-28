@@ -14,13 +14,13 @@ import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './gener
 import { generateUnityBridge } from './generators/unity-bridge.js';
 import { generateScreenManualCs, generateScreenManualJslib, generateCoreManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
-import { applyDocFallbacks } from './doc-fallbacks.js';
+import { applyDocFallbacks, applyTypeMemberDocFallbacks } from './doc-fallbacks.js';
 import { escapeCSharpKeyword } from './generators/csharp/utils.js';
 import { DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY } from './categories.js';
 import type { GeneratedTypeUnit } from './types.js';
 import { PUBLIC_TYPE_NAMES } from './generators/csharp/public-type-names.js';
 import { pruneUnreferencedSyntheticTypes } from './generators/csharp/prune-synthetic-types.js';
-import { TYPE_NAME_PINS, applyTypeNamePins, applyTypeNamePinsToUnits } from './generators/csharp/type-name-pins.js';
+import { TYPE_NAME_PINS, applyTypeNamePins, applyTypeNamePinsToUnits, buildDeprecatedShimUnits } from './generators/csharp/type-name-pins.js';
 
 const program = new Command();
 
@@ -353,10 +353,12 @@ async function generate(options: {
 
     // 타입 유닛을 카테고리별로 버킷팅 (API 추출 타입 + 파싱된 도메인 타입)
     // 3.x가 이름을 바꾼 타입은 SDK에 공개돼 있던 이름으로 되돌린다 (type-name-pins.ts)
-    const allTypeUnits: GeneratedTypeUnit[] = applyTypeNamePinsToUnits([
+    const pinnedTypeUnits: GeneratedTypeUnit[] = applyTypeNamePinsToUnits([
       ...apiTypeUnits,
       ...typeGenerator.applyEnumAliasesTo(parsedTypesResult.units),
     ]);
+    // 3.x가 새 타입으로 대체한 옛 이름은 [Obsolete] 하위 클래스로 이어 간다
+    const allTypeUnits: GeneratedTypeUnit[] = [...pinnedTypeUnits, ...buildDeprecatedShimUnits(pinnedTypeUnits)];
 
     // 어디에도 쓰이지 않는 타입은 지운다. d.ts가 선언했더라도 API 시그니처가 따라가지 않는 타입
     // (Environment$1 -> System.Environment와 충돌하는 enum, 번들 별칭이 만든 중복 클래스 등)은
@@ -369,6 +371,8 @@ async function generate(options: {
     );
     allTypeUnits.length = 0;
     allTypeUnits.push(...pruneResult.kept);
+    // 3.x JSDoc에 없는 타입 멤버 설명을 채운다
+    for (const unit of allTypeUnits) unit.code = applyTypeMemberDocFallbacks(unit.code);
     if (pruneResult.pruned.length > 0) {
       console.log(picocolors.gray(`   - 참조 없는 임시 타입 제거: ${pruneResult.pruned.join(', ')}`));
     }

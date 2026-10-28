@@ -439,7 +439,7 @@ namespace AppsInToss
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
-        [Obsolete("Use TossAdsAttachBanner")]
+        [Obsolete("attach는 더 이상 권장되지 않습니다. attachBanner를 사용해주세요.")]
         [Preserve]
         [APICategory("Advertising")]
 #if UNITY_6000_0_OR_NEWER

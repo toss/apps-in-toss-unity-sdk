@@ -96,9 +96,11 @@ namespace AppsInToss
     [Preserve]
     public class CheckoutPaymentResult
     {
+        /// <summary>인증이 성공했는지 여부예요.</summary>
         [Preserve]
         [JsonProperty("success")]
         public bool Success;
+        /// <summary>인증이 실패했을 경우의 이유예요.</summary>
         [Preserve]
         [JsonProperty("reason")]
         public string Reason; // optional
@@ -112,9 +114,11 @@ namespace AppsInToss
     [Preserve]
     public class RequestTossPayPaysBillingResult
     {
+        /// <summary>인증이 성공했는지 여부예요.</summary>
         [Preserve]
         [JsonProperty("success")]
         public bool Success;
+        /// <summary>인증이 실패했을 경우의 이유예요.</summary>
         [Preserve]
         [JsonProperty("reason")]
         public string Reason; // optional

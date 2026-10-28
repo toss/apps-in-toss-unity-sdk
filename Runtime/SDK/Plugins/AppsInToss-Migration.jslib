@@ -35,7 +35,7 @@ mergeInto(LibraryManager.library, {
                     var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result, function(k, v) { if (v instanceof ArrayBuffer) v = new Uint8Array(v); if (v instanceof Uint8Array) { var s = ''; for (var i = 0; i < v.length; i += 8192) s += String.fromCharCode.apply(null, v.subarray(i, i + 8192)); return btoa(s); } return v; }), error: '' })
                     });
                     SendMessage('AITCore', 'OnAITCallback', payload);
                 })

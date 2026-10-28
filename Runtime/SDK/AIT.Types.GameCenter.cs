@@ -187,4 +187,67 @@ namespace AppsInToss
         [Newtonsoft.Json.JsonExtensionData]
         public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
     }
+
+    /// <summary>
+    /// 이전 SDK에서 쓰던 이름이다. <see cref="GrantPromotionRewardParams"/>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("GrantPromotionRewardParams를 사용하세요.")]
+    public class GrantPromotionRewardForGameParams : GrantPromotionRewardParams
+    {
+    }
+
+    /// <summary>
+    /// 이전 SDK에서 쓰던 이름이다. <see cref="GrantPromotionRewardParamsParams"/>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("GrantPromotionRewardParamsParams를 사용하세요.")]
+    public class GrantPromotionRewardForGameParamsParams : GrantPromotionRewardParamsParams
+    {
+    }
+
+    /// <summary>
+    /// 이전 SDK에서 쓰던 이름이다. <see cref="GrantPromotionRewardResponse"/>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("GrantPromotionRewardResponse를 사용하세요.")]
+    public class GrantPromotionRewardForGameSuccessResponse : GrantPromotionRewardResponse
+    {
+    }
+
+    /// <summary>
+    /// 이전 SDK에서 쓰던 이름이다. <see cref="GrantPromotionRewardErrorResponse"/>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("GrantPromotionRewardErrorResponse를 사용하세요.")]
+    public class GrantPromotionRewardForGameErrorResponse : GrantPromotionRewardErrorResponse
+    {
+    }
+
+    /// <summary>
+    /// 이전 SDK에서 쓰던 이름이다. <see cref="GrantPromotionRewardErrorResult"/>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("GrantPromotionRewardErrorResult를 사용하세요.")]
+    public class GrantPromotionRewardForGameErrorResult : GrantPromotionRewardErrorResult
+    {
+    }
+
+    /// <summary>
+    /// 이전 SDK에서 쓰던 이름이다. <see cref="GrantPromotionRewardResponse"/>를 쓴다.
+    /// </summary>
+    [Serializable]
+    [Preserve]
+    [Obsolete("GrantPromotionRewardResponse를 사용하세요.")]
+    public class GrantPromotionRewardForGameResponse : GrantPromotionRewardResponse
+    {
+        [Preserve]
+        [JsonProperty("code")]
+        public string Code; // optional
+    }
 }

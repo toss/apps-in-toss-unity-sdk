@@ -96,3 +96,61 @@ export function applyDocFallbacks(
   }
   return applied;
 }
+
+/**
+ * 3.x d.ts의 JSDoc에 없는 타입 멤버 설명. 키는 `C# 타입 이름.C# 멤버 이름`.
+ * 생성된 타입 코드에서 설명이 없는 필드에만 `<summary>`를 채운다 (이미 있으면 건드리지 않는다).
+ */
+export const TYPE_MEMBER_DOC_FALLBACKS: Readonly<Record<string, string>> = {
+  'CheckoutPaymentResult.Reason': '인증이 실패했을 경우의 이유예요.',
+  'CheckoutPaymentResult.Success': '인증이 성공했는지 여부예요.',
+  'ContactEntity.Name': '연락처 이름이에요.',
+  'ContactEntity.PhoneNumber': '연락처 전화번호로, 문자열 형식이에요.',
+  'FetchAlbumPhotosOptions.Base64': '이미지를 base64 형식으로 반환할지 설정해요. 기본값은 false예요.',
+  'FetchAlbumPhotosOptions.MaxCount': '가져올 사진의 최대 개수를 설정해요. 숫자를 입력하고 기본값은 10이에요.',
+  'FetchAlbumPhotosOptions.MaxWidth': '사진의 최대 폭을 제한해요. 단위는 픽셀이고 기본값은 1024이에요.',
+  'GetCurrentLocationOptions.Accuracy': '위치 정보를 가져올 정확도 수준이에요.',
+  'ImageResponse.DataUri': '사진의 데이터 URI예요. base64 옵션이 true인 경우 Base64 문자열로 반환돼요.',
+  'ImageResponse.Id': '가져온 사진의 고유 ID예요.',
+  'LocationCoords.Accuracy': '위치 정확도',
+  'LocationCoords.Altitude': '높이',
+  'LocationCoords.AltitudeAccuracy': '고도 정확도',
+  'LocationCoords.Heading': '방향',
+  'LocationCoords.Latitude': '위도',
+  'LocationCoords.Longitude': '경도',
+  'OpenCameraOptions.Base64': '이미지를 Base64 형식으로 반환할지 여부를 나타내는 불리언 값이에요. 기본값: false.',
+  'OpenCameraOptions.MaxWidth': '이미지의 최대 너비를 나타내는 숫자 값이에요. 기본값: 1024.',
+  'RequestTossPayPaysBillingResult.Reason': '인증이 실패했을 경우의 이유예요.',
+  'RequestTossPayPaysBillingResult.Success': '인증이 성공했는지 여부예요.',
+  'ShowFullScreenAdEvent.Data': 'Event data (only for userEarnedReward)',
+  'ShowFullScreenAdEvent.Type': 'Event type: clicked, dismissed, failedToShow, impression, show, userEarnedReward, requested',
+  'StartUpdateLocationOptions.Accuracy': '위치 정확도를 설정해요.',
+  'StartUpdateLocationOptions.DistanceInterval': '위치 변경 거리를 미터(m) 단위로 설정해요.',
+  'StartUpdateLocationOptions.TimeInterval': '위치 업데이트 주기를 밀리초(ms) 단위로 설정해요.',
+};
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * 타입 코드(C# 클래스 하나 이상)에서 설명이 빠진 필드에 TYPE_MEMBER_DOC_FALLBACKS의 `<summary>`를 채운다.
+ */
+export function applyTypeMemberDocFallbacks(code: string): string {
+  let result = code;
+  for (const [key, doc] of Object.entries(TYPE_MEMBER_DOC_FALLBACKS)) {
+    const [typeName, member] = key.split('.');
+    const classStart = result.search(new RegExp(`public class ${escapeRegExp(typeName)}\\b`));
+    if (classStart < 0) continue;
+    const classEnd = result.indexOf('\n    }\n', classStart);
+    const body = result.slice(classStart, classEnd < 0 ? result.length : classEnd);
+    const field = new RegExp(`(\\n)( {8}\\[Preserve\\]\\n {8}\\[JsonProperty\\("[^"]*"\\)\\]\\n {8}public [^\\n]*? ${escapeRegExp(member)}(?: = [^;\\n]+)?;)`);
+    const match = field.exec(body);
+    if (!match) continue;
+    // 바로 위가 설명 주석이면 건드리지 않는다
+    const before = body.slice(0, match.index);
+    if (/\/\/\/ [^\n]*\n?$/.test(before) && before.trimEnd().endsWith('</summary>')) continue;
+    const insertAt = classStart + match.index + 1;
+    const safe = doc.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    result = `${result.slice(0, insertAt)}        /// <summary>${safe}</summary>\n${result.slice(insertAt)}`;
+  }
+  return result;
+}

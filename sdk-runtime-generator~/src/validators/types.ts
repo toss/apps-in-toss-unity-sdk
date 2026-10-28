@@ -174,11 +174,8 @@ export function validateAllTypes(apis: ParsedAPI[]): { success: boolean; errors:
 }
 
 /**
- * 알려진 외부 타입 (런타임에만 존재하는 타입)
- * 이 타입들은 web-bridge에서 참조되지만 TypeScript 정의가 없어서 object로 매핑됨
- *
- * 참고: InterstitialAd, RewardedAd, ResponseInfo 등의 AdMob 타입은
- * @apps-in-toss/native-modules에 정의되어 있으므로 제외됨 
+ * 알려진 외부 타입 (d.ts에 선언이 없고 런타임에만 있는 타입).
+ * 이 타입이 시그니처에 나오면 object로 매핑한다. 현재는 3.x d.ts가 모든 타입을 선언하므로 비어 있다.
  */
 const EXTERNAL_TYPES = new Set<string>([
   // 현재 런타임 전용 타입 없음 - 필요시 추가

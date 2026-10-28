@@ -18,6 +18,13 @@ export interface JSLibGenerationResult {
 }
 
 /**
+ * ArrayBuffer/Uint8Array를 base64 문자열로 바꾸는 JSON.stringify replacer.
+ * 그대로 stringify하면 `{}`가 되어 바이너리 데이터가 사라진다. C#에서는 byte[]로 받는다.
+ */
+const BINARY_TO_BASE64_REPLACER =
+  "function(k, v) { if (v instanceof ArrayBuffer) v = new Uint8Array(v); if (v instanceof Uint8Array) { var s = ''; for (var i = 0; i < v.length; i += 8192) s += String.fromCharCode.apply(null, v.subarray(i, i + 8192)); return btoa(s); } return v; }";
+
+/**
  * TypeScript 기반 jslib 생성기
  */
 export class JSLibGenerator {
@@ -1254,7 +1261,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
       : `                    var payload = JSON.stringify({
                         CallbackId: callback,
                         TypeName: typeNameStr,
-                        Result: JSON.stringify({ success: true, data: JSON.stringify(result), error: '' })
+                        Result: JSON.stringify({ success: true, data: JSON.stringify(result${api.returnsBinary ? ', ' + BINARY_TO_BASE64_REPLACER : ''}), error: '' })
                     });`;
 
     return `    __${api.name}_Internal: function(${paramList}) {

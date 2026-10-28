@@ -500,6 +500,20 @@ namespace AppsInToss
         }
 #endif
 
+        /// <summary>
+        /// 이전 버전 호출 <c>IAPGetCompletedOrRefundedOrders(timeoutMs)</c>를 그대로 컴파일하기 위한 오버로드다.
+        /// 새 코드는 <c>IAPGetCompletedOrRefundedOrders(null, timeoutMs)</c> 형태를 쓴다.
+        /// </summary>
+        [Preserve]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#if UNITY_6000_0_OR_NEWER
+        public static Awaitable<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs)
+            => IAPGetCompletedOrRefundedOrders(null, timeoutMs);
+#else
+        public static Task<CompletedOrRefundedOrdersResult> IAPGetCompletedOrRefundedOrders(int timeoutMs)
+            => IAPGetCompletedOrRefundedOrders(null, timeoutMs);
+#endif
+
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __IAPGetCompletedOrRefundedOrders_Internal(string paramsParam, string callbackId, string typeName);

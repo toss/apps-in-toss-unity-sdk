@@ -300,6 +300,7 @@ namespace AppsInToss
         /// <param name="onEvent">이벤트 콜백</param>
         /// <param name="onError">에러 콜백</param>
         /// <returns>구독 취소를 위한 Action</returns>
+        [Obsolete("이 API는 더 이상 사용을 권장하지 않아요.")]
         [Preserve]
         [APICategory("Share")]
         public static Action ContactsViral(
@@ -331,6 +332,7 @@ namespace AppsInToss
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Obsolete("이 API는 더 이상 사용을 권장하지 않아요.")]
         [Preserve]
         [APICategory("Share")]
 #if UNITY_6000_0_OR_NEWER

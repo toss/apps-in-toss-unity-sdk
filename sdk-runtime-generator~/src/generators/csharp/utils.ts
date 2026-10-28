@@ -30,6 +30,18 @@ export function capitalize(str: string): string {
 }
 
 /**
+ * `[Obsolete("...")]` 문자열 리터럴에 넣을 수 있게 바꾼다.
+ * 줄바꿈은 공백으로 합치고, 역슬래시를 먼저 이스케이프한 뒤 큰따옴표를 이스케이프한다.
+ */
+export function escapeObsoleteMessage(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+}
+
+/**
  * XML 주석용 텍스트 변환 (마크다운 제거)
  * @param text 입력 텍스트
  * @returns XML 안전한 텍스트

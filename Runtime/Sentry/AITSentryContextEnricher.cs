@@ -123,12 +123,12 @@ namespace AppsInToss.Sentry
             }
         }
 
-        private static Awaitable<string> CallGetDeviceId() => AIT.GetDeviceId();
-        private static Awaitable<string> CallGetPlatformOS() => AIT.GetPlatformOS();
-        private static Awaitable<string> CallGetLocale() => AIT.GetLocale();
-        private static Awaitable<string> CallGetTossAppVersion() => AIT.GetTossAppVersion();
-        private static Awaitable<string> CallGetOperationalEnvironment() => AIT.GetOperationalEnvironment();
-        private static Awaitable<string> CallEnvGetDeploymentId() => AIT.EnvGetDeploymentId();
+        private static Awaitable<string> CallGetDeviceId() => AIT.EnvironmentDeviceId();
+        private static Awaitable<string> CallGetPlatformOS() => AIT.DeviceOs();
+        private static Awaitable<string> CallGetLocale() => AIT.DeviceLocale();
+        private static Awaitable<string> CallGetTossAppVersion() => AIT.EnvironmentTossAppVersion();
+        private static Awaitable<string> CallGetOperationalEnvironment() => AIT.EnvironmentEnvironment();
+        private static Awaitable<string> CallEnvGetDeploymentId() => AIT.EnvironmentDeploymentId();
 #else
         private delegate System.Threading.Tasks.Task<string> AsyncStringCall();
 
@@ -164,12 +164,12 @@ namespace AppsInToss.Sentry
             }
         }
 
-        private static System.Threading.Tasks.Task<string> CallGetDeviceId() => AIT.GetDeviceId();
-        private static System.Threading.Tasks.Task<string> CallGetPlatformOS() => AIT.GetPlatformOS();
-        private static System.Threading.Tasks.Task<string> CallGetLocale() => AIT.GetLocale();
-        private static System.Threading.Tasks.Task<string> CallGetTossAppVersion() => AIT.GetTossAppVersion();
-        private static System.Threading.Tasks.Task<string> CallGetOperationalEnvironment() => AIT.GetOperationalEnvironment();
-        private static System.Threading.Tasks.Task<string> CallEnvGetDeploymentId() => AIT.EnvGetDeploymentId();
+        private static System.Threading.Tasks.Task<string> CallGetDeviceId() => AIT.EnvironmentDeviceId();
+        private static System.Threading.Tasks.Task<string> CallGetPlatformOS() => AIT.DeviceOs();
+        private static System.Threading.Tasks.Task<string> CallGetLocale() => AIT.DeviceLocale();
+        private static System.Threading.Tasks.Task<string> CallGetTossAppVersion() => AIT.EnvironmentTossAppVersion();
+        private static System.Threading.Tasks.Task<string> CallGetOperationalEnvironment() => AIT.EnvironmentEnvironment();
+        private static System.Threading.Tasks.Task<string> CallEnvGetDeploymentId() => AIT.EnvironmentDeploymentId();
 #endif
     }
 }

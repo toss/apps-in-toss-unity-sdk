@@ -20,7 +20,7 @@ on:
         type: boolean
         default: false
       sdk_version_override:
-        description: 'SDK 버전 오버라이드 (호환성 테스트용, 예: 1.5.0)'
+        description: 'web-framework 3.x 버전 오버라이드 (호환성 테스트용, 3.x만 가능, 예: 3.8.0)'
         type: string
         required: false
         default: ''
@@ -49,7 +49,7 @@ on:
         type: boolean
         default: false
       sdk_version_override:
-        description: 'Override SDK version for compatibility testing'
+        description: 'Override web-framework version for compatibility testing (3.x only, e.g. 3.8.0)'
         type: string
         required: false
         default: ''

@@ -473,6 +473,22 @@ namespace AppsInToss
 #endif
         }
 #endif
+{{#if this.compatTimeoutOnlyOverload}}
+
+        /// <summary>
+        /// 이전 버전 호출 <c>{{{this.pascalName}}}(timeoutMs)</c>를 그대로 컴파일하기 위한 오버로드다.
+        /// 새 코드는 <c>{{{this.pascalName}}}(null, timeoutMs)</c> 형태를 쓴다.
+        /// </summary>
+        [Preserve]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#if UNITY_6000_0_OR_NEWER
+        public static Awaitable{{#unless (eq this.callbackType "void")}}<{{{this.callbackType}}}>{{/unless}} {{{this.pascalName}}}(int timeoutMs)
+            => {{{this.pascalName}}}(null, timeoutMs);
+#else
+        public static Task{{#unless (eq this.callbackType "void")}}<{{{this.callbackType}}}>{{/unless}} {{{this.pascalName}}}(int timeoutMs)
+            => {{{this.pascalName}}}(null, timeoutMs);
+#endif
+{{/if}}
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]

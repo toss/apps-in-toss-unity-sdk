@@ -46,6 +46,8 @@ export interface ParsedAPI {
   nestedCallbacks?: NestedCallback[];
   // 호출에 넘기는 options.callbacks 묶음 (TossAds.initialize/attach/attachBanner)
   callbackBag?: CallbackBag;
+  /** 반환 타입에 ArrayBuffer/Uint8Array가 들어 있어 jslib가 base64로 직렬화해야 하는 API */
+  returnsBinary?: boolean;
   /**
    * window.AppsInToss 기준 호출 경로 (예: 'Device.getContacts.getPermission').
    * 없으면 namespace/originalName으로 유도한다 (getApiCallPath 참고).

@@ -157,6 +157,30 @@ interface MemberContext {
   docNode: Node | undefined;
 }
 
+/**
+ * 반환 타입 안에 ArrayBuffer/Uint8Array가 있는지 본다.
+ * JSON.stringify는 이 값을 `{}`로 바꿔 데이터를 잃으므로, 있으면 jslib가 base64 문자열로 바꿔 보낸다.
+ */
+function typeContainsBinary(type: Type, anchor: Node, seen: Set<Type> = new Set(), depth = 0): boolean {
+  if (depth > 12 || seen.has(type)) return false;
+  seen.add(type);
+  const name = type.getSymbol()?.getName() ?? '';
+  if (name === 'ArrayBuffer' || name === 'Uint8Array') return true;
+  const inner: Type[] = [
+    ...type.getTypeArguments(),
+    ...type.getAliasTypeArguments(),
+    ...type.getUnionTypes(),
+    ...type.getIntersectionTypes(),
+  ];
+  const element = type.getArrayElementType();
+  if (element) inner.push(element);
+  if (inner.some(t => typeContainsBinary(t, anchor, seen, depth + 1))) return true;
+  if (type.isObject() && !type.isArray()) {
+    return type.getProperties().some(prop => typeContainsBinary(prop.getTypeAtLocation(anchor), anchor, seen, depth + 1));
+  }
+  return false;
+}
+
 class BundleParser {
   readonly apis: ParsedAPI[] = [];
   readonly inventory: BundleExportRecord[] = [];
@@ -425,7 +449,8 @@ class BundleParser {
 
   private deprecationMessage(api: ParsedAPI, text: string | undefined, isSubMember = false): string | undefined {
     const replacement = findDeprecationReplacement(text, api.namespace);
-    if (!replacement) return undefined;
+    // 대체 API 이름이 없는 @deprecated(contactsViral, openContactsInvite)는 d.ts 문구를 그대로 안내한다
+    if (!replacement) return text?.replace(/\s+/g, ' ').trim() || undefined;
     return isSubMember ? `Use ${replacement}${toPascalCase(api.originalName)}` : `Use ${replacement}`;
   }
 
@@ -509,10 +534,11 @@ class BundleParser {
       isCallbackBased,
       nestedCallbacks: nestedCallbacks.length > 0 ? nestedCallbacks : undefined,
       callbackBag,
+      returnsBinary: typeContainsBinary(signature.getReturnType(), opts.ctx.anchor) || undefined,
     };
     if (opts.docs.isDeprecated) {
       const message = this.deprecationMessage(api, opts.docs.deprecatedText);
-      // 대체 API가 안내된 경우에만 [Obsolete]로 표시한다.
+      // @deprecated는 모두 [Obsolete]로 표시한다 (대체 API가 없으면 d.ts 문구를 쓴다).
       if (message) {
         api.isDeprecated = true;
         api.deprecatedMessage = message;

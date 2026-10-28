@@ -30,7 +30,9 @@
 
 이름은 항상 네임스페이스 접두사에 멤버의 PascalCase를 붙인 평면 구조입니다. 이름이 겹치면 결정적인 규칙으로 구분합니다. deprecated 최상위 함수도 그대로 노출하고, `@deprecated` 문구가 대체 API를 가리키면 `[Obsolete("Use X")]`를 붙입니다.
 
-C#으로 노출하지 않는 export와 이유는 번들 파서의 인벤토리에 남습니다. 기술적으로 불가능한 경우만 여기에 속합니다. 고차 팩토리(`createAsyncBridge` 등), 호출 결과가 `AITException`으로 변환되는 에러 클래스, 빈 이벤트 맵, 타입 수준에만 있는 제네릭 헬퍼가 해당합니다.
+C#으로 노출하지 않는 export와 이유는 번들 파서의 인벤토리에 남습니다. 고차 팩토리(`createAsyncBridge`, `createConstantBridge`, `createEventBridge`)는 JS 함수를 만들어 넘기는 탈출구라서 의도적으로 제외합니다(마샬링이 불가능해서가 아닙니다). 그 밖에 호출 결과가 `AITException`으로 변환되는 에러 클래스, 빈 이벤트 맵, 타입 수준에만 있는 제네릭 헬퍼도 제외합니다.
+
+`options.callbacks` 묶음을 받는 API(`TossAds.initialize`, `attach`, `attachBanner`)는 콜백 이름별 이벤트(`AITCallbackBagEvent`)로 풀어서 C# `Action`/`Action<T>` 필드에 전달합니다. 결과에 `destroy`가 있으면 `Destroy` 핸들로 돌려줍니다.
 
 ## 타입 매핑
 
@@ -46,9 +48,13 @@ C#으로 노출하지 않는 export와 이유는 번들 파서의 인벤토리�
 | `unknown` | `object` |
 | `symbol` | `object` |
 | `Date` | `DateTime` |
-| `ArrayBuffer`, `Uint8Array` | `byte[]` |
+| `ArrayBuffer`, `Uint8Array` | `byte[]` (반환값에 들어 있으면 jslib가 base64 문자열로 바꿔 보내고 C#이 `byte[]`로 읽습니다) |
 | `Error` | `Exception` |
 | `T \| U` | discriminated union 클래스 |
+
+익명 객체 배열은 `<부모 타입><단수형 필드 이름>[]` 클래스로 생성합니다(`OriginStorageDump.opfs.files` -> `OriginStorageDumpOpfsFile[]`).
+
+null 인자: C#이 `null`을 보내면 직렬화 결과는 문자열 `"null"`입니다. jslib는 선택 인자일 때 `null`/빈 값을 `undefined`로 바꿔 웹 API에 넘깁니다(`UTF8ToString(0)`은 `undefined`가 아니라 빈 문자열을 돌려주기 때문입니다).
 
 `Promise<T>`는 Unity 버전에 따라 갈립니다. `UNITY_6000_0_OR_NEWER`에서는 `Awaitable<T>`, 그 이하에서는 `Task<T>`로 생성되고 한 파일 안에 `#if`로 두 벌이 들어갑니다.
 
@@ -58,18 +64,34 @@ C#으로 노출하지 않는 export와 이유는 번들 파서의 인벤토리�
 
 > **중요**: API 설명을 마크다운 문서에 복사하지 마세요. 상위는 SDK 업데이트마다 재생성되지만 마크다운은 아니라서 확정적으로 어긋납니다. 공개 문서는 상위에 없는 것만 다룹니다 — [API 사용 패턴](https://developers-apps-in-toss.toss.im/documentation/unity/first-steps/api-usage-patterns) 참조.
 
+타입 멤버 설명이 빠진 경우는 `TYPE_MEMBER_DOC_FALLBACKS`(키는 `C# 타입.C# 멤버`)가 같은 방식으로 채웁니다. `tests/fixtures/documented-type-members.json`은 이전 SDK에서 설명이 있던 멤버 목록이고, `type-member-docs.test.ts`가 설명이 사라지면 실패합니다.
+
 3.x JSDoc은 `@param`/`@returns`/요약이 빠진 API가 있습니다. 이전 SDK에 있던 설명이 얇아지지 않도록 `src/doc-fallbacks.ts`의 `DOC_FALLBACKS`(키는 C# API 이름)가 번들에 없는 항목만 채웁니다. 번들에 값이 있으면 번들이 우선이고, 상위가 문서를 채우면 해당 항목은 표에서 지웁니다.
 
 ## 공개 타입 이름 고정
 
-C# 타입에는 별칭을 export하는 방법이 없어서, 3.x가 타입 이름을 바꾸면 사용자 코드가 깨집니다. 그래서 생성기가 이름을 고정합니다.
+C#의 `using X = Y;` 별칭은 선언한 파일 안에서만 보입니다. 라이브러리가 이름을 바꿔도 사용자 코드의 `X`는 그대로 컴파일되지 않고, 메서드 반환 타입도 별칭으로 이을 수 없습니다. 그래서 3.x가 타입 이름을 바꾸면 생성기가 두 가지 방법으로 이전 이름을 이어 줍니다.
 
 - `src/generators/csharp/type-name-pins.ts`의 `TYPE_NAME_PINS`는 생성된 이름을 이전 공개 이름으로 되돌립니다(예: `AppLoginResponse` -> `AppLoginResult`). 카테고리 파일, `AITCore`, 타입 단위에 식별자 단위로 적용합니다. 되돌린 이름이 이미 있는 타입과 같으면 `///` 주석을 뺀 본문이 같을 때만 합치고, 다르면 생성을 중단합니다.
-- `REMOVED_PUBLIC_TYPE_NAMES`는 3.x에서 의도적으로 사라진 이전 이름입니다.
-- `public-type-names.ts`의 `PUBLIC_TYPE_NAMES`는 이전 공개 이름 전체이고, `tests/unit/type-name-pins.test.ts`가 "생성됐거나 제거 목록에 있을 것"을 검사합니다.
-- `prune-synthetic-types.ts`는 생성기가 만들어 낸 클래스 중 아무도 참조하지 않는 것을 지웁니다. d.ts에 선언된 타입과 `PUBLIC_TYPE_NAMES`는 남깁니다.
+- `DEPRECATED_TYPE_SHIMS`는 3.x가 같은 모양의 새 타입으로 대체한 이전 이름을 `[Obsolete]` 하위 클래스로 남깁니다(`GrantPromotionRewardForGameParams : GrantPromotionRewardParams` 등). `new`, 필드 초기화, 새 API 인자로 넘기기는 그대로 되고, 반환값을 받는 쪽만 새 타입으로 받으면 됩니다. 기반 타입이 생성되지 않으면 생성을 중단합니다.
+- `REMOVED_PUBLIC_TYPE_NAMES`는 어떤 3.x 타입으로도 이을 수 없어 의도적으로 사라진 이전 이름입니다(`SafeAreaInsetsSubscribe__0`, `number`).
+- `public-type-names.ts`의 `PUBLIC_TYPE_NAMES`는 이전 공개 이름 전체이고, `tests/unit/type-name-pins.test.ts`가 "생성됐거나 제거 목록에 있을 것", "하위 클래스의 기반이 있을 것", "System/UnityEngine 타입과 이름이 겹치지 않을 것", "참조되지 않는 공개 타입이 없을 것"을 검사합니다.
+- `prune-synthetic-types.ts`는 생성기가 만들어 낸 클래스와 d.ts에 선언만 되고 아무도 참조하지 않는 타입(`Environment` enum은 `System.Environment`와 이름이 충돌합니다)을 지웁니다. `PUBLIC_TYPE_NAMES`는 남깁니다.
+- 예전에 `(int timeoutMs)`만 받던 API가 선택 파라미터를 앞에 얻으면 `COMPAT_TIMEOUT_ONLY_OVERLOADS`(`api-data-preparer.ts`)에 올려 `Api(int timeoutMs)` 오버로드를 함께 생성합니다(`IAPGetCompletedOrRefundedOrders`).
 
 새 타입의 이름은 3.x d.ts를 따릅니다. 문자열 리터럴 유니온은 enum이 되고, 값 집합이 같은 인라인 enum은 `enum-dedup.ts`가 합칩니다(핀 대상 이름은 합치지 않습니다). enum 멤버는 `[EnumMember(Value = ...)]`로 원래 문자열 값을 유지하므로 직렬화 형식은 바뀌지 않습니다.
+
+## origin/main 대비 C# 호환성 변경
+
+web-framework 3.x d.ts를 유일한 입력으로 쓰면서 생긴, 소스 수준에서 호환되지 않는 변경입니다. 이 목록 밖의 공개 메서드와 타입은 이름과 시그니처가 그대로입니다.
+
+- `SafeAreaInsetsSubscribe(SafeAreaInsetsSubscribe__0)` 가 `SafeAreaInsetsSubscribe(Action<SafeAreaInsets> onEvent, Action<AITException> onError = null)` 로 바뀌었고 반환이 `Awaitable<Action>` 에서 `Action` 으로 바뀌었습니다. `SafeAreaInsetsSubscribe__0` 와 `number` 타입은 없어졌습니다.
+- `OpenPermissionDialog` 의 반환이 `string` 에서 `PermissionDialogResult` enum 으로, `GetUserKeyForGame` 의 반환이 `string` 에서 `GetUserKeyForGameResult` 로 바뀌었습니다.
+- 문자열 리터럴 유니온 필드가 enum 으로 바뀌었습니다: `EventLogParams.Log_type`, `DeclaredAgeRange.Status`, `Location.AccessLocation`(nullable), `SubmitGameCenterLeaderBoardScoreResponse.StatusCode`, `TossAdsAttachBannerOptions.Theme`/`Tone`/`Variant`, `TossAdsAttachOptions.Theme`. `ContactsViralEventData.RewardAmount` 는 `double?` 입니다. 직렬화되는 문자열 값은 그대로입니다.
+- 결과 클래스에서 예전 생성기가 붙이던 `error` 필드가 없어졌습니다(`AppLoginResult`, `AppsInTossGlobals`, `AttachBannerResult`, `CompletedOrRefundedOrdersResult`, `IAPGetPendingOrdersResult`, `IAPGetProductItemListResult`, `IapSubscriptionInfoResponse`, `Location`, `SafeAreaInsets`, `SetScreenAwakeModeResult`, `SetSecureScreenResult`). 실패는 `AITException` 으로 오고, 앱 버전이 낮아 `undefined` 를 돌려주는 호출은 `null` 이 됩니다.
+- 결제 타입이 3.x 모양으로 바뀌었습니다: `CheckoutPaymentOptions.PayToken` 은 `CheckoutPaymentOptions.Params.PayToken`, `RequestTossPayPaysBillingOptions.WrappedToken` 은 `Params` 아래로 옮겨졌습니다. `GrantPromotionRewardResult.Code` 는 없어졌고 실패는 `ErrorCode`/`Message` 입니다.
+- `APICategory` 는 예전에 `Other` 였던 API 9개가 도메인 카테고리(Media, Notification, Payment, Promotion, Review, SystemInfo, User)로 옮겨졌습니다. 카테고리를 읽는 코드는 `Tests~/E2E` 의 `APIParameterInspector` 뿐이고 매핑 가드 테스트가 있습니다.
+- API 143개가 추가됐고, 3.x에서 deprecated 인 API 90여 개는 `[Obsolete]` 입니다. 이 목록은 `[Obsolete]` 경고일 뿐 컴파일을 막지 않습니다.
 
 ## 문서 링크가 생성물로 들어가는 지점
 
@@ -77,7 +99,7 @@ C# 타입에는 별칭을 export하는 방법이 없어서, 3.x가 타입 이름
 
 ## 에러 처리
 
-생성된 API는 실패 시 `AITException`을 던집니다. 코드는 `ErrorCode`에 있습니다.
+생성된 API는 실패 시 `AITException`을 던집니다. 코드는 `ErrorCode`에 있습니다. JS 에러의 `name`(예: `PermissionError`)은 `ErrorCode`로 전달됩니다. 기본 `Error`이면 `ErrorCode`는 빈 문자열입니다.
 
 ```csharp
 try

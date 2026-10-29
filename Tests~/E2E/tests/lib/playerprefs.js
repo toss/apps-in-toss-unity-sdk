@@ -6,8 +6,10 @@
  * window.__E2E_PLAYERPREFS_DATA__를 지운 뒤 triggerFn()을 실행하고,
  * 지정한 op으로 결과가 도착할 때까지 폴링한다 (PlayerPrefsTester → E2ETestBridge.jslib 계약).
  * 같은 page를 여러 케이스에서 재사용할 때 이전 결과 잔재를 읽지 않도록 매번 지우고 시작한다.
+ * 기본 대기는 30초다. SwiftShader 러너에서 재부팅 직후 Get 응답이 10초를 넘긴 적이 있고,
+ * 이 실패는 shared session 묶음 전체 재시도로 이어져 잡 시간 제한(90분)을 넘긴다.
  */
-export async function triggerPlayerPrefsAndWait(page, triggerFn, expectedOp, timeoutMs = 10000) {
+export async function triggerPlayerPrefsAndWait(page, triggerFn, expectedOp, timeoutMs = 30000) {
   await page.evaluate(() => { delete window['__E2E_PLAYERPREFS_DATA__']; });
   await triggerFn();
   await page.waitForFunction((op) => {

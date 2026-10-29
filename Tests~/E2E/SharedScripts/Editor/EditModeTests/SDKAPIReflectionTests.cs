@@ -96,9 +96,7 @@ public class SDKAPIReflectionTests
             // 예상 에러 패턴 테스트
             var knownPatterns = new[]
             {
-                "XXX is not a constant handler",
-                "__GRANITE_NATIVE_EMITTER is not available",
-                "ReactNativeWebView is not available"
+                "apps-in-toss 웹뷰 환경이 아니에요. 토스 앱 안에서만 호출할 수 있어요."
             };
 
             foreach (var pattern in knownPatterns)

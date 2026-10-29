@@ -291,10 +291,15 @@ namespace AppsInToss
         /// (PlayerSettingsSnapshot.RestoreInternal 의 webGLCodeOptimization). 콘텐츠 프로세서(텍스처/오디오 등)는
         /// BuildWebGL 의 try/finally 가 매 시도마다 적용·원복하므로 재시도에서 중복 적용되지 않는다.
         /// 재시도는 최대 1회이고, 취소(CANCELLED)나 OOM 이 아닌 실패는 재시도하지 않는다.
+        ///
+        /// External 디버그 심볼 빌드가 로더 전처리의 SYMBOLS_FILENAME 누락으로 실패하면(<see cref="AITDebugSymbolFallback"/>)
+        /// 심볼을 Off 로 바꿔 한 번 다시 빌드한다. 이 재시도는 LTO 무장을 그대로 넘겨 OOM 폴백도 유지한다.
         /// </summary>
         internal static AITExportError BuildWebGLWithLtoFallback(bool cleanBuild, AITBuildProfile profile)
         {
-            if (!AITWebGLCodeOptimization.LtoFallbackArmed)
+            bool ltoArmed = AITWebGLCodeOptimization.LtoFallbackArmed;
+            bool symbolsArmed = AITDebugSymbolFallback.CanFallback();
+            if (!ltoArmed && !symbolsArmed)
                 return Editor.AITWebGLBuilder.BuildWebGL(cleanBuild, profile);
 
             // 한 번 소비: 같은 무장으로 두 번 재시도하지 않는다.
@@ -336,6 +341,22 @@ namespace AppsInToss
             evidence += "\n" + (AITErrorReporter.FormatBuildErrors() ?? string.Empty);
             evidence += "\n" + (ReadFileSince(Application.consoleLogPath, logOffset, LtoLogMaxBytes) ?? string.Empty);
 
+            if (symbolsArmed && AITDebugSymbolFallback.IsSignature(evidence))
+            {
+                Debug.LogWarning("[AIT] External 디버그 심볼 빌드가 Unity 로더 전처리(SYMBOLS_FILENAME 누락)에서 실패했습니다 — " +
+                                 $"디버그 심볼을 끄고 한 번 다시 빌드합니다. Unity {Application.unityVersion} 의 다음 빌드부터는 처음부터 끈 채로 빌드합니다.");
+                AITDebugSymbolFallback.SwitchOffAndRemember();
+                DeleteFailedWebGLOutput();
+                AITWebGLCodeOptimization.LtoFallbackArmed = ltoArmed;
+                var symbolsRetry = BuildWebGLWithLtoFallback(false, profile);
+                if (symbolsRetry == AITExportError.SUCCEED)
+                    Debug.Log("[AIT] 디버그 심볼 없는 재빌드 성공 — 이번 산출물에는 외부 심볼 파일(symbols.json)이 없습니다.");
+                return symbolsRetry;
+            }
+
+            if (!ltoArmed)
+                return result;
+
             if (!AITWebGLCodeOptimization.IsLinkOomSignature(evidence))
             {
                 Debug.Log("[AIT] LTO 빌드 실패 — 링크 OOM 징후가 없어 LTO 없는 재빌드는 하지 않습니다.");
@@ -353,6 +374,19 @@ namespace AppsInToss
             Debug.Log($"[AIT] WebGL codeOptimization(재빌드): '{AITWebGLCodeOptimization.DiskSizeLTO}' → " +
                       $"'{AITWebGLCodeOptimization.GetCurrentName()}' (빌드 종료 시 PlayerSettings 스냅샷이 사용자 값으로 복원)");
 
+            DeleteFailedWebGLOutput();
+
+            AITWebGLCodeOptimization.LtoFallbackArmed = false;
+            var retry = Editor.AITWebGLBuilder.BuildWebGL(false, profile);
+            if (retry == AITExportError.SUCCEED)
+                Debug.Log("[AIT] LTO 없는 재빌드 성공 — 이번 산출물은 LTO 가 적용되지 않았습니다(6000.0 빌드 머신 메모리 부족).");
+            else
+                Debug.LogWarning("[AIT] LTO 없는 재빌드도 실패했습니다. 위 에러를 확인하세요.");
+            return retry;
+        }
+
+        private static void DeleteFailedWebGLOutput()
+        {
             // 실패한 시도가 남긴 부분 산출물(잘린 wasm 등)을 비운다. 폴더만 지우므로 Bee 캐시는 유지되고
             // 컴파일 플래그가 달라진 오브젝트만 다시 만들어진다. 빈 폴더라 BuildWebGL 은 증분 경로로 간다.
             try
@@ -363,16 +397,8 @@ namespace AppsInToss
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[AIT] 실패한 LTO 빌드 출력 폴더 정리 실패(무시): {e.Message}");
+                Debug.LogWarning($"[AIT] 실패한 빌드 출력 폴더 정리 실패(무시): {e.Message}");
             }
-
-            AITWebGLCodeOptimization.LtoFallbackArmed = false;
-            var retry = Editor.AITWebGLBuilder.BuildWebGL(false, profile);
-            if (retry == AITExportError.SUCCEED)
-                Debug.Log("[AIT] LTO 없는 재빌드 성공 — 이번 산출물은 LTO 가 적용되지 않았습니다(6000.0 빌드 머신 메모리 부족).");
-            else
-                Debug.LogWarning("[AIT] LTO 없는 재빌드도 실패했습니다. 위 에러를 확인하세요.");
-            return retry;
         }
 
         private static long GetFileLength(string path)

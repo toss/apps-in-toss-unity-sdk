@@ -44,14 +44,8 @@ public class RuntimeAPITester : MonoBehaviour
     // 이 패턴과 일치하면 "expectedError"로 분류 (정상)
     private static readonly string[] EXPECTED_ERROR_PATTERNS = new string[]
     {
-        // 2.x 시절 bridge 에러 (3.x 번들에서는 이 문구를 찾지 못함. 이전 버전 호환용으로 유지)
-        "is not a constant handler",                    // Constant API
-        "__GRANITE_NATIVE_EMITTER is not available",    // Async API (emitter)
-        "ReactNativeWebView is not available",          // Native 통신
-
         // web-framework 3.x assertWebViewEnvironment 가드
         // ("apps-in-toss 웹뷰 환경이 아니에요. 토스 앱 안에서만 호출할 수 있어요.")
-        // 가드 조건은 window.ReactNativeWebView 유무이고 2.x 시절 메시지와 문구만 다르다.
         "웹뷰 환경이 아니",
 
         // 플랫폼 미지원 에러

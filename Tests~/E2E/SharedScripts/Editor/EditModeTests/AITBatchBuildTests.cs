@@ -88,6 +88,13 @@ public class AITBatchBuildTests
     }
 
     [Test]
+    public void ResolveResultPath_InvalidArg_FallsBackToDefault()
+    {
+        string path = AITBatchBuild.ResolveResultPath(projectDir, new[] { "-aitResultPath", "out/\0bad.json" });
+        Assert.AreEqual(Path.Combine(projectDir, "ait-build", "ait-build-result.json"), path);
+    }
+
+    [Test]
     public void ToProjectRelativePath_InsideProject_UsesForwardSlashes()
     {
         string full = Path.Combine(projectDir, "ait-build", "app.ait");

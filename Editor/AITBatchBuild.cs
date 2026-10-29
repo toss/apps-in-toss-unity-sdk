@@ -47,9 +47,11 @@ namespace AppsInToss.Editor
     /// 결과를 JSON 파일과 프로세스 종료 코드로 알립니다.
     ///
     /// 사용 예:
-    ///   Unity -batchmode -nographics -projectPath &lt;프로젝트&gt; \
+    ///   Unity -batchmode -nographics -projectPath &lt;프로젝트&gt; -buildTarget WebGL \
     ///         -executeMethod AppsInToss.Editor.AITBatchBuild.Build -logFile &lt;로그 파일&gt;
     ///
+    /// - <c>-buildTarget WebGL</c>은 필수입니다. 진입점 안에서 빌드 타깃을 바꾸면 스크립트가 다시 로드돼
+    ///   결과 파일과 종료 코드 없이 끊길 수 있어서, batchmode에서 활성 타깃이 WebGL이 아니면 바로 실패합니다.
     /// - 종료 코드: 성공 0, 실패 1. batchmode에서는 진입점이 직접 <see cref="EditorApplication.Exit"/>를
     ///   부르므로 <c>-quit</c>가 필요 없습니다. Editor GUI에서 부르면 종료하지 않고 로그와 JSON만 남깁니다.
     /// - 결과 파일: 기본 <c>&lt;프로젝트&gt;/ait-build/ait-build-result.json</c>.
@@ -83,6 +85,19 @@ namespace AppsInToss.Editor
             AITBatchBuildResult result;
             try
             {
+                if (Application.isBatchMode && EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+                {
+                    result = CreateFailure(
+                        "BUILD_TARGET_NOT_WEBGL",
+                        $"활성 빌드 타깃이 {EditorUserBuildSettings.activeBuildTarget}입니다. Unity를 -buildTarget WebGL로 실행해주세요.",
+                        stopwatch.ElapsedMilliseconds,
+                        sdkVersion);
+                    TryWriteResult(resultPath, result, projectPath);
+                    AITLog.Error($"[AIT] batch 빌드 실패: {result.errorCode} - {result.error}", sentryCapture: false);
+                    Exit(1);
+                    return;
+                }
+
                 Debug.Log($"[AIT] batch 빌드를 시작합니다 (cleanBuild: {cleanBuild})");
                 var export = AITConvertCore.DoExport(
                     buildWebGL: true,
@@ -179,11 +194,21 @@ namespace AppsInToss.Editor
         /// </summary>
         internal static string ResolveResultPath(string projectPath, string[] args)
         {
+            string defaultPath = Path.Combine(projectPath, "ait-build", ResultFileName);
             string value = GetArgValue(args, ResultPathArg);
             if (string.IsNullOrEmpty(value))
-                return Path.Combine(projectPath, "ait-build", ResultFileName);
+                return defaultPath;
 
-            return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(projectPath, value));
+            try
+            {
+                return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(projectPath, value));
+            }
+            catch (Exception e)
+            {
+                // 잘못된 경로 때문에 결과 파일을 아예 못 남기는 것보다 기본 위치에 남기는 편이 낫다.
+                Debug.LogWarning($"[AIT] {ResultPathArg} 값 '{value}'을 쓸 수 없어 기본 경로를 씁니다: {e.Message}");
+                return defaultPath;
+            }
         }
 
         internal static string GetArgValue(string[] args, string name)

@@ -84,7 +84,7 @@ public class AITFrameworkPatcherTests
 
         return "var WEBAudio={audioInstances:{},audioInstanceIdCounter:0,audioWebEnabled:1};var HEAPU8=new Uint8Array(8);"
             + "function jsAudioGetMimeTypeFromType(fmodSoundType){switch(fmodSoundType){" + A(AITFrameworkPatcher.GroupMimeMap, 0) + "}}"
-            + A(AITFrameworkPatcher.GroupClipMeta, 0)
+            + A(AITFrameworkPatcher.GroupClipMeta, 0) + "44100};" // 앵커는 getLength 의 곱셈 앞에서 끊긴다(샘플레이트 식은 원문 유지)
             + A(AITFrameworkPatcher.GroupClipMeta, 1)
             + "soundClip.createSourceNode=function(){var mediaElement=new Audio;"
             + A(AITFrameworkPatcher.GroupPitchPosition, 0)
@@ -119,6 +119,20 @@ public class AITFrameworkPatcherTests
         StringAssert.Contains("aitSrc", r.Source, "media-source-release 치환이 들어가야 한다");
         StringAssert.Contains("audio/ogg", r.Source, "mime-map 치환이 들어가야 한다");
         StringAssert.Contains("WEBAudio.aitDecide(ptr,length,decompress)", r.Source, "prologue 호출이 들어가야 한다");
+    }
+
+    [Test]
+    public void PatchText_ClipMeta_MatchesSampleRateGetLength_AndKeepsIt()
+    {
+        // 6000.0.85f1·6000.3.27f1 는 getLength 가 duration*44100 대신 duration*_JS_Sound_GetAudioContextSampleRate() 다.
+        string src = SyntheticFramework().Replace("44100};", "_JS_Sound_GetAudioContextSampleRate()};");
+
+        var r = AITFrameworkPatcher.PatchText(src, false, 10f, FakePayload);
+
+        CollectionAssert.Contains(r.Applied, AITFrameworkPatcher.GroupClipMeta);
+        CollectionAssert.Contains(r.Applied, AITFrameworkPatcher.GroupPrologue);
+        StringAssert.Contains("d=this.aitInfo.dur;return d*_JS_Sound_GetAudioContextSampleRate()};", r.Source,
+            "샘플레이트 식은 원문 그대로 남아야 한다");
     }
 
     [Test]

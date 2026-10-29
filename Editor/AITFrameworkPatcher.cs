@@ -83,11 +83,13 @@ namespace AppsInToss.Editor
         private const string MimeMapTo =
             @"case 13:return""audio/mpeg"";case 20:return""audio/wav"";case 14:return""audio/ogg"";case 7:return""audio/flac"";case 2:return""audio/aiff"";default:return""audio/mp4""";
 
+        // 앵커를 getLength 의 "duration*" 에서 끊는다. 곱하는 샘플레이트가 6000.0.85f1·6000.3.27f1 부터 44100 상수에서
+        // _JS_Sound_GetAudioContextSampleRate() 로 바뀌어, 그 뒤는 원문을 그대로 두어야 두 형태에 모두 정확히 1회 일치한다.
         private const string ClipMetaAFrom =
-            @"function jsAudioCreateCompressedSoundClip(audioData,fmodSoundType){var mimeType=jsAudioGetMimeTypeFromType(fmodSoundType);var blob=new Blob([audioData],{type:mimeType});var soundClip={url:URL.createObjectURL(blob),error:false,mediaElement:new Audio};soundClip.mediaElement.preload=""metadata"";soundClip.mediaElement.src=soundClip.url;soundClip.release=function(){if(!this.mediaElement){return}this.mediaElement.src="""";URL.revokeObjectURL(this.url);delete this.mediaElement;delete this.url};soundClip.getLength=function(){return this.mediaElement.duration*44100};";
+            @"function jsAudioCreateCompressedSoundClip(audioData,fmodSoundType){var mimeType=jsAudioGetMimeTypeFromType(fmodSoundType);var blob=new Blob([audioData],{type:mimeType});var soundClip={url:URL.createObjectURL(blob),error:false,mediaElement:new Audio};soundClip.mediaElement.preload=""metadata"";soundClip.mediaElement.src=soundClip.url;soundClip.release=function(){if(!this.mediaElement){return}this.mediaElement.src="""";URL.revokeObjectURL(this.url);delete this.mediaElement;delete this.url};soundClip.getLength=function(){return this.mediaElement.duration*";
 
         private const string ClipMetaATo =
-            @"function jsAudioCreateCompressedSoundClip(audioData,fmodSoundType,aitInfo){var mimeType=(aitInfo&&aitInfo.mime)||jsAudioGetMimeTypeFromType(fmodSoundType);var blob=new Blob([audioData],{type:mimeType});var soundClip={url:URL.createObjectURL(blob),error:false,aitInfo:aitInfo||null,mediaElement:null};if(!(aitInfo&&aitInfo.dur>0&&!aitInfo.approx)){soundClip.mediaElement=new Audio;soundClip.mediaElement.preload=""metadata"";soundClip.mediaElement.src=soundClip.url}soundClip.release=function(){if(this.mediaElement){this.mediaElement.src="""";delete this.mediaElement}if(this.url){URL.revokeObjectURL(this.url);delete this.url}};soundClip.getLength=function(){var d=this.mediaElement?this.mediaElement.duration:NaN;if(!(d>0&&isFinite(d))&&this.aitInfo&&this.aitInfo.dur>0)d=this.aitInfo.dur;return d*44100};";
+            @"function jsAudioCreateCompressedSoundClip(audioData,fmodSoundType,aitInfo){var mimeType=(aitInfo&&aitInfo.mime)||jsAudioGetMimeTypeFromType(fmodSoundType);var blob=new Blob([audioData],{type:mimeType});var soundClip={url:URL.createObjectURL(blob),error:false,aitInfo:aitInfo||null,mediaElement:null};if(!(aitInfo&&aitInfo.dur>0&&!aitInfo.approx)){soundClip.mediaElement=new Audio;soundClip.mediaElement.preload=""metadata"";soundClip.mediaElement.src=soundClip.url}soundClip.release=function(){if(this.mediaElement){this.mediaElement.src="""";delete this.mediaElement}if(this.url){URL.revokeObjectURL(this.url);delete this.url}};soundClip.getLength=function(){var d=this.mediaElement?this.mediaElement.duration:NaN;if(!(d>0&&isFinite(d))&&this.aitInfo&&this.aitInfo.dur>0)d=this.aitInfo.dur;return d*";
 
         private const string ClipMetaBFrom =
             @"soundClip.getNumberOfChannels=function(){console.warn(""getNumberOfChannels() is not supported for compressed sound."");return 0};soundClip.getFrequency=function(){console.warn(""getFrequency() is not supported for compressed sound."");return 0};";
@@ -117,6 +119,11 @@ namespace AppsInToss.Editor
             @"function _JS_Sound_Load(ptr,length,decompress,fmodSoundType){";
 
         // helper(payload + cfg) 뒤에 이어 붙는 본문. 131072 바이트 미만은 stock 이 항상 decompress=1 로 돌리는 영역이라 건드리지 않는다.
+        // 6000.0.85f1·6000.3.27f1 의 stock 은 Chromium(window.chrome)에서 모든 클립을 decompress=1 로 돌린다(Chrome 이
+        // MediaElementAudioSourceNode 를 놓지 않는 누수 회피). 이 본문은 그 줄보다 앞에서 aitDecide 가 고른 긴 클립만 압축 재생으로
+        // 빼므로, Android WebView 에서도 60초 BGM 이 PCM 20MB 로 상주하지 않는다. 남는 노드는 media-source-release 가 src 를 비워
+        // 미디어 버퍼를 놓게 한다. Chromium 에서 minSec 보다 짧거나 길이를 모르는 클립은 aitDecide 가 null 을 돌려 stock 경로
+        // (decompress=1)로 보낸다 — 반복 재생되는 효과음이 노드를 쌓지 않게.
         private const string PrologueBody =
             @"function _JS_Sound_Load(ptr,length,decompress,fmodSoundType){if(WEBAudio.audioWebEnabled!=0&&length>=131072){var aitD=WEBAudio.aitDecide(ptr,length,decompress);if(aitD&&aitD.compressed){var aitS=jsAudioCreateCompressedSoundClip(HEAPU8.subarray(ptr,ptr+length),fmodSoundType,aitD.info);WEBAudio.aitLog(aitD,length,decompress);WEBAudio.audioInstances[++WEBAudio.audioInstanceIdCounter]=aitS;return WEBAudio.audioInstanceIdCounter}}";
 

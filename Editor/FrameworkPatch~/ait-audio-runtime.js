@@ -113,7 +113,11 @@ function aitAdts(u,n,k){
 }
 WEBAudio.aitDecide=function(ptr,length,decompress){
   var u=HEAPU8.subarray(ptr,ptr+length),info=aitAudioProbe(u),cfg=WEBAudio.aitCfg;
-  if(!decompress)return{compressed:true,info:info};           /* Unity already chose the media-element path */
+  if(!decompress){
+    /* Unity already chose the media-element path. 6000.0.85f1+ stock decodes everything on Chromium (window.chrome) because
+       Chrome never frees MediaElementAudioSourceNode; keep that for short/unknown clips and only keep long clips compressed. */
+    if(window.chrome&&!(info&&info.dur>=cfg.minSec))return null;
+    return{compressed:true,info:info}}
   if(!cfg.force||!info||!(info.dur>0)||info.loop)return null;  /* unknown container / loop tags (media element ignores loop points) -> stock PCM */
   if(!(info.dur>=cfg.minSec))return null;                      /* short clips keep the low-latency PCM path */
   try{var ok=new Audio().canPlayType(info.mime.split(";")[0]);if(!ok)return null}catch(e){return null}

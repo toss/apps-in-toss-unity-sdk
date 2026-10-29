@@ -426,6 +426,44 @@ for (const engine of ENGINES) {
     });
 
     // ------------------------------------------------------------------
+    // 레거시(2021/2022) early-fetch 는 페이지 캐시 래퍼를 건너뛰고 직접 받아 지연 put 으로 넘기므로, add-first 훅이 없으면 no-store 에서 data 를 두 번 받는다.
+    test('legacy early-fetch + add-first(pageCacheAddFirst=1) + HTTP 캐시 미스(no-store): 첫 방문 파일당 1회만 받고 재방문은 캐시 서빙(wasm 제외)', async () => {
+      server.state.noStore = true;
+      const token = newToken();
+      const urls = [`Build/${token}.framework.js`, `Build/${token}.data`, `Build/${token}.wasm`];
+      const url = registerPage(server, token, {
+        perf: { pageCacheDeferDelayMs: 100, pageCacheAddFirst: 1 },
+        head: [
+          emitPageCacheScript({ dataFile: `${token}.data`, frameworkFile: `${token}.framework.js`, wasmFile: `${token}.wasm` }),
+          emitEarlyFetchLegacy({ urls, kickUrls: urls.slice(1), cacheName: `ait-unity-${token}`, wasmUrl: `Build/${token}.wasm`, dataUrl: `Build/${token}.data` }),
+        ],
+      });
+      const { context, page } = await newPage();
+      try {
+        await page.goto(url);
+        const sizes = await page.evaluate(() => window['__boot']());
+        expect(Object.values(sizes).every((n) => n > 0), '로더가 받은 본문').toBe(true);
+        await fireFirstFrame(page);
+        await page.waitForTimeout(600);
+        const info = await page.evaluate(() => JSON.parse(JSON.stringify(window['__aitCacheDeferred'])));
+        expect(info.errors).toEqual([]);
+        expect(info.added.some((/** @type {string} */ u) => u.endsWith('.data')), 'data 는 add-first 로 저장').toBe(true);
+        expect(info.net, '네트워크로 다시 받아 저장하지 않는다').toEqual([]);
+        expect(server.count(`${token}.data`), '첫 방문 data 1회').toBe(1);
+        expect(server.count(`${token}.framework.js`)).toBe(1);
+        expect(server.count(`${token}.wasm`)).toBe(1);
+
+        await page.goto(url);
+        const again = await page.evaluate(() => window['__boot']());
+        expect(again).toEqual(sizes);
+        expect(server.count(`${token}.data`), '재방문 data 는 캐시 서빙').toBe(1);
+        expect(server.count(`${token}.framework.js`)).toBe(1);
+      } finally {
+        await context.close();
+      }
+    });
+
+    // ------------------------------------------------------------------
     test('HTTP 캐시 미스(no-store): 첫 프레임+지연 뒤에만 네트워크로 한 파일씩 받아 저장한다(wasm 제외, 부팅 중 요청 증가 0)', async () => {
       server.state.noStore = true;
       const token = newToken();

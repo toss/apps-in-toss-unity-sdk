@@ -460,7 +460,15 @@ namespace AppsInToss.Editor.Package
                     && typeof window.__aitPageCacheCovers === 'function' && window.__aitPageCacheCovers(url) === true;
             }} catch (e) {{ return false; }}
         }}
+        // 첫 방문 add-first(WebKit 자동): 페이지 캐시가 cache.add 로 받아 저장한 엔트리를 그대로 서빙한다. HTTP 캐시에 data 가 남지 않는 기기에서
+        // 지연 put 이 data 를 한 번 더 받던 것을 없앤다. 대상이 아니거나 add 가 실패하면(null) 아래 버퍼링 다운로드로 간다.
         function bufferedFetch(url, left) {{
+            var af = null;
+            try {{ if (cacheOK && typeof window.__aitPageCacheAddFirst === 'function') af = window.__aitPageCacheAddFirst(url); }} catch (e) {{}}
+            if (!af) return bufferedFetchNet(url, left);
+            return af.then(function(hit) {{ return (hit && hit.ok) ? hit : bufferedFetchNet(url, left); }});
+        }}
+        function bufferedFetchNet(url, left) {{
             // 페이지 캐시 대상은 래퍼(cacheFirst: 선시작+clone put)를 건너뛰고 네이티브 fetch 로 받아 완결 버퍼를 직접 put 한다.
             var viaPc = cacheOK && pcAtomic(url);
             return (viaPc ? window.__aitPageCachePriorFetch : originalFetch)(url, {{ method: 'GET' }}).then(function(r) {{
@@ -507,7 +515,7 @@ namespace AppsInToss.Editor.Package
             }}).catch(function(e) {{
                 if (left > 1) {{
                     try {{ console.warn('[AIT] cache: retry ' + url + ' (' + (left - 1) + ' left): ' + (e && e.message)); }} catch (x) {{}}
-                    return bufferedFetch(url, left - 1);
+                    return bufferedFetchNet(url, left - 1);
                 }}
                 try {{ console.error('[AIT] cache: giveup ' + url + ': ' + (e && e.message)); }} catch (x) {{}}
                 return originalFetch(url, {{ method: 'GET' }});

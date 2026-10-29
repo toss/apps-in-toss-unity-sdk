@@ -1072,6 +1072,15 @@ namespace AppsInToss.Editor.Package
                 });
             }
 
+            // 레거시(2021/2022) early-fetch 용 add-first 훅: 힌트 없는 비-wasm 대상 파일이면 Promise<Response|null>(null = add 실패, 호출자가 원래 버퍼링 다운로드),
+            // add-first 대상이 아니면 동기적으로 null. 레거시 로더는 priorFetch 로 직접 받아 지연 put 을 쓰므로 이 훅이 없으면 data 를 한 번 더 받는다.
+            window.__aitPageCacheAddFirst = function (url) {
+                try {
+                    if (!isCacheable(url) || isHinted(url) || !addFirstOk(url)) { return null; }
+                    return getCache().then(function (cache) { return addThenMatch(cache, url); }).catch(function () { return null; });
+                } catch (e) { return null; }
+            };
+
             // cache-first 체인: CacheStorage/IndexedDB 히트 → 단락, 미스 → priorFetch 후 비차단 put.
             // native-first 분기가 실패/미설정/타임아웃일 때의 폴백 경로로도 재사용됩니다.
             function cacheFirst(resource, init, url) {

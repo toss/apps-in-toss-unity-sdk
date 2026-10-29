@@ -638,11 +638,15 @@ public static class MobileGameBuilder
         const int rate = 44100;
         int n = (int)(0.22f * rate);
         var buf = new float[n];
+        float phase = 0f;
         for (int i = 0; i < n; i++)
         {
             float t = (float)i / rate;
             float f = t < 0.06f ? 988f : 1319f;   // B5 → E6
-            buf[i] = Mathf.Sin(2f * Mathf.PI * f * t) * Mathf.Exp(-t * 14f) * 0.45f;
+            // 위상을 누적해 음이 바뀌는 순간 파형이 끊기지 않게 하고, 끝 10ms 는 페이드해 잘림 클릭을 없앤다.
+            phase += 2f * Mathf.PI * f / rate;
+            float fade = Mathf.Min(1f, (n - i) / (0.01f * rate));
+            buf[i] = Mathf.Sin(phase) * Mathf.Exp(-t * 14f) * 0.45f * fade;
         }
         return ToWav16(buf, 1, rate);
     }

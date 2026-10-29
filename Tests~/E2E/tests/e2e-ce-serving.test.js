@@ -287,8 +287,9 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
 
     // 5. 레거시 인터셉터가 개입했다면 저장까지 성공해야 한다 (해제된 bytes가 캐시에 안착)
     if (legacyActive) {
-      const storedLogs = cacheLogs.filter((l) => /cache: (stored|delegated)/.test(l));
-      expect(storedLogs.length, '레거시 버퍼링 인터셉터 개입 시 cache: stored(또는 페이지 캐시 위임 delegated) 1건 이상 필요').toBeGreaterThan(0);
+      // 저메모리 tier(iPhone 8 에뮬레이션 = low-ram tier 1)는 완결 버퍼 put 을 하지 않고 '생략'을 기록한다(지연 put 큐/무저장).
+      const storedLogs = cacheLogs.filter((l) => /cache: (stored|delegated)|cache: lowMemTier=\d+ — put 생략/.test(l));
+      expect(storedLogs.length, '레거시 버퍼링 인터셉터 개입 시 cache: stored(또는 페이지 캐시 위임 delegated, 저메모리 tier 의 put 생략) 1건 이상 필요').toBeGreaterThan(0);
     }
 
     console.log(`✅ CE 서빙 검증 완료 — 요청 ${buildRequestCounts.size}종, legacy=${legacyActive}, wasmStreamingFallback=${wasmStreamingFallback}`);

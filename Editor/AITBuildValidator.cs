@@ -504,12 +504,8 @@ namespace AppsInToss.Editor
             // 이유는 Package.PackageBuildStateMarker.ContainsAitArchive 주석 참조 — Windows의
             // 8.3 단축명 매칭 때문에 "*.ait" glob이 .aitpart 같은 더 긴 확장자 파일까지 잡을 수
             // 있어, 그대로 두면 진짜 .ait가 없어도 SUCCEED를 반환하는 성공 오탐이 생긴다.
-            var aitFiles = GetAitFiles(buildProjectPath);
+            var aitFiles = FindAitFiles(buildProjectPath);
             string distPath = Path.Combine(buildProjectPath, "dist");
-            if (aitFiles.Length == 0 && Directory.Exists(distPath))
-            {
-                aitFiles = GetAitFiles(distPath);
-            }
 
             if (aitFiles.Length == 0)
             {
@@ -539,6 +535,21 @@ namespace AppsInToss.Editor
                 Debug.Log($"[AIT] ✓ .ait 파일 발견: {Path.GetFileName(aitFile)}");
             }
             return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary>
+        /// 빌드 루트에서 .ait 파일을 찾고, 없으면 dist/에서 찾습니다 (ValidateDistOutput과 같은 탐색 순서).
+        /// 어느 쪽에도 없으면 빈 배열을 반환합니다.
+        /// </summary>
+        internal static string[] FindAitFiles(string buildProjectPath)
+        {
+            var aitFiles = GetAitFiles(buildProjectPath);
+            string distPath = Path.Combine(buildProjectPath, "dist");
+            if (aitFiles.Length == 0 && Directory.Exists(distPath))
+            {
+                aitFiles = GetAitFiles(distPath);
+            }
+            return aitFiles;
         }
 
         /// <summary>

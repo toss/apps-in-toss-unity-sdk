@@ -139,11 +139,12 @@ public class AITFirstInteractiveLogTests
 
     private static string SerializeWithNewtonsoft(string logName, Dictionary<string, object> parameters)
     {
-        return AITJsonSettings.Serialize(new EventLogParams
+        // 와이어 계약(main 의 SendLog 와 같은 Dictionary 모양). 생성된 EventLogParams 는 Log_typeTyped 같은 멤버가 붙어 기준으로 쓰지 않는다.
+        return AITJsonSettings.Serialize(new Dictionary<string, object>
         {
-            Log_name = logName,
-            Log_type = "unity_runtime",
-            Params = parameters
+            { "log_name", logName },
+            { "log_type", "unity_runtime" },
+            { "params", parameters }
         });
     }
 

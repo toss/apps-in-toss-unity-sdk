@@ -155,7 +155,7 @@ namespace AppsInToss
         private const string RuntimeLogType = "unity_runtime";
 
         /// <summary>
-        /// 로그 페이로드(<see cref="EventLogParams"/> 와 같은 모양)를 JSON 문자열로 만든다.
+        /// 로그 페이로드({log_name, log_type, params} 와이어 모양)를 JSON 문자열로 만든다.
         /// </summary>
         /// <remarks>
         /// 부팅 첫 씬의 scene_loaded 로그는 첫 프레임 전에 나간다. 여기서 Newtonsoft 를 처음 쓰면

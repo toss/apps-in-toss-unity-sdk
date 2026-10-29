@@ -173,7 +173,9 @@ namespace AppsInToss
         private readonly HashSet<string> inflight = new HashSet<string>();
 
         /// <summary>이미 복원한 Texture2D 인스턴스 ID (동일 name+차원 중복 텍스처를 각기 다른 인스턴스에 매핑).</summary>
-        private readonly HashSet<int> restoredInstanceIds = new HashSet<int>();
+        // 인스턴스 ID 대신 텍스처 참조로 센다. UnityEngine.Object 의 Equals/GetHashCode 가 인스턴스 기준이라 같은 의미이고,
+        // Unity 6.6 에서 에러 수준 obsolete 가 된 GetInstanceID() 를 쓰지 않아도 된다.
+        private readonly HashSet<Texture2D> restoredInstanceIds = new HashSet<Texture2D>();
 
         /// <summary>엔트리별 다운로드 실패 횟수(guid 키). 상한 초과 시 포기해 무한 재다운로드를 차단.</summary>
         private readonly Dictionary<string, int> downloadFailCounts = new Dictionary<string, int>();
@@ -362,7 +364,7 @@ namespace AppsInToss
                 }
 
                 inflight.Add(e.guid);
-                restoredInstanceIds.Add(tex.GetInstanceID());
+                restoredInstanceIds.Add(tex);
                 loadingCount++;
                 StartCoroutine(LoadAndApply(e, tex));
             }
@@ -383,7 +385,7 @@ namespace AppsInToss
                     continue;
                 }
 
-                if (restoredInstanceIds.Contains(t.GetInstanceID()))
+                if (restoredInstanceIds.Contains(t))
                 {
                     continue; // 동일 name+차원 중복 텍스처 — 이미 다른 엔트리가 이 인스턴스 복원
                 }
@@ -430,7 +432,7 @@ namespace AppsInToss
 
                 // 교체 전에 실패했으므로 스텁은 그대로다 — 이 엔트리는 이후 raw 를 건너뛰고 PNG/JPG 브라우저 디코드로 간다.
                 rawFailed.Add(e.guid);
-                restoredInstanceIds.Add(tex.GetInstanceID());
+                restoredInstanceIds.Add(tex);
                 Debug.LogWarning($"[AIT-StreamingTexture] raw-swap 실패 {e.name}: {rawOutcome.reason} → 브라우저 디코드 폴백");
             }
 
@@ -473,7 +475,7 @@ namespace AppsInToss
                     browserBrotliBlocked = true;
                 }
 
-                restoredInstanceIds.Add(tex.GetInstanceID());
+                restoredInstanceIds.Add(tex);
                 Debug.LogWarning($"[AIT-StreamingTexture] 브라우저 디코드 폴백 {e.name}: {outcome.reason} → {(tex.isReadable ? "LoadImage" : "바이트 다운로드 후 브라우저 교체(non-readable 스텁은 LoadImage 불가)")}");
             }
 
@@ -503,7 +505,7 @@ namespace AppsInToss
                 // 실패 → 인스턴스 예약 해제 후 다음 스캔에서 재시도(다른 인스턴스 포함).
                 // 일시적 네트워크 실패일 수 있어 재시도하되, 상한 초과 시 포기(스텁 유지)해
                 // 250ms 간격 무한 재다운로드(배터리/네트워크 소모)를 차단한다.
-                restoredInstanceIds.Remove(tex != null ? tex.GetInstanceID() : 0);
+                if (tex != null) restoredInstanceIds.Remove(tex);
                 int dlFails = IncrementFailure(downloadFailCounts, e.guid);
                 string failedFile = useRaw ? e.rawFile : e.file;
                 if (dlFails >= MaxDownloadAttempts)
@@ -642,7 +644,7 @@ namespace AppsInToss
             {
                 // raw 복원 실패 → 이 엔트리는 이후 PNG/JPG 폴백으로만 시도한다(다음 스캔). 스텁은 손대지 않은 상태라 안전하다.
                 rawFailed.Add(e.guid);
-                restoredInstanceIds.Remove(tex.GetInstanceID());
+                restoredInstanceIds.Remove(tex);
                 Debug.LogWarning($"[AIT-StreamingTexture] raw 복원 실패 {e.name} → PNG/JPG 폴백으로 재시도");
             }
             else
@@ -650,7 +652,7 @@ namespace AppsInToss
                 // 적용 실패 → 인스턴스 예약 해제. 같은 페이로드는 재시도해도 같게 실패하므로
                 // (예: 영구 해독 불가 브로틀리, 손상 이미지) 소수 시도 후 포기(스텁 유지)해
                 // 250ms 간격 무한 재다운로드 루프를 차단한다.
-                restoredInstanceIds.Remove(tex.GetInstanceID());
+                restoredInstanceIds.Remove(tex);
                 int apFails = IncrementFailure(applyFailCounts, e.guid);
                 if (apFails >= MaxApplyAttempts)
                 {

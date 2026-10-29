@@ -44,7 +44,7 @@ const ROUND_SECONDS = Math.max(10, parseInt(process.env.GAME_ROUND_SECONDS || '2
 function findProject() {
   const envPath = process.env.UNITY_PROJECT_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
-  for (const version of ['6000.3', '6000.0', '6000.2', '2022.3', '2021.3']) {
+  for (const version of ['6000.3', '6000.0', '6000.6', '2022.3', '2021.3']) {
     const p = path.resolve(__dirname, `../HeavySampleUnityProject-${version}`);
     if (fs.existsSync(path.resolve(p, 'ait-build/dist/web'))) return p;
   }

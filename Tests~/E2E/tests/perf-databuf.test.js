@@ -44,7 +44,7 @@ const SKIP_CONTROL = process.env.DATABUF_SKIP_CONTROL === '1';
 function findProject() {
   const envPath = process.env.UNITY_PROJECT_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
-  const versions = ['6000.3', '6000.0', '6000.2', '2022.3', '2021.3'];
+  const versions = ['6000.3', '6000.0', '6000.6', '2022.3', '2021.3'];
   for (const prefix of ['HeavySampleUnityProject', 'SampleUnityProject']) {
     for (const v of versions) {
       const p = path.resolve(__dirname, `../${prefix}-${v}`);

@@ -236,7 +236,7 @@ jobs:
           echo "빌드 전략: ${STRATEGY} (macOS=${MACOS}, Windows=${WINDOWS}, skip_windows=${SKIP_WIN}, skip_build=${SKIP_BUILD})"
           echo "빌드 베이스(source_ref): ${{ inputs.source_ref }}"
 
-      # 베타 web-framework 버전의 동반 패키지(web-analytics/bridge-core/devtools) 버전을 기준 파일
+      # 베타 web-framework 버전의 동반 패키지(devtools) 버전을 기준 파일
       # (.github/sdk-versions.json)에 정한다(update.yml·release.yml과 같은 규칙).
       # source_ref가 기준 파일 도입 전 브랜치면 파일이 없으므로, 그때는 예전 방식으로 동기화한다.
       - name: 동반 패키지 버전 결정
@@ -263,18 +263,7 @@ jobs:
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
 
-          if [ "${{ steps.ssot.outputs.mode }}" = "ssot" ]; then
-            ANALYTICS_VERSION=$(jq -r '.companions["@apps-in-toss/web-analytics"]' ../.github/sdk-versions.json)
-            echo "web-analytics v${ANALYTICS_VERSION} (기준 파일)"
-            pnpm update "@apps-in-toss/web-framework@${NPM_VERSION}" "@apps-in-toss/web-analytics@${ANALYTICS_VERSION}" --force --registry https://registry.npmjs.org
-          # 예전 방식: web-analytics에 동일 버전이 존재하면 함께 업데이트 (major 베타에서 둘이 갈라질 수 있으므로 조건부)
-          elif npm view "@apps-in-toss/web-analytics@${NPM_VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "web-analytics@${NPM_VERSION} 존재 — 함께 업데이트"
-            pnpm update "@apps-in-toss/web-framework@${NPM_VERSION}" "@apps-in-toss/web-analytics@${NPM_VERSION}" --force --registry https://registry.npmjs.org
-          else
-            echo "::warning::web-analytics@${NPM_VERSION} 없음 — web-framework만 업데이트"
-            pnpm update "@apps-in-toss/web-framework@${NPM_VERSION}" --force --registry https://registry.npmjs.org
-          fi
+          pnpm update "@apps-in-toss/web-framework@${NPM_VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
@@ -303,17 +292,10 @@ jobs:
             node .github/scripts/sdk-update/sync-sdk-versions.cjs apply
             node .github/scripts/sdk-update/sync-sdk-versions.cjs check
           else
-            # 예전 방식: web-analytics는 동일 버전이 존재할 때만 맞춘다.
-            if npm view "@apps-in-toss/web-analytics@${NPM_VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-              jq --arg v "$NPM_VERSION" '
-                .dependencies["@apps-in-toss/web-framework"] = $v |
-                .dependencies["@apps-in-toss/web-analytics"] = $v
-              ' "$BUILDCONFIG_PKG" > tmp.json
-            else
-              jq --arg v "$NPM_VERSION" '
-                .dependencies["@apps-in-toss/web-framework"] = $v
-              ' "$BUILDCONFIG_PKG" > tmp.json
-            fi
+            # 예전 방식: web-framework 핀만 맞춘다.
+            jq --arg v "$NPM_VERSION" '
+              .dependencies["@apps-in-toss/web-framework"] = $v
+            ' "$BUILDCONFIG_PKG" > tmp.json
             mv tmp.json "$BUILDCONFIG_PKG"
           fi
 

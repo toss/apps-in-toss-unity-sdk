@@ -25,8 +25,6 @@ const SSOT = {
   sdkVersion: '3.5.0',
   webFramework: '3.5.0',
   companions: {
-    '@apps-in-toss/web-analytics': '2.10.9',
-    '@apps-in-toss/bridge-core': '2.10.9',
     '@apps-in-toss/devtools': '3.5.0',
   },
   pnpm: '11.6.0',
@@ -54,7 +52,6 @@ function makeRepo(overrides = {}) {
   writeJson(root, GEN, {
     name: 'gen',
     dependencies: {
-      '@apps-in-toss/web-analytics': '2.10.9',
       '@apps-in-toss/web-framework': '3.5.0',
       commander: '15.0.0',
     },
@@ -67,8 +64,6 @@ function makeRepo(overrides = {}) {
     overrides.buildConfig || {
       name: 'unity-miniapp',
       dependencies: {
-        '@apps-in-toss/bridge-core': '2.10.9',
-        '@apps-in-toss/web-analytics': '2.10.9',
         '@apps-in-toss/web-framework': '3.5.0',
       },
       devDependencies: { '@apps-in-toss/devtools': '3.5.0', vite: '8.3.4' },
@@ -154,20 +149,20 @@ test('PNPM_VERSION 상수를 못 찾으면 check 는 실패하고 apply 는 오�
 test('필수 키가 없으면 check 가 보고하고, apply 가 만든다', () => {
   const root = makeRepo();
   const bc = readJson(root, BC);
-  delete bc.dependencies['@apps-in-toss/web-analytics'];
+  delete bc.dependencies['@apps-in-toss/web-framework'];
   writeJson(root, BC, bc);
 
   assert.equal(sync.collectMismatches(root, SSOT).length, 1);
   sync.runApply(root, () => {});
-  assert.equal(readJson(root, BC).dependencies['@apps-in-toss/web-analytics'], '2.10.9');
+  assert.equal(readJson(root, BC).dependencies['@apps-in-toss/web-framework'], '3.5.0');
   assert.equal(sync.runCheck(root, () => {}), 0);
 });
 
-test('선택 키(bridge-core, devtools)는 없어도 check 를 통과하고 apply 가 만들지 않는다 (phantom 키 방지)', () => {
+test('선택 키(devtools)는 없어도 check 를 통과하고 apply 가 만들지 않는다 (phantom 키 방지)', () => {
   const root = makeRepo({
     buildConfig: {
       name: 'unity-miniapp',
-      dependencies: { '@apps-in-toss/web-analytics': '2.10.9', '@apps-in-toss/web-framework': '3.5.0' },
+      dependencies: { '@apps-in-toss/web-framework': '3.5.0' },
       devDependencies: { vite: '8.3.4' },
       packageManager: 'pnpm@11.6.0',
     },
@@ -178,7 +173,6 @@ test('선택 키(bridge-core, devtools)는 없어도 check 를 통과하고 appl
   sync.runApply(root, () => {});
   const bc = readJson(root, BC);
   assert.equal(bc.dependencies['@apps-in-toss/web-framework'], '3.8.0');
-  assert.equal('@apps-in-toss/bridge-core' in bc.dependencies, false);
   assert.equal('@apps-in-toss/devtools' in bc.devDependencies, false);
 });
 
@@ -189,8 +183,6 @@ test('apply 는 모든 대상을 기준 값으로 쓰고 이후 check 가 통과
     sdkVersion: '3.8.0',
     webFramework: '3.8.0',
     companions: {
-      '@apps-in-toss/web-analytics': '2.10.9',
-      '@apps-in-toss/bridge-core': '2.10.9',
       '@apps-in-toss/devtools': '3.8.0',
     },
     pnpm: '11.7.0',
@@ -198,7 +190,7 @@ test('apply 는 모든 대상을 기준 값으로 쓰고 이후 check 가 통과
 
   assert.equal(sync.runCheck(root, () => {}), 1);
   const changed = sync.runApply(root, () => {});
-  assert.ok(changed.length >= 8, changed.join('\n'));
+  assert.ok(changed.length >= 6, changed.join('\n'));
   assert.equal(sync.runCheck(root, () => {}), 0);
 
   assert.equal(readJson(root, 'package.json').version, '3.8.0');
@@ -228,12 +220,12 @@ test('apply 는 두 번 실행해도 파일을 바꾸지 않고, 관련 없는 �
 test('apply 가 정렬된 섹션에 빠진 필수 키를 넣으면 알파벳 순서를 유지한다', () => {
   const root = makeRepo();
   const gen = readJson(root, GEN);
-  delete gen.dependencies['@apps-in-toss/web-analytics'];
+  delete gen.dependencies['@apps-in-toss/web-framework'];
   writeJson(root, GEN, gen);
   sync.runApply(root, () => {});
   const keys = Object.keys(readJson(root, GEN).dependencies);
   assert.deepEqual(keys, [...keys].sort());
-  assert.ok(keys.includes('@apps-in-toss/web-analytics'));
+  assert.ok(keys.includes('@apps-in-toss/web-framework'));
 });
 
 test('기준 파일의 sdkVersion 과 webFramework 가 다르면 형식 오류로 본다', () => {
@@ -262,11 +254,9 @@ test('resolve: 같은 번호가 있는 패키지는 그 번호, 없으면 latest
   const lookup = fakeLookup(
     {
       '@apps-in-toss/web-framework': ['3.7.0', '3.8.0'],
-      '@apps-in-toss/web-analytics': ['2.10.9'],
-      '@apps-in-toss/bridge-core': ['3.8.0'],
       '@apps-in-toss/devtools': ['3.7.0', '3.8.0'],
     },
-    { '@apps-in-toss/web-analytics': '2.10.9', '@apps-in-toss/bridge-core': '3.8.0', '@apps-in-toss/devtools': '3.8.0' },
+    { '@apps-in-toss/devtools': '3.8.0' },
   );
   const root = makeRepo();
   const next = sync.runResolve(root, { version: '3.8.0', lookup }, () => {});
@@ -274,8 +264,6 @@ test('resolve: 같은 번호가 있는 패키지는 그 번호, 없으면 latest
   assert.equal(next.sdkVersion, '3.8.0');
   assert.equal(next.webFramework, '3.8.0');
   assert.deepEqual(next.companions, {
-    '@apps-in-toss/web-analytics': '2.10.9',
-    '@apps-in-toss/bridge-core': '3.8.0',
     '@apps-in-toss/devtools': '3.8.0',
   });
   assert.equal(next.pnpm, SSOT.pnpm);
@@ -286,21 +274,18 @@ test('resolve: 요청 버전이 없는 패키지는 그 패키지의 latest 로 
   const lookup = fakeLookup(
     {
       '@apps-in-toss/web-framework': ['3.5.0'],
-      '@apps-in-toss/web-analytics': ['2.10.9'],
-      '@apps-in-toss/bridge-core': ['2.10.9'],
       '@apps-in-toss/devtools': ['3.5.0', '3.7.0'],
     },
-    { '@apps-in-toss/web-analytics': '2.10.9', '@apps-in-toss/bridge-core': '2.10.9', '@apps-in-toss/devtools': '3.7.0' },
+    { '@apps-in-toss/devtools': '3.7.0' },
   );
   const resolved = sync.resolveCompanions('3.5.0', Object.keys(SSOT.companions), lookup);
   assert.equal(resolved['@apps-in-toss/devtools'], '3.5.0');
-  assert.equal(resolved['@apps-in-toss/web-analytics'], '2.10.9');
 });
 
 test('resolve --dry-run 은 기준 파일을 쓰지 않는다', () => {
   const lookup = fakeLookup(
     { '@apps-in-toss/web-framework': ['3.8.0'] },
-    { '@apps-in-toss/web-analytics': '2.10.9', '@apps-in-toss/bridge-core': '2.10.9', '@apps-in-toss/devtools': '3.8.0' },
+    { '@apps-in-toss/devtools': '3.8.0' },
   );
   const root = makeRepo();
   sync.runResolve(root, { version: '3.8.0', dryRun: true, lookup }, () => {});
@@ -317,8 +302,8 @@ test('resolve: 잘못된 버전 형식, npm 에 없는 web-framework 버전은 �
 });
 
 test('resolve: latest 조회 결과가 버전 형식이 아니면 오류', () => {
-  const lookup = fakeLookup({ '@apps-in-toss/web-framework': ['3.8.0'] }, { '@apps-in-toss/web-analytics': '' });
-  assert.throws(() => sync.resolveCompanions('3.8.0', ['@apps-in-toss/web-analytics'], lookup), /결정하지 못했습니다/);
+  const lookup = fakeLookup({ '@apps-in-toss/web-framework': ['3.8.0'] }, { '@apps-in-toss/devtools': '' });
+  assert.throws(() => sync.resolveCompanions('3.8.0', ['@apps-in-toss/devtools'], lookup), /결정하지 못했습니다/);
 });
 
 test('CLI: check 는 일치하면 0, 어긋나면 1, 알 수 없는 모드는 2', () => {

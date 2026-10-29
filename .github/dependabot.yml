@@ -31,7 +31,6 @@ updates:
       default-days: 5
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
-      - dependency-name: "@apps-in-toss/web-analytics"
       - dependency-name: "pnpm"
 
   # WebGL 빌드 설정
@@ -44,8 +43,6 @@ updates:
       default-days: 5
     ignore:
       - dependency-name: "@apps-in-toss/web-framework"
-      - dependency-name: "@apps-in-toss/web-analytics"
-      - dependency-name: "@apps-in-toss/bridge-core"
       - dependency-name: "@apps-in-toss/devtools"
       - dependency-name: "pnpm"
 

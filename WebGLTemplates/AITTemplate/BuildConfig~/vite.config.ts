@@ -265,7 +265,7 @@ async function sdkConfig(env: ConfigEnv): Promise<UserConfig> {
   // devtools 플러그인이 실제로 로드된 경우에만 pre-bundle 대상에 포함시킨다.
   // - include: '@apps-in-toss/devtools/panel'을 미리 pre-bundle해 두지 않으면
   //   panel import가 실 SDK(alias 대상)보다 먼저 최적화되며 mock이 무시될 수 있음
-  // - exclude: web-framework/web-analytics를 pre-bundle 대상에서 빼서 devtools의
+  // - exclude: web-framework를 pre-bundle 대상에서 빼서 devtools의
   //   alias가 걸리기 전에 실 SDK가 먼저 구워지는 것을 방지. 세션 중간에
   //   re-optimize가 발생하면 브라우저 전체 리로드가 걸리므로 이를 예방하는 목적도 있음
   const devtoolsLoaded = devtoolsPlugins.length > 0;
@@ -300,7 +300,7 @@ async function sdkConfig(env: ConfigEnv): Promise<UserConfig> {
       ? {
           optimizeDeps: {
             include: ['@apps-in-toss/devtools/panel'],
-            exclude: ['@apps-in-toss/web-framework', '@apps-in-toss/web-analytics'],
+            exclude: ['@apps-in-toss/web-framework'],
           },
         }
       : {}),

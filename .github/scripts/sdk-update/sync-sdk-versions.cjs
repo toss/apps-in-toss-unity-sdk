@@ -41,8 +41,6 @@ const BUILDCONFIG_PKG = 'WebGLTemplates/AITTemplate/BuildConfig~/package.json';
 const PNPM_CS = 'Editor/AITPackageManagerHelper.cs';
 
 const WEB_FRAMEWORK = '@apps-in-toss/web-framework';
-const WEB_ANALYTICS = '@apps-in-toss/web-analytics';
-const BRIDGE_CORE = '@apps-in-toss/bridge-core';
 const DEVTOOLS = '@apps-in-toss/devtools';
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -66,12 +64,9 @@ const JSON_SITES = [
   { ssot: { kind: 'pnpm' }, file: ROOT_PKG, key: 'packageManager', format: (v) => `pnpm@${v}` },
 
   { ssot: { kind: 'webFramework' }, file: GENERATOR_PKG, section: 'dependencies', key: WEB_FRAMEWORK },
-  { ssot: { kind: 'companion', name: WEB_ANALYTICS }, file: GENERATOR_PKG, section: 'dependencies', key: WEB_ANALYTICS },
   { ssot: { kind: 'pnpm' }, file: GENERATOR_PKG, key: 'packageManager', format: (v) => `pnpm@${v}` },
 
   { ssot: { kind: 'webFramework' }, file: BUILDCONFIG_PKG, section: 'dependencies', key: WEB_FRAMEWORK },
-  { ssot: { kind: 'companion', name: WEB_ANALYTICS }, file: BUILDCONFIG_PKG, section: 'dependencies', key: WEB_ANALYTICS },
-  { ssot: { kind: 'companion', name: BRIDGE_CORE }, file: BUILDCONFIG_PKG, section: 'dependencies', key: BRIDGE_CORE, optional: true },
   { ssot: { kind: 'companion', name: DEVTOOLS }, file: BUILDCONFIG_PKG, section: 'devDependencies', key: DEVTOOLS, optional: true },
   { ssot: { kind: 'pnpm' }, file: BUILDCONFIG_PKG, key: 'packageManager', format: (v) => `pnpm@${v}` },
 ];

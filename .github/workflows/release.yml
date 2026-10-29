@@ -148,7 +148,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 
-      # 릴리즈할 버전의 동반 패키지(web-analytics/bridge-core/devtools) 버전을 기준 파일
+      # 릴리즈할 버전의 동반 패키지(devtools) 버전을 기준 파일
       # (.github/sdk-versions.json)에 정한다. 이 잡은 `ref: main`을 체크아웃하므로, 대상 버전이
       # main 기준 파일의 sdkVersion과 같으면(정상 릴리즈) 리뷰를 거쳐 머지된 값을 그대로 쓴다.
       # 다르면(bulk-release 백필 등) update.yml과 같은 규칙으로 npm에서 다시 결정한다.
@@ -170,13 +170,11 @@ jobs:
         working-directory: sdk-runtime-generator~
         run: |
           VERSION="${{ needs.release.outputs.version }}"
-          ANALYTICS_VERSION=$(jq -r '.companions["@apps-in-toss/web-analytics"]' ../.github/sdk-versions.json)
-
-          echo "=== web-framework v${VERSION}, web-analytics v${ANALYTICS_VERSION} 업데이트 ==="
+          echo "=== web-framework v${VERSION} 업데이트 ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
           pnpm store prune
-          pnpm update "@apps-in-toss/web-framework@${VERSION}" "@apps-in-toss/web-analytics@${ANALYTICS_VERSION}" --force --registry https://registry.npmjs.org
+          pnpm update "@apps-in-toss/web-framework@${VERSION}" --force --registry https://registry.npmjs.org
 
           # 설치된 버전 검증
           INSTALLED_VERSION=$(pnpm list @apps-in-toss/web-framework --json | jq -r '.[0].dependencies["@apps-in-toss/web-framework"].version')
@@ -586,8 +584,8 @@ jobs:
           # 해당 버전이 npm에 존재하는데 핀이 다르면 동기화가 누락된 것이므로 막는다.
           # (존재하지 않으면 핀이 달라도 정상이다. 구버전 백필에서 흔하다.)
           FAILED=0
-          for PKG in web-analytics bridge-core; do
-            PIN=$(jq -r --arg k "@apps-in-toss/${PKG}" '.dependencies[$k] // "none"' "$BUILDCONFIG_PKG")
+          for PKG in devtools; do
+            PIN=$(jq -r --arg k "@apps-in-toss/${PKG}" '.dependencies[$k] // .devDependencies[$k] // "none"' "$BUILDCONFIG_PKG")
             [ "$PIN" = "none" ] && continue
             if npm view "@apps-in-toss/${PKG}@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
               if [ "$PIN" != "$VERSION" ]; then

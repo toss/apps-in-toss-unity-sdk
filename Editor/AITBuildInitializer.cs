@@ -568,6 +568,7 @@ namespace AppsInToss.Editor
                 ? WebGLDebugSymbolMode.External
                 : WebGLDebugSymbolMode.Embedded;
             Debug.Log($"[AIT] 디버그 심볼 모드 설정: {PlayerSettings.WebGL.debugSymbolMode}");
+            AITDebugSymbolFallback.ApplyRemembered();
 #endif
         }
     }

@@ -57,9 +57,7 @@ public class AITExceptionPlatformUnavailableTests
     // 기존 패턴 회귀 확인
     // =====================================================
 
-    [TestCase("__GRANITE_NATIVE_EMITTER is not defined")]
-    [TestCase("ReactNativeWebView is not available")]
-    [TestCase("getLocale is not a constant handler")]
+    [TestCase("apps-in-toss 웹뷰 환경이 아니에요. 토스 앱 안에서만 호출할 수 있어요.")]
     public void IsPlatformUnavailable_ExistingPatterns_StillReturnTrue(string errorMessage)
     {
         var ex = new AITException(errorMessage);

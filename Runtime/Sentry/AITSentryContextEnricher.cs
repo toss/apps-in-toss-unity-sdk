@@ -99,7 +99,7 @@ namespace AppsInToss.Sentry
             }
             catch (Exception ex)
             {
-                // IsPlatformUnavailable 예외(예: "getLocale is not a constant handler")는
+                // IsPlatformUnavailable 예외(예: "apps-in-toss 웹뷰 환경이 아니에요...")는
                 // WebGL JS 브리지 핸들러가 없는 환경에서 발생하는 예상된 동작이므로
                 // Warning이 아닌 Info 레벨로 기록하여 Sentry 노이즈를 방지한다.
                 //
@@ -140,7 +140,7 @@ namespace AppsInToss.Sentry
             }
             catch (Exception ex)
             {
-                // IsPlatformUnavailable 예외(예: "getLocale is not a constant handler")는
+                // IsPlatformUnavailable 예외(예: "apps-in-toss 웹뷰 환경이 아니에요...")는
                 // WebGL JS 브리지 핸들러가 없는 환경에서 발생하는 예상된 동작이므로
                 // Warning이 아닌 Info 레벨로 기록하여 Sentry 노이즈를 방지한다.
                 //

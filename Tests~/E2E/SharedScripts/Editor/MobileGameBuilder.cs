@@ -602,7 +602,8 @@ public static class MobileGameBuilder
     private static void AddNote(float[] stereo, int rate, float start, float len, float freq, float amp, float pan)
     {
         int s0 = (int)(start * rate);
-        int count = (int)(len * rate);
+        // 루프 끝에 걸친 음도 버퍼 끝에서 페이드가 끝나게 길이를 자른다.
+        int count = Mathf.Min((int)(len * rate), stereo.Length / 2 - s0);
         float gl = amp * (1f - pan * 0.5f);
         float gr = amp * (1f + pan * 0.5f);
         for (int i = 0; i < count; i++)
@@ -610,7 +611,9 @@ public static class MobileGameBuilder
             int idx = (s0 + i) * 2;
             if (idx + 1 >= stereo.Length) break;
             float t = (float)i / rate;
-            float env = Mathf.Min(1f, t / 0.008f) * Mathf.Exp(-t * 7f);
+            // 0.3초 음은 끝에서도 감쇠가 12% 남아 잘림이 "툭" 클릭으로 들리므로 끝 10ms 를 페이드한다.
+            float fade = Mathf.Min(1f, (count - i) / (0.01f * rate));
+            float env = Mathf.Min(1f, t / 0.008f) * Mathf.Exp(-t * 7f) * fade;
             float ph = 2f * Mathf.PI * freq * t;
             float v = (Mathf.Sin(ph) + 0.25f * Mathf.Sin(2f * ph) + 0.1f * Mathf.Sin(3f * ph)) * env;
             stereo[idx] += v * gl;

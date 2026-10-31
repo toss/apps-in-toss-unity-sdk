@@ -648,7 +648,8 @@ public static class MobileGameBuilder
             float f = t < 0.06f ? 988f : 1319f;   // B5 → E6
             // 위상을 누적해 음이 바뀌는 순간 파형이 끊기지 않게 하고, 끝 10ms 는 페이드해 잘림 클릭을 없앤다.
             phase += 2f * Mathf.PI * f / rate;
-            float fade = Mathf.Min(1f, (n - i) / (0.01f * rate));
+            // 시작도 3ms 램프로 올린다. 램프 없이 최대 진폭 사인으로 시작하면 코인마다 "틱" 클릭이 난다.
+            float fade = Mathf.Min(1f, (n - i) / (0.01f * rate)) * Mathf.Min(1f, i / (0.003f * rate));
             buf[i] = Mathf.Sin(phase) * Mathf.Exp(-t * 14f) * 0.45f * fade;
         }
         return ToWav16(buf, 1, rate);

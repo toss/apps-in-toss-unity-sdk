@@ -121,6 +121,8 @@ public class AITRunGame : MonoBehaviour
     public int Step { get { return step; } }
     public float WorldX { get { return worldX; } }
     public float HalfWidth { get { return halfWidth; } }
+    /// <summary>BGM 재생 위치(초). 재생 중이 아니면 0. 앰비언스가 박자를 맞추는 데 쓴다.</summary>
+    public float BgmTime { get { return bgm != null && bgm.isPlaying ? bgm.time : 0f; } }
     public Camera Cam { get { return cam; } }
     public Transform TitlePanel { get { return titlePanel.transform; } }
     public Transform UiRoot { get; private set; }

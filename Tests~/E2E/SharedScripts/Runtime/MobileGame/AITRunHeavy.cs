@@ -53,6 +53,7 @@ public class AITRunHeavy : MonoBehaviour
     private Particle[] confetti;
     private int confettiCursor;
 
+    private const float AmbienceVolume = 0.25f;
     private AudioSource ambience;
     private AudioClip stage0Ambience;
     private int stage;
@@ -86,7 +87,7 @@ public class AITRunHeavy : MonoBehaviour
         ambience = gameObject.AddComponent<AudioSource>();
         ambience.playOnAwake = false;
         ambience.loop = true;
-        ambience.volume = 0.25f;
+        ambience.volume = AmbienceVolume;
         game.CoinCollected += OnCoin;
         game.Crashed += OnCrash;
         game.ExtraReport = AppendReport;
@@ -287,6 +288,34 @@ public class AITRunHeavy : MonoBehaviour
         ambience.clip = stage0Ambience;
     }
 
+    /// <summary>재생 중인 패드를 그대로 끊으면 클릭이 나므로 짧게 줄였다가 새 클립을 같은 박자 위치에서 다시 올린다(스테이지 로드 시간에는 넣지 않는다).</summary>
+    private IEnumerator SwitchAmbience(AudioClip amb)
+    {
+        if (ambience.isPlaying) yield return FadeAmbience(0f, 0.2f);
+        ambience.clip = amb;
+        if (game.IsPlaying) PlayAmbienceInSync();
+        yield return FadeAmbience(AmbienceVolume, 0.3f);
+    }
+
+    private IEnumerator FadeAmbience(float target, float seconds)
+    {
+        float from = ambience.volume;
+        for (float t = 0f; t < seconds; t += Time.unscaledDeltaTime)
+        {
+            ambience.volume = Mathf.Lerp(from, target, t / seconds);
+            yield return null;
+        }
+        ambience.volume = target;
+    }
+
+    /// <summary>앰비언스는 BGM 과 같은 길이·화성 진행이라, BGM 재생 위치에서 시작해야 마디가 맞는다(스테이지 전환으로 클립이 바뀔 때도).</summary>
+    private void PlayAmbienceInSync()
+    {
+        ambience.Play();
+        float len = ambience.clip.length;
+        if (len > 0f) ambience.time = game.BgmTime % len;
+    }
+
     private IEnumerator LoadStage(int target)
     {
         loading = true;
@@ -325,11 +354,7 @@ public class AITRunHeavy : MonoBehaviour
 
         game.SetStageArt(far, near, ground);
         if (propsMaterial != null && props != null) propsMaterial.mainTexture = props;
-        if (amb != null && ambience.clip != amb)
-        {
-            ambience.clip = amb;
-            if (game.IsPlaying) ambience.Play();
-        }
+        if (amb != null && ambience.clip != amb) StartCoroutine(SwitchAmbience(amb));
         stage = target;
         stageLoads++;
         stageLoadMsLast = (Time.realtimeSinceStartup - t0) * 1000f;
@@ -433,7 +458,7 @@ public class AITRunHeavy : MonoBehaviour
         {
             int target = (game.Step / StageSteps) % StageCount;
             if (target != stage && !loading) StartCoroutine(LoadStage(target));
-            if (!ambience.isPlaying && ambience.clip != null) ambience.Play();
+            if (!ambience.isPlaying && ambience.clip != null) PlayAmbienceInSync();
         }
         else if (ambience.isPlaying)
         {

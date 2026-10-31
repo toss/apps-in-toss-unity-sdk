@@ -380,26 +380,60 @@ public static class MobileGameBuilder
         for (int k = 0; k < HeavyStages; k++)
         {
             string path = StageDir(k) + "/amb.wav";
-            File.WriteAllBytes(path, ToWav16(new float[44100 * 40 * 2], 2, 44100));
+            File.WriteAllBytes(path, ToWav16(new float[44100 * BgmSeconds * 2], 2, 44100));
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
         }
     }
 
-    /// <summary>스테이지 앰비언스 40초 스테레오 루프: 스테이지마다 다른 느린 패드 화음(노이즈는 실기기에서 화이트노이즈처럼 거슬려 넣지 않는다).</summary>
+    /// <summary>
+    /// 스테이지 앰비언스: BGM 과 같은 길이(48초)·같은 화성 진행(G - Em - C - D, 1마디 1.6초)을 따라가는 부드러운 패드.
+    /// 런타임(AITRunHeavy)이 BGM 재생 위치에 맞춰 틀어 박자가 맞는다. 스테이지마다 보이싱만 바꾼다.
+    /// 화음은 순정률 비율로 쌓아 맥놀이("우우웅")가 없고, 위상은 double 로 계산해 긴 루프 뒤쪽에서 float 오차가 잡음이 되지 않게 한다.
+    /// </summary>
     private static byte[] BuildAmbience(int stage)
     {
         const int rate = 44100;
-        const int seconds = 40;
-        var buf = new float[rate * seconds * 2];
-        float[] roots = { 196f, 174.61f, 220f, 146.83f };   // G3, F3, A3, D3
-        float root = roots[stage % roots.Length];
-        for (int i = 0; i < rate * seconds; i++)
+        int total = rate * BgmSeconds;
+        var buf = new float[total * 2];
+        // 스테이지별 보이싱: 근음 대비 비율. 3도는 마디 화음(장·단)에서 정하므로 -1(3도)·-2(한 옥타브 위 3도)로 표시한다.
+        double[][] voicings =
         {
-            float t = (float)i / rate;
-            float swell = 0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * t / 10f);
-            float pad = (Mathf.Sin(2f * Mathf.PI * root * t) + 0.6f * Mathf.Sin(2f * Mathf.PI * root * 1.5f * t) + 0.4f * Mathf.Sin(2f * Mathf.PI * root * 2.5198f * t)) * 0.06f * swell;
-            buf[i * 2] = pad;
-            buf[i * 2 + 1] = pad;
+            new[] { 1.0, -1, 1.5 },             // 기본 3화음
+            new[] { 1.0, -1, 1.5, 2.0 },        // 옥타브를 더해 밝게
+            new[] { 0.5, 1.0, -1, 1.5 },        // 아래로 넓게
+            new[] { 1.0, 1.5, 2.25, -2 },       // 9음 색채(3도는 한 옥타브 위)
+        };
+        double[] voicing = voicings[stage % voicings.Length];
+        int bars = (int)Mathf.Round(BgmSeconds / BgmBar);
+        for (int bar = 0; bar < bars; bar++)
+        {
+            int[] chord = BgmChords[bar % BgmChords.Length];
+            double root = 196.0 * Math.Pow(2.0, chord[0] / 12.0);   // G3 기준
+            bool minor = chord[1] - chord[0] == 3;
+            double third = minor ? 1.2 : 1.25;
+            int s0 = (int)(bar * BgmBar * rate);
+            int len = (int)((BgmBar + 0.4f) * rate);   // 다음 마디와 0.4초 겹쳐 이어진다
+            for (int v = 0; v < voicing.Length; v++)
+            {
+                double ratio = voicing[v] == -1 ? third : voicing[v] == -2 ? third * 2.0 : voicing[v];
+                double f = root * ratio;
+                float amp = 0.035f / Mathf.Sqrt(voicing.Length) * (f < 120.0 ? 0.6f : 1f);
+                float pan = (v % 2 == 0 ? -0.25f : 0.25f);
+                for (int i = 0; i < len; i++)
+                {
+                    double t = (double)i / rate;
+                    // 0.3초 상승·0.5초 하강 코사인 엔벨로프, 반마디마다 15% 부드러운 숨결.
+                    float att = i < 0.3 * rate ? 0.5f - 0.5f * Mathf.Cos(Mathf.PI * (float)(t / 0.3)) : 1f;
+                    int rem = len - i;
+                    float rel = rem < 0.5 * rate ? 0.5f - 0.5f * Mathf.Cos(Mathf.PI * rem / (0.5f * rate)) : 1f;
+                    float breath = 0.85f + 0.15f * Mathf.Cos(2f * Mathf.PI * (float)(t / (BgmBar * 0.5)));
+                    double ph = 2.0 * Math.PI * f * t;
+                    float s = (float)(Math.Sin(ph) + 0.2 * Math.Sin(2.0 * ph)) * amp * att * rel * breath;
+                    int idx = ((s0 + i) % total) * 2;   // 마지막 마디의 꼬리는 루프 앞쪽으로 감아 이음매가 없다
+                    buf[idx] += s * (1f - pan);
+                    buf[idx + 1] += s * (1f + pan);
+                }
+            }
         }
         return ToWav16(buf, 2, rate);
     }
@@ -568,27 +602,30 @@ public static class MobileGameBuilder
         }
     }
 
+    // BGM 과 앰비언스가 함께 쓰는 길이·마디·화성 진행(G4 기준 반음, 첫 원소가 근음, 둘째가 3도).
+    private const int BgmSeconds = 48;
+    private const float BgmBar = 1.6f;
+    private static readonly int[][] BgmChords =
+    {
+        new[] { 0, 4, 7, 12 },    // G
+        new[] { -3, 0, 4, 9 },    // Em
+        new[] { -7, -3, 0, 5 },   // C
+        new[] { -5, -1, 2, 7 },   // D
+    };
+
     /// <summary>48초 스테레오 BGM: G장조 경쾌한 진행(G - Em - C - D, 1마디 1.6초, 150bpm) 위에 16분음표 아르페지오와 베이스.</summary>
     private static byte[] BuildBgm()
     {
         const int rate = 44100;
-        const int seconds = 48;
-        var buf = new float[rate * seconds * 2];
+        var buf = new float[rate * BgmSeconds * 2];
         const float g4 = 392f;
-        int[][] chords =
-        {
-            new[] { 0, 4, 7, 12 },    // G
-            new[] { -3, 0, 4, 9 },    // Em
-            new[] { -7, -3, 0, 5 },   // C
-            new[] { -5, -1, 2, 7 },   // D
-        };
         int[] pattern = { 0, 1, 2, 3, 2, 1, 2, 3 };
-        float eighth = 0.2f;
-        int notes = (int)(seconds / eighth);
+        float eighth = BgmBar / 8f;
+        int notes = (int)(BgmSeconds / eighth);
         for (int n = 0; n < notes; n++)
         {
             int bar = n / 8;
-            var chord = chords[bar % 4];
+            var chord = BgmChords[bar % BgmChords.Length];
             int stepInBar = n % 8;
             float t0 = n * eighth;
             float freq = g4 * Mathf.Pow(2f, chord[pattern[stepInBar]] / 12f);

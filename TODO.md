@@ -27,9 +27,7 @@
 
 ## 코드 결함
 
-- **P3 — stale 디렉터리에 남은 PlayerPrefs를 `collectScoped`가 매니페스트에 올린다**: 위 마이그레이션은 stale 디렉터리에 남은 PlayerPrefs는 다루지 않는다. `collectScoped()`가 `SCOPE_RE`에 맞는 경로를 전부 긁어 좌초된 값도 매니페스트에 올린다.
-
-- **P3 — `onFlush()`가 IndexedDB 미러를 재시도하지 않는다(비대칭)**: `ait-playerprefs.js`의 `onFlush()`. visibilitychange/pagehide 훅은 `pushScoped(activeMount)`만 재시도, 순정 IDBFS 미러는 안 한다. 타이밍 레이스로 미러 실패가 관측됐다. write 없으면 사본이 빠질 수 있으나("백업의 백업") 다음 write에서 자가 치유, 회귀 아님. 고치면 `callOrig` 호출 한 줄 추가.
+- **P3 — stale 디렉터리에 남은 PlayerPrefs를 `collectScoped`가 매니페스트에 올린다**: 위 마이그레이션은 stale 디렉터리에 남은 PlayerPrefs는 다루지 않는다. `collectScoped()`가 `SCOPE_RE`에 맞는 경로를 전부 긁어 좌초된 값도 매니페스트에 올린다. 현재 앱 디렉터리는 `appDirWatch`가 무장된 이관 창에서만 관측되고(warm boot의 lookup 히트는 훅을 안 지난다) 상시 상태가 없어, 수집 범위를 좁히려면 상시 관측(또는 해시 유도)을 먼저 설계해야 한다. 관측 전에 좁히면 정상 디렉터리까지 빠져 빈 매니페스트가 push될 수 있다.
 
 - **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid`를 묶지만 호출되지 않는다(`AITCredentials.IsReadyForDeploy()`는 별개). Configuration 창은 `IsAppNameValid()`를 직접 호출해 게이팅해 기능 공백은 없다. 제거하거나 실제 게이트로 승격할지 결정.
 

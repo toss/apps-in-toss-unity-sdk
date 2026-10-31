@@ -626,6 +626,8 @@ interface BootResult {
   module: any;
   /** vm 샌드박스의 전역 객체 — 어댑터가 전역으로 참조하는 setTimeout 등을 갈아끼울 때 쓴다 */
   ctx: any;
+  /** document/window에 등록된 이벤트 핸들러 (visibilitychange/pagehide 발화용) */
+  flushHandlers: Record<string, Array<() => void>>;
 }
 
 /** ait-playerprefs.js를 node:vm 샌드박스에 로드하고 IDBFS 마운트까지 완료한 상태로 부팅한다. */
@@ -647,6 +649,7 @@ function boot(opts: BootOptions = {}): BootResult {
     legacyWatchMs = 3000,
   } = opts;
   const store = new Map<string, string>(Object.entries(storageSeed));
+  const flushHandlers: Record<string, Array<() => void>> = {};
   const ppConfig: any = { isProduction, enabled: true, legacyWatchMs };
   const win: any = {
     setTimeout,
@@ -658,7 +661,9 @@ function boot(opts: BootOptions = {}): BootResult {
     Date,
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     sessionStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-    addEventListener: () => {},
+    addEventListener: (type: string, fn: () => void) => {
+      (flushHandlers[type] ||= []).push(fn);
+    },
     __AIT_PLAYERPREFS: ppConfig,
     __AIT_PLAYERPREFS_STORAGE__: {
       getItem: (k: string) => Promise.resolve(store.has(k) ? store.get(k)! : null),
@@ -679,7 +684,12 @@ function boot(opts: BootOptions = {}): BootResult {
     atob,
     Promise,
     Date,
-    document: { addEventListener: () => {} },
+    document: {
+      visibilityState: 'visible',
+      addEventListener: (type: string, fn: () => void) => {
+        (flushHandlers[type] ||= []).push(fn);
+      },
+    },
     Uint8Array,
     ArrayBuffer,
     Object,
@@ -707,7 +717,7 @@ function boot(opts: BootOptions = {}): BootResult {
   //    onMountAssigned는 오늘 mountRoot.mount만 읽지만, 앱 디렉터리를 추측 대신
   //    관측하려면 이 노드 그래프가 있어야 한다.
   Module.__unityIdbfsMount = opts.plainMountRoot ? { mount } : root;
-  return { win, store, entries, mount, idbfs, root, ops, module: Module, ctx };
+  return { win, store, entries, mount, idbfs, root, ops, module: Module, ctx, flushHandlers };
 }
 
 /** b.idbfs.syncfs(populate)를 Promise로 감싼 헬퍼 — 각 케이스의 반복 보일러플레이트 축소용. */
@@ -1613,6 +1623,42 @@ describe('ait-playerprefs.js — IDBFS syncfs 어댑터', () => {
       simulateUnityBoot(b, APP);
       await wait(100);
       expect(b.win.__AIT_PP.status().legacyImport).toBe('imported');
+    });
+  });
+
+  describe('강제 flush (onFlush)', () => {
+    test('pagehide는 매니페스트 push와 함께 IndexedDB 미러(syncfs populate=false)도 재시도한다', async () => {
+      const seedFs = { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('hi') };
+      const b = boot({ fsInit: seedFs });
+      await syncfs(b, true);
+      await wait(200);
+      const calls: boolean[] = [];
+      b.idbfs.onOrigSyncfs = (populate) => calls.push(populate);
+      expect(b.flushHandlers.pagehide?.length).toBeGreaterThan(0);
+      b.flushHandlers.pagehide.forEach((fn) => fn());
+      await wait(200);
+      expect(calls).toEqual([false]);
+    });
+
+    test('visibilitychange는 hidden일 때만 미러를 재시도하고, 미러 실패는 lastError로만 남는다', async () => {
+      const seedFs = { ...bootedBefore, [APP + '/PlayerPrefs']: ppEntry('hi') };
+      const b = boot({ fsInit: seedFs });
+      await syncfs(b, true);
+      await wait(200);
+      const calls: boolean[] = [];
+      b.idbfs.onOrigSyncfs = (populate) => calls.push(populate);
+      b.flushHandlers.visibilitychange.forEach((fn) => fn()); // visible — 무동작
+      await wait(50);
+      expect(calls).toEqual([]);
+
+      b.idbfs.onOrigSyncfs = () => {
+        throw new Error('mirror boom');
+      };
+      b.ctx.document.visibilityState = 'hidden';
+      b.flushHandlers.visibilitychange.forEach((fn) => fn());
+      await wait(100);
+      b.idbfs.onOrigSyncfs = undefined;
+      expect(b.win.__AIT_PP.status().lastError).toBeTruthy();
     });
   });
 

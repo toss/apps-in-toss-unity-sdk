@@ -2071,6 +2071,13 @@
     function onFlush() {
         if (state.mode !== 'ait' || !state.captured || !activeMount) return;
         pushScoped(activeMount).catch(function (e) { recordError('flush', e); });
+        // 순정 IndexedDB 미러도 같이 재시도한다. persistPath와 대칭이다 — 타이밍 레이스로
+        // 미러만 실패한 채 백그라운드로 가면 다음 write 전까지 사본이 빠져 있기 때문이다.
+        // 실패는 비치명이라 삼키고 status().lastError로만 관측한다.
+        var mount = activeMount;
+        callOrig(mount, false, function (err) {
+            if (err) recordError('IndexedDB 미러(flush)', err);
+        });
     }
 
     function registerFlushHandlers() {

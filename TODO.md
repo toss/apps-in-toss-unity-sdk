@@ -31,7 +31,6 @@
 
 - **P3 — `onFlush()`가 IndexedDB 미러를 재시도하지 않는다(비대칭)**: `ait-playerprefs.js`의 `onFlush()`. visibilitychange/pagehide 훅은 `pushScoped(activeMount)`만 재시도, 순정 IDBFS 미러는 안 한다. 타이밍 레이스로 미러 실패가 관측됐다. write 없으면 사본이 빠질 수 있으나("백업의 백업") 다음 write에서 자가 치유, 회귀 아님. 고치면 `callOrig` 호출 한 줄 추가.
 
-- **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid`를 묶지만 호출되지 않는다(`AITCredentials.IsReadyForDeploy()`는 별개). Configuration 창은 `IsAppNameValid()`를 직접 호출해 게이팅해 기능 공백은 없다. 제거하거나 실제 게이트로 승격할지 결정.
 
 ## E2E 테스트
 
@@ -45,4 +44,3 @@
 
 - **P3 — 미문서 public API 약 65개**: 문서 통합 정리에서 의도적으로 범위 제외. API 설명은 상위 `@apps-in-toss/web-framework` JSDoc이 생성기로 XML 주석에 자동 이관되므로, 마크다운 레퍼런스를 두면 상위의 수기 포크가 돼 드리프트한다. 현재 완화책은 API 사용 패턴 문서의 "API 원문은 어디에 있나" 절. 정책 충분성은 사용자 피드백으로 재검토.
 
-- **P3 — `PAYMENT_COMPLETED` 주문 상태 미검증**: 이전 문서가 인용한 값인데 저장소 C# 타입에 없다. 플랫폼 측 상태값 추정, 미확인이라 리라이트에서 제거했다. 실재 확인 후 IAP 문서에 반영.

@@ -357,16 +357,6 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 배포 준비 완료 여부 (기본 설정만 체크, deploymentKey는 AITCredentials에서 별도 확인)
-        /// </summary>
-        public bool IsReadyForDeploy()
-        {
-            return IsIconUrlValid() &&
-                   IsAppNameValid() &&
-                   IsVersionValid();
-        }
-
-        /// <summary>
         /// bridgeColorMode 문자열 반환
         /// </summary>
         public string GetBridgeColorModeString()

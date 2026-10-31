@@ -60,19 +60,45 @@ export async function waitForUnityBounded(page, budgetMs, { abortIf } = {}) {
 }
 
 /**
+ * 하니스 순단 패턴(두 정책 공용). 전부 Chromium이 requestfailed에 싣는 전송 계층 순단으로
+ * 제품 코드가 만들어내지 않는 문구다. "Failed to download file"(Unity 로더의 제품 결함 지문)과
+ * "download-watchdog"(그 실패를 받은 제품 워치독의 진단 마커)은 의도적으로 뺐다.
+ * ERR_INCOMPLETE_CHUNKED_ENCODING: vite preview는 .data를 chunked로 서빙하므로 본문 스트리밍 중
+ * 끊기면 Chromium이 CLOSED/RESET 대신 이 코드를 보고한다.
+ */
+const HARNESS_RE = /ERR_CONNECTION_CLOSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_INCOMPLETE_CHUNKED_ENCODING/i;
+
+/** 로더가 .data 다운로드 실패 시 남기는 유일한 콘솔 신호(두 정책 공용). */
+const PRODUCT_HANG_RE = /Failed to download file/i;
+
+/** @param {any} c */
+const formatProductHang = (c) => `[${c.tag}] product hang signature detected (Failed to download file) — hard-fail (no retry)`;
+
+/** @param {any} c */
+const formatProductHangError = (c) => {
+  const sig = c.consoleLines.filter((/** @type {string} */ l) => c.productHangRe.test(l)).slice(0, 3);
+  const sub = c.pageErrors.filter((/** @type {any} */ e) => HANG_PAGEERROR_RE.test(e.message)).map((/** @type {any} */ e) => e.message).slice(0, 2);
+  const detail = `console=[${sig.join(' | ')}] pageerror(subarray)=[${sub.join(' | ') || '없음'}]`;
+  return new Error(
+    'Unity 로더 .data 다운로드가 fetch 계측 예외로 깨진 제품 결함 시그니처 ' +
+    `(런북: dev 빌드 warm reload hang): ${detail} :: ${c.err.message}`);
+};
+
+/**
  * 9-2/9-4/9-7(격리 page, reloadAndWaitForUnity) 정책.
  *
- * self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면(ERR_CONNECTION_CLOSED /
- * "Failed to download file" / download-watchdog) 제품 결함이 아니라 인프라 아티팩트로 보고
- * bounded 재시도한다. run 31581794167 rerun2에서 9-4의 reload 부트가 단발 drop으로 죽은
- * 실측에 따른 보강. 3-1과 달리 "Failed to download file"을 아직 하니스 순단으로 분류한다
- * (정렬 여부는 TODO.md 참조).
+ * self-hosted 러너의 vite preview가 부하로 루프백 스트림을 끊으면(requestfailed의 net 에러)
+ * 인프라 아티팩트로 보고 bounded 재시도한다. run 31581794167 rerun2에서 9-4의 reload 부트가
+ * 단발 drop으로 죽은 실측에 따른 보강. 분류(harnessRe/productHangRe)는 POLICY_WARM_CACHE와
+ * 같다: net 에러 없이 "Failed to download file"이 찍히면 제품 결함으로 즉시 실패한다.
+ * 격리 page라도 reload 경로는 같은 로더·워치독을 타므로 이 분류를 달리 둘 근거가 없다.
+ * 다른 것은 예산(75s)과 로그 문장, 진단 덤프 유무뿐이다.
  */
 export const POLICY_ISOLATED_PAGE = Object.freeze({
   maxAttempts: 3,
   budgetMs: 75000,
-  harnessRe: /ERR_CONNECTION_CLOSED|Failed to download file|download-watchdog/i,
-  productHangRe: null,
+  harnessRe: HARNESS_RE,
+  productHangRe: PRODUCT_HANG_RE,
   collectBuildResponses: false,
   /** @param {any} err */
   toPageError: (err) => ({ message: String((err && err.message) || err) }),
@@ -100,8 +126,8 @@ export const POLICY_ISOLATED_PAGE = Object.freeze({
     /** @param {any} c */
     notReadyError: (c) => (c.res.closed ? c.res.error : new Error(`unityInstance not set within ${c.budgetMs}ms budget`)),
     crash: null,
-    productHang: null,
-    productHangError: null,
+    productHang: formatProductHang,
+    productHangError: formatProductHangError,
     closed: null,
     /** @param {any} c */
     retry: (c) => `[${c.tag}] harness connection-drop classified — retrying reload`,
@@ -111,12 +137,7 @@ export const POLICY_ISOLATED_PAGE = Object.freeze({
 /**
  * 3-1(공유 세션 warm reload) 정책.
  *
- * HARNESS_RE(harnessRe)는 하니스 전용 패턴만 남긴다: 아래 넷은 모두 Chromium이 requestfailed에
- * 싣는 전송 계층 순단(루프백 스트림 끊김/서버 종료)으로, 제품 코드가 절대 만들어내지 않는 문구다.
- * ERR_INCOMPLETE_CHUNKED_ENCODING: vite preview는 .data를 chunked로 서빙하므로 본문 스트리밍 중
- * 끊기면 Chromium이 CLOSED/RESET 대신 이 코드를 보고한다.
- * 제거된 것: "Failed to download file"(Unity 로더의 제품 결함 지문) 및 "download-watchdog"
- * (그 실패를 받은 제품 워치독의 진단 마커 — 즉 같은 제품 결함).
+ * 분류(HARNESS_RE / PRODUCT_HANG_RE)는 POLICY_ISOLATED_PAGE와 공용이다.
  *
  * PRODUCT_HANG_RE(productHangRe): 로더가 .data 다운로드 실패 시 남기는 유일한 콘솔 신호.
  * 관측되면 예산 소진을 기다리지 않고 대기를 중단하고, net 에러가 없으면 재시도 없이 hard-fail한다.
@@ -124,8 +145,8 @@ export const POLICY_ISOLATED_PAGE = Object.freeze({
 export const POLICY_WARM_CACHE = Object.freeze({
   maxAttempts: 3,
   budgetMs: UNITY_WAIT_BUDGET_MS,
-  harnessRe: /ERR_CONNECTION_CLOSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_INCOMPLETE_CHUNKED_ENCODING/i,
-  productHangRe: /Failed to download file/i,
+  harnessRe: HARNESS_RE,
+  productHangRe: PRODUCT_HANG_RE,
   // Build/* 응답 상태 관측 — 데이터가 캐시 서빙됐는지/재다운로드 됐는지 확인.
   collectBuildResponses: true,
   /** @param {any} err */
@@ -179,17 +200,8 @@ export const POLICY_WARM_CACHE = Object.freeze({
     notReadyError: (c) => new Error(`unityInstance not set within ${c.budgetMs / 1000}s budget (evalThrows=${c.res.evalThrows}${c.res.closed ? ', page closed' : ''})`),
     /** @param {any} c */
     crash: (c) => `[${c.tag}] genuine crash signature detected — hard-fail (no retry)`,
-    /** @param {any} c */
-    productHang: (c) => `[${c.tag}] product hang signature detected (Failed to download file) — hard-fail (no retry)`,
-    /** @param {any} c */
-    productHangError: (c) => {
-      const sig = c.consoleLines.filter((/** @type {string} */ l) => c.productHangRe.test(l)).slice(0, 3);
-      const sub = c.pageErrors.filter((/** @type {any} */ e) => HANG_PAGEERROR_RE.test(e.message)).map((/** @type {any} */ e) => e.message).slice(0, 2);
-      const detail = `console=[${sig.join(' | ')}] pageerror(subarray)=[${sub.join(' | ') || '없음'}]`;
-      return new Error(
-        'Unity 로더 .data 다운로드가 fetch 계측 예외로 깨진 제품 결함 시그니처 ' +
-        `(런북: dev 빌드 warm reload hang): ${detail} :: ${c.err.message}`);
-    },
+    productHang: formatProductHang,
+    productHangError: formatProductHangError,
     /** @param {any} c */
     closed: (c) => `[${c.tag}] page/context closed — cannot retry`,
     /** @param {any} c */

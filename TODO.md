@@ -33,10 +33,6 @@
 
 - **P3 — `AITEditorScriptObject.IsReadyForDeploy()`가 죽은 코드**: `IsIconUrlValid`/`IsAppNameValid`/`IsVersionValid`를 묶지만 호출되지 않는다(`AITCredentials.IsReadyForDeploy()`는 별개). Configuration 창은 `IsAppNameValid()`를 직접 호출해 게이팅해 기능 공백은 없다. 제거하거나 실제 게이트로 승격할지 결정.
 
-## E2E 테스트
-
-- **P3 — 9-x 재로드 재시도 분류를 3-1과 맞출지 검토**: `Tests~/E2E/tests/lib/reload-retry.js`의 `POLICY_ISOLATED_PAGE`(9-2/9-4/9-7, `reloadAndWaitForUnity`)는 아직 `Failed to download file`·`download-watchdog`을 하니스 순단으로 보고 재시도한다. 3-1의 `POLICY_WARM_CACHE`는 이 둘을 하니스 순단에서 뺐고, `Failed to download file`이 net 에러 없이 찍히면 제품 결함으로 보고 바로 실패시킨다. 맞추면 9-x에서도 제품 결함이 재시도에 가려지지 않지만 동작 변경이라 따로 판단한다.
-
 ## 의존성
 
 - **P3 — emnapi 2.x 안정판 출시 시 캡 override 해제**: `sdk-runtime-generator~/pnpm-workspace.yaml`의 `'@emnapi/core'`/`'@emnapi/runtime'` `'>=1.11.3 <2'` 캡(#1035)은 프리릴리스 유입을 막는 한시적 조치다(`@napi-rs/wasm-runtime`의 peer가 `^2.0.0-alpha.3` 요구, 2.x 안정판 없어 alpha만 매치. 유입 경로 vite(rolldown) → rolldown·oxc-transform의 optional wasm 바인딩, 미설치). 해제 조건: `npm view @emnapi/core versions`에 2.x 안정판 등장. 확인: `cd sdk-runtime-generator~ && pnpm why @emnapi/core`에 alpha 0건 + `--validate`.

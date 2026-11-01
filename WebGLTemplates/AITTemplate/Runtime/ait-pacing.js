@@ -10,7 +10,7 @@
  *    (framework 의 onstatechange). 그래서 이 레이어는 context 상태만 바꾸고 Unity 오디오 상태는 건드리지 않는다.
  *    SendMessage/jslib 이벤트 핸들러는 메인 루프와 무관하게 실행되므로 AITVisibilityHelper(visibilitychange → C#)는 그대로 동작한다.
  *    오디오 복구/진단(visible 상태에서만, 같은 mobileLifecycle 게이트를 따른다):
- *      - AudioContext 에 statechange 리스너를 달아 audioLog(최근 60건 링 버퍼)에 남긴다. navigator.audioSession 이 있으면 그 statechange 도 남긴다.
+ *      - AudioContext 에 statechange 리스너를 달아 audioLog(최근 120건 링 버퍼)에 남긴다. navigator.audioSession 이 있으면 그 statechange 도 남긴다.
  *      - iOS 가 context 를 'interrupted'(통화·Siri·백그라운드 경합)로 옮기면 1초 간격 최대 10회 resume() 을 재시도하고,
  *        첫 터치/클릭(capture, passive 1회)과 visible 복귀(onShow)에서도 interrupted 인 context 를 resume 한다.
  *        Unity 의 자체 resume interval 은 state != 'suspended' 이면 멈추므로 interrupted 는 여기서만 복구된다.
@@ -41,7 +41,8 @@
  *        thermal: 'serious' | 'critical' 또는 { state: ... }
  *      getState(): 진단용 스냅샷(주사율, 적용된 상한, 프레임/건너뜀 카운트, hidden 횟수 …).
  *      setLifecycleEnabled(bool): 런타임 탈출구. false 면 게이트를 풀고 멈춰 둔 오디오/미디어를 재개한다.
- *      getState().audioLog: 오디오 진단 링 버퍼 복사본({ev:'ctx'|'session'|'stall', t, vis, ...}), getState().audioStalls: 감지한 stall 횟수.
+ *      getState().audioLog: 오디오 진단 링 버퍼 복사본({ev:'ctx'|'session'|'stall'|'hide'|'show'|'tap'|'resume'|'resumed'|'resumeErr', t, vis, ...}), getState().audioStalls: 감지한 stall 횟수,
+ *      getState().audioContexts: 추적 중인 context 의 {state, t: currentTime}.
  *  - URL 탈출구: ?aitpacing=off → 이 레이어 전체 비활성, ?aitlifecycle=0 → 게이트만 비활성, ?aitcap=0 → 프레임 상한만 비활성,
  *    ?aitaudiowd=0 → 미디어 stall watchdog 만 비활성.
  *  - window.AITMemory / window.__AIT_GL 은 존재 여부를 먼저 확인한다(스크립트 로드 순서·부재에 의존하지 않는다).
@@ -122,7 +123,7 @@
     }
 
     // 오디오 진단 링 버퍼(최근 AUDIO_LOG_MAX 건). getState().audioLog 로 복사본을 노출한다.
-    var AUDIO_LOG_MAX = 60;
+    var AUDIO_LOG_MAX = 120;
     var audioLog = [];
     var audioStalls = 0;
 
@@ -132,6 +133,18 @@
             o.vis = document.visibilityState;
             audioLog.push(o);
             if (audioLog.length > AUDIO_LOG_MAX) audioLog.shift();
+        } catch (e) { /* 진단 기록 실패 무시 */ }
+    }
+
+    // resume 결과까지 audioLog 에 남긴다. 'resume' 뒤에 'resumed'/'resumeErr' 가 없으면 약속이 끝나지 않은 것이다.
+    function resumeCtx(ctx, why) {
+        var p = ctx.resume();
+        alog({ ev: 'resume', why: why, state: ctx.state });
+        try {
+            if (p && typeof p.then === 'function') {
+                p.then(function () { alog({ ev: 'resumed', why: why, state: ctx.state }); },
+                    function (e) { alog({ ev: 'resumeErr', why: why, state: ctx.state, err: String(e && e.name) }); });
+            }
         } catch (e) { /* 진단 기록 실패 무시 */ }
     }
 
@@ -164,7 +177,7 @@
             try {
                 if (ctx.state === 'running' || ctx.state === 'closed') clearPending(ctx);
                 if (applied || !needsResume(ctx)) { stopRetry(ctx); return; }
-                swallow(ctx.resume());
+                resumeCtx(ctx, 'retry');
                 rec.n++;
                 if (rec.n >= RESUME_RETRY_MAX) stopRetry(ctx);
             } catch (e) { stopRetry(ctx); }
@@ -177,7 +190,7 @@
         for (var i = 0; i < contexts.length; i++) {
             try {
                 if (skip && skip.indexOf(contexts[i]) >= 0) continue;
-                if (needsResume(contexts[i])) { swallow(contexts[i].resume()); n++; }
+                if (needsResume(contexts[i])) { resumeCtx(contexts[i], skip ? 'show' : 'tap'); n++; }
             } catch (e) { /* 개별 context 실패는 무시 */ }
         }
         return n;
@@ -193,6 +206,7 @@
                     try { window.removeEventListener(TAP_EVENTS[i], handler, true); } catch (e) { /* 무시 */ }
                 }
                 tapInstalled = false;
+                alog({ ev: 'tap' });
                 resumeInterrupted();
             };
             for (var i = 0; i < TAP_EVENTS.length; i++) window.addEventListener(TAP_EVENTS[i], handler, { capture: true, passive: true });
@@ -303,7 +317,7 @@
         for (var i = 0; i < list.length; i++) {
             try {
                 // suspend() 가 아직 처리 중일 수 있어 state 로 거르지 않는다. 이미 running 이면 resume() 은 무해하다.
-                if (list[i].state !== 'closed') { swallow(list[i].resume()); n++; }
+                if (list[i].state !== 'closed') { resumeCtx(list[i], 'show'); n++; }
             } catch (e) { /* 무시 */ }
         }
         return n;
@@ -466,6 +480,7 @@
         st.hiddenCount++;
         hiddenAt = Date.now();
         resumePending = [];
+        alog({ ev: 'hide', source: source });
         var a = suspendAudioContexts();
         var m = pauseMedia();
         log('hidden(' + source + '): 메인 루프 정지, AudioContext ' + a + '개 suspend, 미디어 ' + m + '개 pause');
@@ -477,6 +492,7 @@
         st.hidden = false;
         st.lastHiddenMs = hiddenAt ? Date.now() - hiddenAt : 0;
         capCounter = 0; // 숨어 있던 사이의 시간 때문에 상한 계산이 틀어지지 않게
+        alog({ ev: 'show', source: source, ms: st.lastHiddenMs });
         var ours = suspendedByUs.slice();
         var a = resumeAudioContexts();
         // resume() 이 거절돼 suspended 로 남는 경우(statechange 가 오지 않는다)를 위해 running 확인까지 재시도·첫 터치 복구를 건다
@@ -703,6 +719,7 @@
                 heldMedia: heldByUs.length,
                 hints: hints,
                 audioLog: audioLog.slice(),
+                audioContexts: contexts.map(function (c) { return { state: c.state, t: c.currentTime }; }),
                 audioStalls: audioStalls
             };
         }

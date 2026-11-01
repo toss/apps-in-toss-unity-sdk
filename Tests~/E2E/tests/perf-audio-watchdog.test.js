@@ -122,7 +122,7 @@ test.describe('AudioContext interrupted 복구', () => {
     expect(await resumeCalls(page)).toBe(3);
 
     const log = (await pacingState(page)).audioLog;
-    expect(log.map((e) => e.state)).toEqual(['interrupted', 'running']);
+    expect(log.filter((e) => e.ev === 'ctx').map((e) => e.state)).toEqual(['interrupted', 'running']);
     expect(log[0]).toMatchObject({ ev: 'ctx', vis: 'visible' });
 
     // 다시 interrupted: 재시도 틱이 오기 전에 클릭하면 바로 resume 한다.
@@ -266,16 +266,16 @@ test.describe('미디어 stall watchdog', () => {
     expect(await mediaCalls(page)).toEqual({ play: 0, pause: 0 });
   });
 
-  test('audioLog 는 최근 60건만 유지하고 복사본을 돌려준다', async ({ page }) => {
+  test('audioLog 는 최근 120건만 유지하고 복사본을 돌려준다', async ({ page }) => {
     await openSynthetic(page);
     await page.evaluate(() => { new AudioContext(); });
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 65; i++) {
       await setCtxState(page, 0, 'suspended');
       await setCtxState(page, 0, 'running');
     }
     const s = await pacingState(page);
-    expect(s.audioLog).toHaveLength(60);
+    expect(s.audioLog).toHaveLength(120);
     s.audioLog.length = 0;
-    expect((await pacingState(page)).audioLog).toHaveLength(60);
+    expect((await pacingState(page)).audioLog).toHaveLength(120);
   });
 });

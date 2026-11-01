@@ -433,6 +433,56 @@
     }, null);
   }
 
+  // ---- 오디오 진단 ----
+  // 자동 플레이는 터치 없이 돌아가므로, 복귀 후 무음이 터치로 풀리는지 보려면 실제 터치와 context 상태를 같이 기록해야 한다.
+  // 녹화만으로도 읽히게 화면에 한 줄 띄우고, 숨김에서 돌아올 때마다 15초 뒤 중간 리포트를 보낸다.
+  var AUDIO_TL_MAX = 240;
+  var audioTl = [];
+  var audioTouches = 0;
+  var audioLine = null;
+  var lastCtxT = null, lastCtxKey = '';
+
+  function pacingState() {
+    return safe(function () { return window.__AIT_PACING && window.__AIT_PACING.getState(); }, null);
+  }
+  function audioMark(o) {
+    o.t = Math.round(now());
+    audioTl.push(o);
+    if (audioTl.length > AUDIO_TL_MAX) audioTl.shift();
+  }
+  function audioDiag() {
+    var p = pacingState();
+    return { timeline: audioTl, touches: audioTouches, contexts: p && p.audioContexts, log: p && p.audioLog };
+  }
+  function audioTick() {
+    var p = pacingState();
+    var c = p && p.audioContexts && p.audioContexts[0];
+    var d = c && lastCtxT !== null ? c.t - lastCtxT : 0;
+    lastCtxT = c ? c.t : null;
+    var key = c ? c.state + (d > 0 ? ':moving' : ':stopped') : 'none';
+    if (key !== lastCtxKey) { lastCtxKey = key; audioMark({ ev: 'ctx', key: key, cur: c ? r1(c.t) : null }); }
+    if (!audioLine) {
+      audioLine = document.createElement('div');
+      audioLine.style.cssText = 'position:fixed;left:6px;top:96px;z-index:2147483647;pointer-events:none;padding:2px 5px;' +
+        'background:rgba(0,0,0,.7);color:#fff;font:600 12px/1.3 monospace;white-space:pre;';
+      document.body.appendChild(audioLine);
+    }
+    var ev = (p && p.audioLog || []).slice(-3).map(function (e) { return e.ev + (e.why ? ':' + e.why : ''); }).join(' ');
+    audioLine.textContent = (c ? c.state + ' t=' + c.t.toFixed(1) + ' +' + d.toFixed(2) : 'ctx 없음') +
+      ' 터치' + audioTouches + ' 숨김' + (p ? p.hiddenCount : '?') + '\n' + ev;
+  }
+  ['touchend', 'click'].forEach(function (name) {
+    window.addEventListener(name, function () {
+      if (name === 'touchend') audioTouches++;
+      audioMark({ ev: name });
+    }, { capture: true, passive: true });
+  });
+  document.addEventListener('visibilitychange', function () {
+    audioMark({ ev: document.hidden ? 'hidden' : 'visible' });
+    if (!document.hidden) setTimeout(function () { upload(false); }, 15000);
+  });
+  setInterval(function () { safe(audioTick); }, 500);
+
   // ---- 자동 전송 + 다음 회차 ----
   var uploadState = REPORT_URL ? 'wait' : 'off';
   function upload(final) {
@@ -531,7 +581,8 @@
       work: { a: stats(workA), b: stats(workB), title: stats(workTitle), play: stats(workPlay) },
       heapSamples: heapSamples,
       longtask: longtask ? { count: longtask.count, totalMs: r1(longtask.totalMs), maxMs: r1(longtask.maxMs) } : null,
-      game: gameState()
+      game: gameState(),
+      audio: audioDiag()
     };
     return out;
   }

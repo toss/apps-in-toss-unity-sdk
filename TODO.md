@@ -21,10 +21,6 @@
 
 - **P2 — Unity 2021.3 순정 IDBFS 세션 노화 결함 실기기 확인**: E2E CI에서 Unity 2021.3 빌드가 일정 시간 후 순정 IDBFS 저장이 죽는다(ENOENT → `IDBFS.syncfs` 조용히 실패 → reload 시 유실). 레이어 무관은 통제군 검증, Storage는 전 버전 green(9-4는 2021.3 skip 중). `collectScoped`도 함께 죽는 문제는 폴백(`status().collectFallbackCount`)으로 해소. 후속: 실기기 재현 → 재현 시 2021.3 사용자에게 PlayerPrefs 영속화 opt-out 비권장 안내(사용자 허락 후) → 상류 리포트 판단. 절차: `internal/playerprefs-device-verification.md`.
 
-- **P2 — 이전 origin 저장소 조회 수단 확보 시 어댑터 연결**: SDK 3.x로 서빙 origin이 바뀌어 origin 격리된 IDBFS의 이전 PlayerPrefs에 접근 불가. 요구 형태: `/idbfs` DB `FILE_DATA` 덤프(플랫폼에 전달됨). 마이그레이션 검토 중, 방법·일정 미정. mock 주입 seam(`getPlatformLegacySource()` stub) 있어 확정 시 stub만 채움. 심을 위치는 추측 없이 부팅 중 관측 시점에 `pickLegacyTarget()`이 리매핑해 심는다. 상세: `implementation-details.md` "PlayerPrefs 레거시 origin 마이그레이션" 표 행.
-
-  선결 과제: (1) 플랫폼 API가 앱 단위 스코프인지 — 아니면 다른 게임 세이브를 옮길 소지(방어선 `LEGACY_MAX_CANDIDATES`, 걸리면 `skip-ambiguous`로 미심음). (2) 'empty' 응답을 종결로 볼지 — lazy-backfill 가능성으로 지금은 창을 연다.
-
 ## 코드 결함
 
 - **P3 — stale 디렉터리에 남은 PlayerPrefs를 `collectScoped`가 매니페스트에 올린다**: 위 마이그레이션은 stale 디렉터리에 남은 PlayerPrefs는 다루지 않는다. `collectScoped()`가 `SCOPE_RE`에 맞는 경로를 전부 긁어 좌초된 값도 매니페스트에 올린다. 현재 앱 디렉터리는 `appDirWatch`가 무장된 이관 창에서만 관측되고(warm boot의 lookup 히트는 훅을 안 지난다) 상시 상태가 없어, 수집 범위를 좁히려면 상시 관측(또는 해시 유도)을 먼저 설계해야 한다. 관측 전에 좁히면 정상 디렉터리까지 빠져 빈 매니페스트가 push될 수 있다.

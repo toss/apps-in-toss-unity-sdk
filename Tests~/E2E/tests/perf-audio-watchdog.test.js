@@ -153,6 +153,32 @@ test.describe('AudioContext interrupted 복구', () => {
     expect(await resumeCalls(page)).toBe(1);
   });
 
+  test('우리가 멈춘 context 가 복귀 resume 뒤에도 suspended 로 남으면 running 까지 재시도·클릭 복구하고, 그 뒤엔 게임 소유로 돌려준다', async ({ page }) => {
+    await openSynthetic(page);
+    await page.evaluate(() => { new AudioContext(); });
+    await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
+    await setCtxState(page, 0, 'suspended'); // 우리 suspend 가 반영된 상태
+    expect(await resumeCalls(page)).toBe(0);
+
+    // 복귀: resume 이 거절돼(가짜 resume 은 상태를 바꾸지 않는다) suspended 로 남는다
+    await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
+    expect(await resumeCalls(page)).toBe(1);
+    await page.clock.runFor(3000);
+    expect(await resumeCalls(page)).toBe(4);
+    await page.evaluate(() => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(await resumeCalls(page)).toBe(5);
+
+    await setCtxState(page, 0, 'running');
+    await page.clock.runFor(3000);
+    expect(await resumeCalls(page)).toBe(5);
+
+    // running 에 도달한 뒤 게임이 직접 멈춘 것은 건드리지 않는다
+    await setCtxState(page, 0, 'suspended');
+    await page.clock.runFor(3000);
+    await page.evaluate(() => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(await resumeCalls(page)).toBe(5);
+  });
+
   test('우리가 suspend 하지 않은 plain suspended context 는 클릭·재시도·onShow 어디서도 resume 하지 않는다', async ({ page }) => {
     await openSynthetic(page);
     await page.evaluate(() => { new AudioContext(); new AudioContext(); });

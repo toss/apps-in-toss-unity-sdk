@@ -14,6 +14,9 @@
  *      - iOS 가 context 를 'interrupted'(통화·Siri·백그라운드 경합)로 옮기면 1초 간격 최대 10회 resume() 을 재시도하고,
  *        첫 터치/클릭(capture, passive 1회)과 visible 복귀(onShow)에서도 interrupted 인 context 를 resume 한다.
  *        Unity 의 자체 resume interval 은 state != 'suspended' 이면 멈추므로 interrupted 는 여기서만 복구된다.
+ *      - 우리가 suspend 했던 context 는 visible 복귀 때 resume() 을 한 번 부르고 끝내지 않는다. iOS 가 그 resume 을 거절해
+ *        plain 'suspended' 로 남으면(최적화를 끈 빌드처럼 모든 소리가 Web Audio 일 때 복귀 후 무음) running 이 될 때까지
+ *        같은 재시도·첫 터치 복구를 적용한다. running 에 한 번 도달하면 다시 게임/Unity 소유로 돌려준다.
  *        우리가 suspend 하지 않은 plain 'suspended' context 는 게임/Unity 소유라 건드리지 않는다.
  *      - 미디어 stall watchdog: 재생 가능 상태(!paused, readyState>=3, playbackRate>0)인데 currentTime 이 2초(1초 틱 2회) 동안 안 움직이면
  *        audioStalls 를 올리고 audioLog 에 남긴 뒤 seek(currentTime=currentTime)로 깨운다. 4초째에도 멈춰 있으면 원본 pause→play 로 한 번 더 시도한다.
@@ -106,6 +109,17 @@
     // ------------------------------------------------------------------ AudioContext 추적/정지/재개
     var contexts = [];
     var suspendedByUs = [];
+    var resumePending = [];   // visible 복귀 때 resume 을 요청했지만 아직 running 을 확인하지 못한 우리 context
+
+    // 복구 대상: iOS 가 가로챈 context, 또는 우리가 멈췄다가 아직 돌려놓지 못한 context
+    function needsResume(ctx) {
+        return ctx.state === 'interrupted' || (ctx.state === 'suspended' && resumePending.indexOf(ctx) >= 0);
+    }
+
+    function clearPending(ctx) {
+        var i = resumePending.indexOf(ctx);
+        if (i >= 0) resumePending.splice(i, 1);
+    }
 
     // 오디오 진단 링 버퍼(최근 AUDIO_LOG_MAX 건). getState().audioLog 로 복사본을 노출한다.
     var AUDIO_LOG_MAX = 60;
@@ -148,7 +162,8 @@
         var rec = { ctx: ctx, timer: 0, n: 0 };
         rec.timer = setInterval(function () {
             try {
-                if (ctx.state !== 'interrupted' || applied) { stopRetry(ctx); return; }
+                if (ctx.state === 'running' || ctx.state === 'closed') clearPending(ctx);
+                if (applied || !needsResume(ctx)) { stopRetry(ctx); return; }
                 swallow(ctx.resume());
                 rec.n++;
                 if (rec.n >= RESUME_RETRY_MAX) stopRetry(ctx);
@@ -162,7 +177,7 @@
         for (var i = 0; i < contexts.length; i++) {
             try {
                 if (skip && skip.indexOf(contexts[i]) >= 0) continue;
-                if (contexts[i].state === 'interrupted') { swallow(contexts[i].resume()); n++; }
+                if (needsResume(contexts[i])) { swallow(contexts[i].resume()); n++; }
             } catch (e) { /* 개별 context 실패는 무시 */ }
         }
         return n;
@@ -186,7 +201,8 @@
 
     function onCtxState(ctx) {
         try {
-            if (ctx.state === 'interrupted') {
+            if (ctx.state === 'running' || ctx.state === 'closed') clearPending(ctx);
+            if (needsResume(ctx)) {
                 if (!gateEnabled() || applied || !isVisible()) return; // hidden 이면 onShow 가 처리한다
                 installInterruptedTap();
                 startRetry(ctx);
@@ -449,6 +465,7 @@
         st.hidden = true;
         st.hiddenCount++;
         hiddenAt = Date.now();
+        resumePending = [];
         var a = suspendAudioContexts();
         var m = pauseMedia();
         log('hidden(' + source + '): 메인 루프 정지, AudioContext ' + a + '개 suspend, 미디어 ' + m + '개 pause');
@@ -462,6 +479,13 @@
         capCounter = 0; // 숨어 있던 사이의 시간 때문에 상한 계산이 틀어지지 않게
         var ours = suspendedByUs.slice();
         var a = resumeAudioContexts();
+        // resume() 이 거절돼 suspended 로 남는 경우(statechange 가 오지 않는다)를 위해 running 확인까지 재시도·첫 터치 복구를 건다
+        for (var i = 0; i < ours.length; i++) {
+            if (ours[i].state === 'closed') continue;
+            resumePending.push(ours[i]);
+            startRetry(ours[i]);
+        }
+        if (resumePending.length) installInterruptedTap();
         var ia = resumeInterrupted(ours); // hidden 사이에 iOS 가 interrupted 로 옮긴 context
         var m = resumeMedia();
         log('visible(' + source + '): ' + st.lastHiddenMs + 'ms 뒤 재개, AudioContext ' + a + '개 resume' +

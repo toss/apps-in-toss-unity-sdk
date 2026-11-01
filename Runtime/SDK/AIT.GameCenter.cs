@@ -493,6 +493,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getGameCenterGameProfileIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// v2 호환용 별칭이에요. GetAnonymousKey 또는 UserGetAnonymousKey를 사용해주세요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>결과 값 또는 null</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>

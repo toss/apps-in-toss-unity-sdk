@@ -73,6 +73,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __getPermission_Internal(string permission, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 사용자에게 권한을 요청하는 다이얼로그를 띄워요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>권한의 현재 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 상태예요. denied: 권한이 거부된 상태예요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -175,6 +178,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __openPermissionDialog_Internal(string permission, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 권한을 요청하고 사용자가 선택한 최종 상태를 받아요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>사용자가 선택한 최종 권한 상태를 반환해요. 반환값은 다음 중 하나예요: allowed: 권한이 허용된 경우 denied: 권한이 거부된 경우</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>

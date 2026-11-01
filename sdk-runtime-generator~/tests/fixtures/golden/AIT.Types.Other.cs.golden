@@ -861,9 +861,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("name")]
         public string Name;
+        /// <summary>인덱스의 keyPath예요. 문자열 또는 문자열 배열(JArray)로 와요.</summary>
         [Preserve]
         [JsonProperty("keyPath")]
-        public string KeyPath;
+        public object KeyPath;
         [Preserve]
         [JsonProperty("multiEntry")]
         public bool MultiEntry;
@@ -902,9 +903,10 @@ namespace AppsInToss
         [Preserve]
         [JsonProperty("name")]
         public string Name;
+        /// <summary>저장소의 keyPath예요. 문자열, 문자열 배열(JArray), null 중 하나로 와요.</summary>
         [Preserve]
         [JsonProperty("keyPath")]
-        public string KeyPath;
+        public object KeyPath;
         [Preserve]
         [JsonProperty("autoIncrement")]
         public bool AutoIncrement;

@@ -158,3 +158,19 @@ describe('undefined 포함 다중 멤버 union 반환의 구조 보존 (grantPro
     expect(mapToCSharpType(inner)).toBe('GrantResult');
   });
 });
+
+describe('스칼라와 배열이 섞인 union', () => {
+  test('keyPath: string | string[] | null 은 object로 둔다 (배열 값에서 역직렬화 실패 금지)', () => {
+    const project = makeProject();
+    const sf = project.createSourceFile(
+      '/dump.d.ts',
+      `export interface Store { keyPath: string | string[] | null; }`,
+    );
+    const prop = sf.getInterfaceOrThrow('Store').getPropertyOrThrow('keyPath');
+    const parsed = parseType(prop.getType());
+
+    expect(parsed.name).toBe('object');
+    expect(parsed.isNullable).toBe(true);
+    expect(mapToCSharpType(parsed)).toBe('object');
+  });
+});

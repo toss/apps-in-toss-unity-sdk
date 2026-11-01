@@ -1,0 +1,6 @@
+# Level-1 게이트 테스트(AITFontExternalizerPackagesSourceGateTests.cs 의
+# AITFontExternalizerPackagesSourceCandidateExclusionTests)가 SetUp/TearDown에서 생성·삭제하는 임시
+# 픽스처. 원본 Runtime/Fonts~/NotoSansKR-Regular.otf(비임포트)의 사본을 이 패키지 내 "임포트되는"
+# 경로로 잠깐 스테이징한다 — best-effort 삭제가 실패해도(예: 테스트 크래시) 커밋되지 않도록 무시한다.
+Runtime/GateTestFixtures/
+Runtime/GateTestFixtures.meta

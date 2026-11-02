@@ -564,6 +564,145 @@ public class DeprecationCheckerTests
     }
 
     // =====================================================
+    // 차단 스위치: enforceRecommendedVersion 파싱 (fail-open)
+    // =====================================================
+
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\",\"enforceRecommendedVersion\":true}", true)]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\",\"enforceRecommendedVersion\":false}", false)]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\"}", false)] // 필드 없음
+    [TestCase("{\"schemaVersion\":2,\"minVersion\":\"2.4.0\",\"enforceRecommendedVersion\":true}", false)] // 모르는 스키마
+    [TestCase("not json at all", false)]
+    [TestCase("{\"schemaVersion\":1,\"enforceRecommendedVersion\":", false)]
+    [TestCase("", false)]
+    [TestCase(null, false)]
+    public void ParseEnforceRecommendedFromJson_FailsOpen(string json, bool expected)
+    {
+        Assert.AreEqual(expected, AITDeprecationChecker.ParseEnforceRecommendedFromJson(json));
+    }
+
+    [Test]
+    public void ParseEnforceRecommendedFromJson_DoesNotAffectOtherFields()
+    {
+        var json = "{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\",\"enforceRecommendedVersion\":true}";
+        Assert.AreEqual(new Version(2, 4, 0), AITDeprecationChecker.ParseMinVersionFromJson(json));
+        Assert.AreEqual(new Version(3, 1, 0), AITDeprecationChecker.ParseRecommendedVersionFromJson(json));
+    }
+
+    [Test]
+    public void SetRecommendationForTesting_ResetCacheClearsIt()
+    {
+        AITDeprecationChecker.SetMinVersionForTesting(new Version(2, 4, 0));
+        AITDeprecationChecker.SetRecommendationForTesting(new Version(3, 1, 0), true);
+        AITDeprecationChecker.ResetCache();
+        AITDeprecationChecker.SetMinVersionForTesting(new Version(2, 4, 0));
+        // 초기화 뒤에는 권장 버전이 없으므로 어떤 버전도 권장 대상이 아니다.
+        Assert.AreEqual(AITDeprecationChecker.RecommendationLevel.None,
+            AITDeprecationChecker.GetRecommendationLevel());
+    }
+
+    // =====================================================
+    // EvaluateRecommendation: (current, min, recommended, enforce) 경계
+    // =====================================================
+
+    [TestCase("2.4.0", false, "Warn")]
+    [TestCase("2.10.8", false, "Warn")]
+    [TestCase("3.0.0", false, "Warn")]
+    [TestCase("3.0.5", false, "Warn")]
+    [TestCase("3.0.5", true, "Block")]
+    [TestCase("2.4.0", true, "Block")]
+    [TestCase("3.1.0", false, "None")]
+    [TestCase("3.1.0", true, "None")]
+    [TestCase("3.2.0", true, "None")]
+    [TestCase("2.3.9", false, "None")] // min 미만은 deprecated 경로
+    [TestCase("2.3.9", true, "None")]
+    public void EvaluateRecommendation_Boundaries(
+        string current, bool enforce, string expected)
+    {
+        // internal enum을 public 테스트 시그니처에 노출할 수 없어 이름 문자열로 비교한다.
+        Assert.AreEqual(expected, AITDeprecationChecker.EvaluateRecommendation(
+            new Version(current), new Version(2, 4, 0), new Version(3, 1, 0), enforce).ToString());
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void EvaluateRecommendation_NoRecommendedVersion_ReturnsNone(bool enforce)
+    {
+        Assert.AreEqual(AITDeprecationChecker.RecommendationLevel.None,
+            AITDeprecationChecker.EvaluateRecommendation(
+                new Version(3, 0, 5), new Version(2, 4, 0), null, enforce));
+    }
+
+    [Test]
+    public void EvaluateRecommendation_NullCurrentOrMin_ReturnsNone()
+    {
+        Assert.AreEqual(AITDeprecationChecker.RecommendationLevel.None,
+            AITDeprecationChecker.EvaluateRecommendation(
+                null, new Version(2, 4, 0), new Version(3, 1, 0), true));
+        Assert.AreEqual(AITDeprecationChecker.RecommendationLevel.None,
+            AITDeprecationChecker.EvaluateRecommendation(
+                new Version(3, 0, 5), null, new Version(3, 1, 0), true));
+    }
+
+    // =====================================================
+    // 차단 문구
+    // =====================================================
+
+    [Test]
+    public void BuildBlockMessage_StatesBlockAndNeverSaysBuildCanContinue()
+    {
+        var recommended = new Version(3, 1, 0);
+        foreach (var current in new[] { new Version(3, 0, 5), new Version(2, 10, 8) })
+        {
+            string message = AITDeprecationChecker.BuildBlockMessage(current, recommended);
+            StringAssert.Contains("차단", message);
+            StringAssert.Contains("v3.1.0", message);
+            StringAssert.DoesNotContain("계속 빌드할 수 있습니다", message);
+            StringAssert.DoesNotContain("계속할 수 있습니다", message);
+        }
+    }
+
+    [Test]
+    public void BuildBlockMessage_MentionsMigrationOnlyFor30x()
+    {
+        var recommended = new Version(3, 1, 0);
+        StringAssert.Contains("MigrationGetOriginStorage",
+            AITDeprecationChecker.BuildBlockMessage(new Version(3, 0, 5), recommended));
+        StringAssert.DoesNotContain("MigrationGetOriginStorage",
+            AITDeprecationChecker.BuildBlockMessage(new Version(2, 10, 8), recommended));
+    }
+
+    [Test]
+    public void BuildRecommendationMessage_Warn_StillSaysBuildCanContinue()
+    {
+        StringAssert.Contains("계속할 수 있습니다",
+            AITDeprecationChecker.BuildRecommendationMessage(new Version(3, 0, 5), new Version(3, 1, 0)));
+    }
+
+    [Test]
+    public void BuildManualUpdateGuide_NamesRecommendedVersion()
+    {
+        string guide = AITDeprecationChecker.BuildManualUpdateGuide(new Version(3, 1, 0));
+        StringAssert.Contains("v3.1.0", guide);
+        StringAssert.Contains("직접", guide);
+    }
+
+    [Test]
+    public void BlockIfDeprecated_NotDeprecated_AndNoRecommendation_ReturnsFalse()
+    {
+        string currentVersion = AppsInToss.AITVersion.Version;
+        if (!Version.TryParse(currentVersion, out _))
+        {
+            Assert.Inconclusive($"SDK version '{currentVersion}' is not a plain System.Version");
+            return;
+        }
+
+        // 권장 버전이 없으면 게이트는 다이얼로그 없이 통과해야 한다.
+        AITDeprecationChecker.SetMinVersionForTesting(new Version(0, 0, 1));
+        AITDeprecationChecker.SetRecommendationForTesting(null, true);
+        Assert.IsFalse(AITDeprecationChecker.BlockIfDeprecated());
+    }
+
+    // =====================================================
     // ResetCache / SetMinVersionForTesting: 내부 API 존재 확인
     // =====================================================
 

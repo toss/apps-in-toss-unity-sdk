@@ -18,7 +18,7 @@ apps-in-toss-unity-sdk/
 ├── .github/                  workflows, actions, scripts (UPM 배포 제외)
 ├── .githooks/                pre-commit / pre-push
 ├── package.json              UPM 매니페스트
-├── sdk-policy.json           최소·권장 버전 정책 (AITDeprecationChecker가 fetch)
+├── sdk-policy.json           최소·권장 버전과 권장 차단 스위치(enforceRecommendedVersion) 정책 (AITDeprecationChecker가 fetch)
 └── run-local-tests.sh        로컬 검증 진입점
 ```
 
@@ -66,6 +66,7 @@ Editor/
 ├── AITNpmRunner.cs             패키지 매니저 실행
 ├── AITTemplateManager.cs       WebGL 템플릿 복사·병합
 ├── AITAutoUpdater.cs           업데이트 확인과 채널 판정
+├── AITDeprecationChecker.cs    SDK 최소·권장 버전 판정, 시작 팝업, 빌드·배포 게이트, 설정 창 배너
 ├── AITExportErrorCatalog.cs    빌드 에러 코드와 안내 문구
 ├── AppsInTossMenu.cs           AIT 메뉴 등록
 ├── AppsInTossMenu.DevServer.cs   Local Debug 서버 기동·중지·상태·포트 관리 (partial)

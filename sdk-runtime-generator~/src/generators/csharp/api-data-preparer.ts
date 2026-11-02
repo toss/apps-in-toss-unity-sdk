@@ -419,6 +419,9 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
   const isNamespaceCallbackBased = api.isCallbackBased && hasArgsObjectPattern;
 
   const apiCompat = getApiCompat(api.pascalName);
+  const apiParameters = api.isCallbackBased ? callbackApiParameters : parameters;
+  // 파라미터가 없는 번들(3.0.x)에서는 본 메서드가 이미 `(int timeoutMs = 0)`이라 오버로드를 두면 CS0111이 난다
+  const compatTimeoutOnlyOverload = COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) && apiParameters.length > 0;
 
   return {
     name: api.name,
@@ -428,8 +431,7 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     returnDescription: api.returnDescription,
     examples: api.examples,
     // `(int timeoutMs = 0)` 오버로드와 인자 없는 호출이 겹치지 않도록, 그 오버로드를 두는 API는 첫 매개변수를 필수로 둔다
-    parameters: (api.isCallbackBased ? callbackApiParameters : parameters).map((p, i) =>
-      i === 0 && COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) ? { ...p, optional: false } : p),
+    parameters: apiParameters.map((p, i) => (i === 0 && compatTimeoutOnlyOverload ? { ...p, optional: false } : p)),
     returnType,
     isAsync: api.isAsync,
     callbackType,
@@ -459,7 +461,7 @@ export function prepareApiData(api: ParsedAPI): PreparedApiData {
     nestedCallbackOptionsType: getNestedCallbackOptionsType(api),
     nestedCallbackEventType: getNestedCallbackEventType(api),
     // options.callbacks 묶음 API 지원
-    compatTimeoutOnlyOverload: COMPAT_TIMEOUT_ONLY_OVERLOADS.has(api.pascalName) || undefined,
+    compatTimeoutOnlyOverload: compatTimeoutOnlyOverload || undefined,
     methodName: apiCompat.methodName ?? api.pascalName,
     returnTypeCompat: apiCompat.returnTypeCompat,
     legacySubscribe: apiCompat.legacySubscribe,

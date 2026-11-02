@@ -124,6 +124,7 @@ namespace AppsInToss
         [MenuItem("AIT/Local Debug/Restart Server", false, 3)]
         public static void MenuRestartDevServer()
         {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
             Debug.Log("AIT: Dev 서버 재시작...");
             RestartDevServer();
         }
@@ -138,6 +139,7 @@ namespace AppsInToss
         [MenuItem("AIT/Local Debug/Restart Server (server-only)", false, 4)]
         public static void MenuRestartDevServerOnly()
         {
+            if (AITDeprecationChecker.BlockIfDeprecated()) return;
             Debug.Log("AIT: Dev 서버 재시작 중 (서버만)...");
             RestartDevServerOnly();
         }

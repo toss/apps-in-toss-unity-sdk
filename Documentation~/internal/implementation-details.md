@@ -95,7 +95,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 | 지점 | Warn | Block |
 |------|------|-------|
 | 에디터 시작 팝업 (`ShowRecommendationDialogOncePerSession`) | 에디터 세션당 1회 | 같음. 문구만 차단을 알립니다. |
-| 빌드·배포 메뉴 4곳과 `AITSettingsHelper` 빌드 버튼 2곳 (`BlockIfDeprecated` → `BlockIfRecommendationGate`) | 호출마다 "업데이트/그래도 진행" | 호출마다 차단 다이얼로그 후 중단. `_upgradeInProgress`여도 유지 |
+| 빌드·배포 메뉴와 Local Debug Start·Restart 메뉴 6곳, 그리고 `AITSettingsHelper` 빌드 버튼 2곳 (`BlockIfDeprecated` → `BlockIfRecommendationGate`) | 호출마다 "업데이트/그래도 진행" | 호출마다 차단 다이얼로그 후 중단. `_upgradeInProgress`여도 유지 |
 | 설정 창 배너 (`DrawDeprecationBanner`) | `MessageType.Warning` | `MessageType.Error` |
 | batch 모드 | 경고 로그만 남기고 통과 | 에러 로그를 남기고 중단 |
 
@@ -103,7 +103,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 - **다운그레이드 금지** — `UpgradeToLatest`는 태그 조회에 실패하면 `FALLBACK_UPGRADE_TAG`(v2.4.1)로 갑니다. 권장 경로는 `IsRecommendationTarget`이 `false`면 업데이트 버튼을 내지 않고 `UpgradeToLatest`도 부르지 않습니다. 이때 Warn은 경고 로그 후 통과, Block은 수동 업데이트를 안내하는 확인 다이얼로그 후 중단합니다.
 - **CI와 batch** — CI 빌드(`E2EBuildRunner`, `AITBatchBuild`)는 메뉴 메서드를 거치지 않고 `AITConvertCore.DoExport`를 직접 부르므로 이 게이트를 지나지 않습니다. 메뉴를 batch로 부르더라도 대화나 `UpgradeToLatest` 없이 로그로만 처리합니다. Warn 로그는 경고라 CI 실패로 이어지지 않습니다.
 - **설정 창 배너** — `OnGUI`에서 네트워크나 프로세스를 새로 부르지 않습니다. 태그가 아직 조회되지 않았으면 `delayCall`에서 한 번만 조회하고 다시 그립니다. 업데이트 버튼은 유효 태그가 확인된 뒤에만 보입니다.
-- **차단 스위치의 도달 범위** — 이 코드가 든 태그만 영향을 받습니다. `enforceRecommendedVersion`을 `true`로 바꾸면 `recommendedVersion` 미만 중 이 코드가 든 태그(현재는 3.0.x)가 재릴리즈 없이 차단됩니다. 이 코드가 없는 2.x 태그는 그대로입니다. 되돌리려면 `false`로 되돌리면 됩니다(에디터를 다시 켜면 반영).
+- **차단 스위치의 도달 범위** — 이 코드가 든 태그만 영향을 받습니다. `enforceRecommendedVersion`을 `true`로 바꾸면 `recommendedVersion` 미만 중 이 코드가 든 태그(현재는 3.0.x)가 재릴리즈 없이 차단됩니다. 이 코드가 없는 2.x 태그와 `release/v3.0.1-beta.*` 태그는 그대로입니다. 되돌리려면 `false`로 되돌리면 됩니다(에디터를 다시 켜면 반영).
 - **문구** — `BuildRecommendationMessage`(Warn)와 `BuildBlockMessage`(Block)는 순수 함수입니다. 3.0.x에는 두 문구 모두 `AIT.MigrationGetOriginStorage()` 안내가 붙고, Block 문구에는 "계속 진행" 표현을 넣지 않습니다.
 
 ## PlayerPrefs 레거시 origin 마이그레이션

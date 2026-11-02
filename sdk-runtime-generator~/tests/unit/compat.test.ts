@@ -8,7 +8,8 @@ import { describe, test, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { GeneratedTypeUnit } from '../../src/types.js';
+import type { GeneratedTypeUnit, ParsedAPI } from '../../src/types.js';
+import { prepareApiData } from '../../src/generators/csharp/api-data-preparer.js';
 import {
   ENUM_MEMBER_ORDER,
   FORWARDING_PROPERTY_COMPAT,
@@ -183,6 +184,32 @@ describe('applyTypeCompat: 옛 필드·타입·enum 순서', () => {
 
   test('이전 멤버가 생성되지 않았으면 중단한다', () => {
     expect(() => reorderEnumMembers('public enum E\n{\n    A\n}', ['A', 'Gone'], 'E')).toThrow(/'Gone'/);
+  });
+});
+
+describe('timeoutMs 호환 오버로드', () => {
+  const api = (parameters: ParsedAPI['parameters']): ParsedAPI => ({
+    name: 'getCompletedOrRefundedOrders',
+    pascalName: 'IAPGetCompletedOrRefundedOrders',
+    originalName: 'getCompletedOrRefundedOrders',
+    category: 'IAP',
+    file: 'test.ts',
+    parameters,
+    returnType: { name: 'void', kind: 'primitive' },
+    isAsync: true,
+    hasPermission: false,
+  });
+
+  test('파라미터가 없으면 본 메서드와 시그니처가 겹치므로 오버로드를 내지 않는다', () => {
+    expect(prepareApiData(api([])).compatTimeoutOnlyOverload).toBeUndefined();
+  });
+
+  test('파라미터가 있으면 오버로드를 내고 첫 파라미터를 필수로 둔다', () => {
+    const prepared = prepareApiData(api([
+      { name: 'params', type: { name: 'string', kind: 'primitive' }, optional: true },
+    ]));
+    expect(prepared.compatTimeoutOnlyOverload).toBe(true);
+    expect(prepared.parameters[0].optional).toBe(false);
   });
 });
 

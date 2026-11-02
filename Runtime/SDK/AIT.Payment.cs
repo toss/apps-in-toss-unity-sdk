@@ -187,6 +187,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossPayAuthorizeSubscriptionIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 토스페이 결제창을 띄우고 사용자 인증을 수행해요. 실제 결제 처리는 인증 성공 후 서버에서 별도로 해야 해요. 더 이상 사용되지 않으니 TossPayAuthorize를 사용해주세요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -239,6 +242,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossPayCheckoutPayment_Internal(string options, string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 토스페이 정기결제창을 띄우고 사용자 인증을 수행해요. 실제 결제 처리는 인증 성공 후 서버에서 별도로 해야 해요. 더 이상 사용되지 않으니 TossPayAuthorizeSubscription을 사용해주세요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>결과 값 또는 null</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>

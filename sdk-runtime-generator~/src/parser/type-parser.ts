@@ -335,6 +335,18 @@ export function parseType(typeNode: any): ParsedType {
       };
     }
 
+    // 스칼라와 배열이 섞인 union(`string | string[]` 등)은 C# 한 타입으로 닫을 수 없다.
+    // 선두 멤버로 닫으면 배열 값이 왔을 때 응답 전체의 역직렬화가 실패하므로 object로 둔다.
+    if (nonDomTypes.some((t: ParsedType) => t.kind === 'array') &&
+        nonDomTypes.some((t: ParsedType) => t.kind !== 'array')) {
+      return {
+        name: 'object',
+        kind: 'primitive',
+        raw: typeText,
+        ...(nullTypes.length > 0 ? { isNullable: true } : {}),
+      };
+    }
+
     // DOM 제거 후 단일 타입만 남은 경우: 해당 타입 반환 (nullable 여부 보존)
     if (nonDomTypes.length === 1) {
       const result: ParsedType = {

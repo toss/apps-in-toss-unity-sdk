@@ -21,7 +21,11 @@ namespace AppsInToss
     /// </summary>
     public static partial class AIT
     {
+        /// <summary>
+        /// 이전 origin과 현재 origin의 localStorage, IndexedDB, OPFS 덤프를 가져와요. SDK 3.0.x origin에 저장된 데이터를 3.1.0 이상으로 옮길 때 사용해요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <returns>previous(이전 origin)와 current(현재 origin) 덤프를 반환해요. 읽지 못한 저장소는 각 덤프의 Errors에 담겨요. IndexedDB 레코드의 바이너리 값은 base64 문자열로 와요.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
         [Preserve]

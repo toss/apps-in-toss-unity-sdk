@@ -299,6 +299,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __GoogleAdMobIsAppsInTossAdMobLoadedIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 토스 광고를 초기화해요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -436,6 +439,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsInitializeIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 더 이상 권장되지 않아요. TossAdsAttachBanner를 사용해주세요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -587,6 +593,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsAttachIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 배너 광고를 target에 붙여요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <returns>Destroy를 부르면 붙여 둔 JS 쪽 자원과 콜백 구독을 함께 해제한다.</returns>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
@@ -748,6 +757,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsAttachBannerIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// slotId에 해당하는 광고 슬롯을 제거해요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
@@ -853,6 +865,9 @@ namespace AppsInToss
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __TossAdsDestroyIsSupported_Internal(string callbackId, string typeName);
 #endif
+        /// <summary>
+        /// 붙어 있는 광고 슬롯을 모두 제거해요.
+        /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>

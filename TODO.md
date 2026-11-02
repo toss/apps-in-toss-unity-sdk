@@ -21,6 +21,8 @@
 
 - **P2 — Unity 2021.3 순정 IDBFS 세션 노화 결함 실기기 확인**: E2E CI에서 Unity 2021.3 빌드가 일정 시간 후 순정 IDBFS 저장이 죽는다(ENOENT → `IDBFS.syncfs` 조용히 실패 → reload 시 유실). 레이어 무관은 통제군 검증, Storage는 전 버전 green(9-4는 2021.3 skip 중). `collectScoped`도 함께 죽는 문제는 폴백(`status().collectFallbackCount`)으로 해소. 후속: 실기기 재현 → 재현 시 2021.3 사용자에게 PlayerPrefs 영속화 opt-out 비권장 안내(사용자 허락 후) → 상류 리포트 판단. 절차: `internal/playerprefs-device-verification.md`.
 
+- **P2 — `enforceRecommendedVersion` 켜는 시점 결정**: `sdk-policy.json`의 3.0.x 차단 스위치는 꺼 둔 상태다. 켜기 전에 개발사 안내가 먼저 나가야 한다. `AIT.MigrationGetOriginStorage()`가 3.1.0부터 있어서 차단되면 3.1 이상으로 올린 뒤에만 데이터를 옮길 수 있다. 켜는 방법과 영향 범위는 `internal/implementation-details.md`의 "SDK 버전 정책과 업데이트 권장".
+
 ## 코드 결함
 
 - **P3 — stale 디렉터리에 남은 PlayerPrefs를 `collectScoped`가 매니페스트에 올린다**: 위 마이그레이션은 stale 디렉터리에 남은 PlayerPrefs는 다루지 않는다. `collectScoped()`가 `SCOPE_RE`에 맞는 경로를 전부 긁어 좌초된 값도 매니페스트에 올린다. 현재 앱 디렉터리는 `appDirWatch`가 무장된 이관 창에서만 관측되고(warm boot의 lookup 히트는 훅을 안 지난다) 상시 상태가 없어, 수집 범위를 좁히려면 상시 관측(또는 해시 유도)을 먼저 설계해야 한다. 관측 전에 좁히면 정상 디렉터리까지 빠져 빈 매니페스트가 push될 수 있다.

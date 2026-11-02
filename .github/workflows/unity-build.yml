@@ -144,7 +144,7 @@ jobs:
     # 매핑에 없는 버전은 라벨이 "ait-slot-"가 되어 잡이 큐에 남으므로 즉시
     # 발견된다(silent fallback 없음).
     runs-on: ${{ fromJSON(format('["self-hosted", "{0}", "{1}", "enabled", "ait-slot-{2}"]', inputs.os == 'macos' && 'macOS' || 'Windows', inputs.os == 'macos' && 'ARM64' || 'X64', fromJSON('{"2021.3":"1","2022.3":"2","6000.0":"3","6000.6":"4","6000.3":"5"}')[inputs.unity-version])) }}
-    timeout-minutes: 90
+    timeout-minutes: 110
     # 동시성 정책: 호출자(test-e2e / preview / release)의 잡 concurrency가 ref
     # 기반 cancel을 담당하므로 reusable workflow는 (os, unity-version) 단위로만
     # 이중방어 락을 둔다. 같은 매트릭스 잡이 동시에 두 번 dispatch되는 케이스만
@@ -888,8 +888,11 @@ jobs:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
           # 30분 한도에 아슬아슬하고, cold 캐시에서는 timeout으로 실패가 재발한다 →
-          # 45분으로 상향 (job 한도 90분 내 여유 충분. macOS는 30분 내 안정 통과라 유지).
-          timeout_minutes: 45
+          # 45분으로 상향했다. 그 뒤 6000.0·6000.3 Release 빌드는 External 심볼 실패 후
+          # AITDebugSymbolFallback이 같은 step 안에서 다시 빌드해 ~31분씩 두 번이 들어가
+          # 45분도 넘는다 → 75분으로 올리고 job 한도도 110분으로 맞춘다.
+          # macOS는 30분 내 안정 통과라 유지.
+          timeout_minutes: 75
           max_attempts: 3
           retry_wait_seconds: 0
           retry_on_exit_code: 42

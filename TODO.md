@@ -21,9 +21,7 @@
 
 - **P2 — Unity 2021.3 순정 IDBFS 세션 노화 결함 실기기 확인**: E2E CI에서 Unity 2021.3 빌드가 일정 시간 후 순정 IDBFS 저장이 죽는다(ENOENT → `IDBFS.syncfs` 조용히 실패 → reload 시 유실). 레이어 무관은 통제군 검증, Storage는 전 버전 green(9-4는 2021.3 skip 중). `collectScoped`도 함께 죽는 문제는 폴백(`status().collectFallbackCount`)으로 해소. 후속: 실기기 재현 → 재현 시 2021.3 사용자에게 PlayerPrefs 영속화 opt-out 비권장 안내(사용자 허락 후) → 상류 리포트 판단. 절차: `internal/playerprefs-device-verification.md`.
 
-- **P2 — `enforceRecommendedVersion` 켜는 시점 결정**: `sdk-policy.json`의 3.0.x 차단 스위치는 꺼 둔 상태다. 켜기 전에 개발사 안내가 먼저 나가야 한다. `AIT.MigrationGetOriginStorage()`가 3.1.0부터 있어서 차단되면 3.1 이상으로 올린 뒤에만 데이터를 옮길 수 있다. 켜는 방법과 영향 범위는 `internal/implementation-details.md`의 "SDK 버전 정책과 업데이트 권장".
-
-- **P1 — `AIT.MigrationGetOriginStorage()` 기기 동작 확인**: Android 테스트 앱에서 호출하면 호스트 응답(`requestWebStorageMigration` 콜백)이 오지 않아 web-framework의 60초 고정 타임아웃으로 실패했다. C#의 `timeoutMs=0`이어도 이 60초는 적용된다. 지원 앱 버전을 플랫폼 팀에 확인한 뒤 성공 경로, 덤프 크기, 큰 덤프의 JSON·`SendMessage` 전달, 복합 keyPath 역직렬화를 기기에서 검증한다. `enforceRecommendedVersion`을 켜기 전에 끝나야 한다.
+- **P2 — `enforceRecommendedVersion` 켜는 시점 결정**: `sdk-policy.json`의 3.0.x 차단 스위치는 꺼 둔 상태다. 켜기 전에 개발사 안내가 먼저 나가야 한다. `AIT.MigrationGetOriginStorage()`가 3.1.0부터 있어서 차단되면 3.1 이상으로 올린 뒤에만 데이터를 옮길 수 있다. 켜는 방법과 영향 범위는 `internal/implementation-details.md`의 "SDK 버전 정책과 업데이트 권장". 켜기 전에 iOS에서도 `AIT.MigrationGetOriginStorage()`를 확인한다(Android 결과와 남은 조건은 같은 문서).
 
 ## 코드 결함
 

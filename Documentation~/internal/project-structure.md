@@ -18,7 +18,7 @@ apps-in-toss-unity-sdk/
 ├── .github/                  workflows, actions, scripts (UPM 배포 제외)
 ├── .githooks/                pre-commit / pre-push
 ├── package.json              UPM 매니페스트
-├── sdk-policy.json           최소 지원 버전 정책 (AITDeprecationChecker가 fetch)
+├── sdk-policy.json           최소·권장 버전 정책 (AITDeprecationChecker가 fetch)
 └── run-local-tests.sh        로컬 검증 진입점
 ```
 

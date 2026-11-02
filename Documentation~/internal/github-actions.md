@@ -195,7 +195,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/222574658/dispatches 
 EOF
 ```
 
-`inputs`를 비우면 모든 `release/v*` 태그를 대상으로 합니다.
+`versions`를 비우면 모든 `release/v*` 태그가 후보입니다. 어느 경우든 `min_version`보다 낮은 버전은 건너뛰고, 비워 둔 `min_version`은 `sdk-policy.json`의 `minVersion`과 하한 3.1.0 중 높은 쪽입니다. 3.1 미만을 다시 배포하려면 `min_version`을 낮춰 지정합니다.
 
 ## 상태 확인
 

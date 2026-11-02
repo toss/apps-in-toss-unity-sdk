@@ -8,6 +8,8 @@ using System;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using AppsInToss.Editor;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 [TestFixture]
 public class DeprecationCheckerTests
@@ -490,6 +492,75 @@ public class DeprecationCheckerTests
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.IsNotNull(method,
             "ShowDeprecationDialogPersistent should exist for persistent dialog behavior");
+    }
+
+    // =====================================================
+    // 업데이트 권장: recommendedVersion 파싱과 대상 판정
+    // =====================================================
+
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\"}", "3.1.0")]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1\"}", "3.1.0")]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"2.4.0\"}", null)]
+    [TestCase("{\"schemaVersion\":2,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\"}", null)]
+    public void ParseRecommendedVersionFromJson_ReturnsExpected(string json, string expected)
+    {
+        var actual = AITDeprecationChecker.ParseRecommendedVersionFromJson(json);
+        Assert.AreEqual(expected == null ? null : new Version(expected), actual);
+    }
+
+    [Test]
+    public void ParseRecommendedVersionFromJson_IgnoresUnreasonableValue()
+    {
+        LogAssert.Expect(LogType.Warning, new Regex("recommendedVersion .*비정상"));
+        var json = "{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"99.0.0\"}";
+        Assert.IsNull(AITDeprecationChecker.ParseRecommendedVersionFromJson(json));
+    }
+
+    [Test]
+    public void ParseMinVersionFromJson_ReadsPolicyWithRecommendedVersion()
+    {
+        var json = "{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"3.1.0\"}";
+        Assert.AreEqual(new Version(2, 4, 0), AITDeprecationChecker.ParseMinVersionFromJson(json));
+    }
+
+    [TestCase("3.0.5", true)]
+    [TestCase("2.4.0", true)]
+    [TestCase("3.1.0", false)]
+    [TestCase("3.9.0", false)]
+    [TestCase("2.3.9", false)] // 최소 버전 미만은 하드 차단 경로
+    public void ShouldRecommendUpdate_ComparesAgainstBothBounds(string current, bool expected)
+    {
+        Assert.AreEqual(expected, AITDeprecationChecker.ShouldRecommendUpdate(
+            new Version(current), new Version(2, 4, 0), new Version(3, 1, 0)));
+    }
+
+    [Test]
+    public void ShouldRecommendUpdate_NoRecommendedVersion_ReturnsFalse()
+    {
+        Assert.IsFalse(AITDeprecationChecker.ShouldRecommendUpdate(
+            new Version(3, 0, 5), new Version(2, 4, 0), null));
+    }
+
+    [TestCase("release/v3.9.0", true)]
+    [TestCase("release/v3.1.0", true)]
+    [TestCase("release/v3.0.5", false)]
+    [TestCase("release/v2.4.1", false)] // FALLBACK_UPGRADE_TAG: 권장 경로에서 다운그레이드 금지
+    [TestCase("", false)]
+    [TestCase(null, false)]
+    public void IsRecommendationTarget_RejectsTagsBelowRecommended(string tag, bool expected)
+    {
+        Assert.AreEqual(expected,
+            AITDeprecationChecker.IsRecommendationTarget(tag, new Version(3, 1, 0)));
+    }
+
+    [Test]
+    public void BuildRecommendationMessage_MentionsMigrationOnlyFor30x()
+    {
+        var recommended = new Version(3, 1, 0);
+        StringAssert.Contains("MigrationGetOriginStorage",
+            AITDeprecationChecker.BuildRecommendationMessage(new Version(3, 0, 5), recommended));
+        StringAssert.DoesNotContain("MigrationGetOriginStorage",
+            AITDeprecationChecker.BuildRecommendationMessage(new Version(2, 10, 8), recommended));
     }
 
     // =====================================================

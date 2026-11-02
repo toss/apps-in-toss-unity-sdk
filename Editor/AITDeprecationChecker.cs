@@ -11,7 +11,10 @@ namespace AppsInToss.Editor
     /// <summary>
     /// SDK 최소 버전 미만 감지 시 빌드를 차단하고 최신 버전으로 업그레이드를 유도합니다.
     /// 최소 버전은 GitHub의 sdk-policy.json에서 동적으로 가져오며, 실패 시 하드코딩 폴백을 사용합니다.
-    /// 최소 버전 이상이지만 recommendedVersion 미만이면 빌드는 막지 않고 하루 한 번 업데이트를 권장합니다.
+    /// 최소 버전 이상이지만 recommendedVersion 미만이면 에디터 세션마다 한 번 업데이트를 권장하고,
+    /// 빌드·배포 메뉴를 실행할 때마다 경고 다이얼로그를 띄웁니다.
+    /// 정책의 enforceRecommendedVersion이 true이면 같은 대상의 빌드·배포를 차단합니다.
+    /// 이 스위치는 이 코드가 든 태그(재릴리즈된 3.0.x)에서만 동작하며, 값을 읽지 못하면 false로 동작합니다.
     /// </summary>
     [InitializeOnLoad]
     public static class AITDeprecationChecker
@@ -43,6 +46,12 @@ namespace AppsInToss.Editor
         // 하드 차단이 아니므로 폴백이 없고, 조회 실패·필드 없음이면 null이라 권장하지 않습니다.
         private static Version _cachedRecommendedVersion;
 
+        // enforceRecommendedVersion 캐시. 필드 없음·파싱 실패·조회 실패는 모두 false(fail-open)입니다.
+        private static bool _cachedEnforceRecommended;
+
+        // 설정 창 배너가 태그 조회를 한 번만 예약하도록 막는 플래그. OnGUI에서 직접 조회하지 않습니다.
+        private static bool _bannerTagPrimeScheduled;
+
         // 업그레이드 시작 후 다이얼로그 반복을 멈추기 위한 플래그.
         // PackageManager.Client.Add() 호출 후 리셋되지 않으며, 세션 동안 유지됩니다.
         // 업그레이드가 실패해도 다이얼로그가 다시 표시되려면 Unity를 재시작해야 합니다.
@@ -50,8 +59,22 @@ namespace AppsInToss.Editor
 
         // AITAutoUpdater가 세션 1회 검사 여부를 기록하는 키. 다이얼로그 중복 표시를 막을 때 씁니다.
         private const string AUTO_UPDATE_SESSION_KEY = "AIT_AutoUpdate_Checked_v1";
-        // 권장 다이얼로그는 프로젝트별로 하루 한 번만 띄웁니다.
-        private const string RECOMMENDATION_PROMPT_KEY_PREFIX = "AIT_UpdateRecommendation_LastPrompt_";
+        // 권장 다이얼로그는 에디터 세션마다 한 번만 띄웁니다.
+        // SessionState는 도메인 리로드와 스크립트 재컴파일을 넘어 유지되고 에디터를 끄면 사라집니다.
+        private const string RECOMMENDATION_SESSION_KEY = "AIT_UpdateRecommendation_Shown_v1";
+
+        /// <summary>
+        /// 현재 버전이 업데이트 권장 대상일 때 어떻게 다룰지 나타냅니다.
+        /// </summary>
+        internal enum RecommendationLevel
+        {
+            /// <summary>권장 대상이 아니거나 지원 종료 경로가 처리합니다.</summary>
+            None,
+            /// <summary>권장 다이얼로그만 띄우고 빌드·배포는 허용합니다.</summary>
+            Warn,
+            /// <summary>빌드·배포를 차단합니다.</summary>
+            Block,
+        }
 
         /// <summary>
         /// WebClient에 timeout을 지정하기 위한 서브클래스.
@@ -99,12 +122,16 @@ namespace AppsInToss.Editor
                 {
                     _cachedMinVersion = ParseMinVersionFromJson(json);
                     _cachedRecommendedVersion = ParseRecommendedVersionFromJson(json);
+                    // minVersion을 읽지 못한 정책은 손상된 것으로 보고 차단 스위치를 켜지 않습니다.
+                    _cachedEnforceRecommended = _cachedMinVersion != null
+                        && ParseEnforceRecommendedFromJson(json);
                 }
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[AIT] 최소 버전 조회 실패, 폴백 사용: {e}");
                 _cachedMinVersion = FallbackDeprecationThreshold;
+                _cachedEnforceRecommended = false;
             }
 
             if (_cachedMinVersion == null)
@@ -245,6 +272,30 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
+        /// sdk-policy.json 문자열에서 enforceRecommendedVersion을 파싱합니다.
+        /// 필드가 없거나 JSON이 잘못됐거나 schemaVersion이 다르면 false입니다(fail-open).
+        /// </summary>
+        internal static bool ParseEnforceRecommendedFromJson(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return false;
+
+            SdkPolicy policy;
+            try
+            {
+                policy = JsonUtility.FromJson<SdkPolicy>(json);
+            }
+            catch (ArgumentException)
+            {
+                // minVersion 파싱에서 이미 경고합니다.
+                return false;
+            }
+
+            return policy != null
+                && policy.schemaVersion == SUPPORTED_SCHEMA_VERSION
+                && policy.enforceRecommendedVersion;
+        }
+
+        /// <summary>
         /// 3-part로 정규화합니다 (System.Version에서 2.4 &lt; 2.4.0, 2.4.1 &lt; 2.4.1.0이므로).
         /// sdk-policy.json의 버전은 반드시 x.y.z 형식이어야 하지만, 방어적으로 정규화합니다.
         /// </summary>
@@ -269,6 +320,8 @@ namespace AppsInToss.Editor
             public int schemaVersion;
             public string minVersion;
             public string recommendedVersion;
+            // JsonUtility는 없는 필드를 기본값(false)으로 두므로 필드 생략이 곧 스위치 꺼짐입니다.
+            public bool enforceRecommendedVersion;
         }
 
         /// <summary>
@@ -330,21 +383,7 @@ namespace AppsInToss.Editor
         /// </summary>
         public static bool IsUpdateRecommended()
         {
-            string versionStr = AITVersion.Version;
-            if (string.IsNullOrEmpty(versionStr) || versionStr == "unknown")
-            {
-                return false;
-            }
-
-            try
-            {
-                var minVersion = GetMinVersionCached();
-                return ShouldRecommendUpdate(new Version(versionStr), minVersion, _cachedRecommendedVersion);
-            }
-            catch (Exception)
-            {
-                return false;
-            }
+            return GetRecommendationLevel() != RecommendationLevel.None;
         }
 
         /// <summary>
@@ -353,6 +392,44 @@ namespace AppsInToss.Editor
         internal static bool ShouldRecommendUpdate(Version current, Version minVersion, Version recommendedVersion)
         {
             return recommendedVersion != null && current >= minVersion && current < recommendedVersion;
+        }
+
+        /// <summary>
+        /// 버전 네 값만으로 권장 처리 수준을 정합니다.
+        /// 최소 버전 미만은 지원 종료 경로가 처리하므로 None이고,
+        /// 권장 대상이면 enforce가 true일 때 Block, 아니면 Warn입니다.
+        /// </summary>
+        internal static RecommendationLevel EvaluateRecommendation(
+            Version current, Version minVersion, Version recommendedVersion, bool enforce)
+        {
+            if (current == null || minVersion == null) return RecommendationLevel.None;
+            if (current < minVersion) return RecommendationLevel.None;
+            if (!ShouldRecommendUpdate(current, minVersion, recommendedVersion)) return RecommendationLevel.None;
+            return enforce ? RecommendationLevel.Block : RecommendationLevel.Warn;
+        }
+
+        /// <summary>
+        /// 설치된 SDK 버전을 정책에 대입해 권장 처리 수준을 구합니다.
+        /// 버전을 System.Version으로 읽지 못하면(unknown, prerelease) None입니다.
+        /// </summary>
+        internal static RecommendationLevel GetRecommendationLevel()
+        {
+            string versionStr = AITVersion.Version;
+            if (string.IsNullOrEmpty(versionStr) || versionStr == "unknown")
+            {
+                return RecommendationLevel.None;
+            }
+
+            try
+            {
+                var minVersion = GetMinVersionCached();
+                return EvaluateRecommendation(
+                    new Version(versionStr), minVersion, _cachedRecommendedVersion, _cachedEnforceRecommended);
+            }
+            catch (Exception)
+            {
+                return RecommendationLevel.None;
+            }
         }
 
         /// <summary>
@@ -368,27 +445,53 @@ namespace AppsInToss.Editor
         }
 
         /// <summary>
-        /// 업데이트 권장 다이얼로그 본문을 만듭니다.
+        /// 3.0.x에서 3.1.0 이상으로 옮길 때 붙이는 origin 안내를 만듭니다. 해당하지 않으면 빈 문자열입니다.
+        /// 3.0.x만 서비스 origin이 달랐고 3.1.0에서 2.x origin으로 돌아왔습니다.
+        /// </summary>
+        private static string BuildLegacyOriginNote(Version current, Version recommendedVersion)
+        {
+            bool leavesLegacyOrigin = current.Major == 3 && current.Minor == 0
+                && recommendedVersion >= new Version(3, 1, 0);
+            if (!leavesLegacyOrigin) return "";
+
+            return
+                "\n\nSDK 3.1.0부터 앱의 서비스 주소(origin)가 바뀝니다. " +
+                "3.0.x 주소에 저장된 데이터가 필요하면 업데이트 후 " +
+                "AIT.MigrationGetOriginStorage()로 직접 옮겨 주세요.";
+        }
+
+        /// <summary>
+        /// 업데이트 권장(Warn) 다이얼로그 본문을 만듭니다.
         /// </summary>
         internal static string BuildRecommendationMessage(Version current, Version recommendedVersion)
         {
-            string message =
+            return
                 $"현재 사용 중인 Apps in Toss Unity SDK v{current}보다 새로운 " +
                 $"v{recommendedVersion} 이상으로 업데이트를 권장합니다.\n\n" +
-                "지금 버전으로도 빌드와 배포는 계속할 수 있습니다.";
+                "지금 버전으로도 빌드와 배포는 계속할 수 있습니다." +
+                BuildLegacyOriginNote(current, recommendedVersion);
+        }
 
-            // 3.0.x만 서비스 origin이 달랐고 3.1.0에서 2.x origin으로 돌아왔습니다.
-            bool leavesLegacyOrigin = current.Major == 3 && current.Minor == 0
-                && recommendedVersion >= new Version(3, 1, 0);
-            if (leavesLegacyOrigin)
-            {
-                message +=
-                    "\n\nSDK 3.1.0부터 앱의 서비스 주소(origin)가 바뀝니다. " +
-                    "3.0.x 주소에 저장된 데이터가 필요하면 업데이트 후 " +
-                    "AIT.MigrationGetOriginStorage()로 직접 옮겨 주세요.";
-            }
+        /// <summary>
+        /// 권장 버전 미만을 차단(Block)할 때의 본문을 만듭니다. 계속 진행할 수 있다는 문구를 넣지 않습니다.
+        /// </summary>
+        internal static string BuildBlockMessage(Version current, Version recommendedVersion)
+        {
+            return
+                $"현재 사용 중인 Apps in Toss Unity SDK v{current}는 " +
+                $"v{recommendedVersion} 미만이라 빌드와 배포가 차단됩니다.\n\n" +
+                $"v{recommendedVersion} 이상으로 업데이트해 주세요." +
+                BuildLegacyOriginNote(current, recommendedVersion);
+        }
 
-            return message;
+        /// <summary>
+        /// 자동 업데이트 대상 태그를 찾지 못했을 때 붙이는 수동 업데이트 안내를 만듭니다.
+        /// </summary>
+        internal static string BuildManualUpdateGuide(Version recommendedVersion)
+        {
+            return
+                "업데이트할 최신 버전을 자동으로 찾지 못했습니다.\n" +
+                $"Package Manager에서 SDK를 v{recommendedVersion} 이상으로 직접 업데이트해 주세요.";
         }
 
         /// <summary>
@@ -397,8 +500,93 @@ namespace AppsInToss.Editor
         /// </summary>
         public static bool BlockIfDeprecated()
         {
-            if (_upgradeInProgress || !IsDeprecated()) return false;
-            ShowDeprecationDialog();
+            if (IsDeprecated())
+            {
+                if (_upgradeInProgress) return false;
+                ShowDeprecationDialog();
+                return true;
+            }
+
+            return BlockIfRecommendationGate();
+        }
+
+        /// <summary>
+        /// 권장 버전 미만(Warn/Block)일 때 빌드·배포 메뉴에서 호출마다 다이얼로그를 띄웁니다.
+        /// 반환값이 true면 호출부가 빌드·배포를 중단합니다. 세션당 제한은 없습니다.
+        /// </summary>
+        private static bool BlockIfRecommendationGate()
+        {
+            var level = GetRecommendationLevel();
+            if (level == RecommendationLevel.None) return false;
+
+            // 업그레이드를 이미 시작했으면 경고는 반복하지 않습니다.
+            // 차단은 유지합니다. 업그레이드가 실패해도 이 플래그는 리셋되지 않기 때문입니다.
+            if (level == RecommendationLevel.Warn && _upgradeInProgress) return false;
+
+            var current = new Version(AITVersion.Version);
+            var recommended = _cachedRecommendedVersion;
+
+            // batch 모드의 DisplayDialog는 응답 없이 곧장 반환하므로 대화도 업그레이드도 하지 않습니다.
+            if (Application.isBatchMode)
+            {
+                if (level == RecommendationLevel.Warn)
+                {
+                    AITLog.Warning($"[AIT] {BuildRecommendationMessage(current, recommended)}", sentryCapture: false);
+                    return false;
+                }
+
+                AITLog.Error($"[AIT] {BuildBlockMessage(current, recommended)}", sentryCapture: false);
+                return true;
+            }
+
+            // 권장 버전 이상 태그가 없으면 UpgradeToLatest의 폴백 태그(다운그레이드)로 보내지 않습니다.
+            bool canUpdate = IsRecommendationTarget(GetLatestTagCached(), recommended);
+
+            if (level == RecommendationLevel.Warn)
+            {
+                if (!canUpdate)
+                {
+                    AITLog.Warning(
+                        $"[AIT] {BuildRecommendationMessage(current, recommended)}\n{BuildManualUpdateGuide(recommended)}",
+                        sentryCapture: false);
+                    return false;
+                }
+
+                string latest = GetLatestVersionDisplay();
+                bool update = EditorUtility.DisplayDialog(
+                    "SDK 업데이트 권장",
+                    BuildRecommendationMessage(current, recommended),
+                    $"{latest}으로 업데이트",
+                    "그래도 진행"
+                );
+                if (!update) return false;
+
+                UpgradeToLatest();
+                return true;
+            }
+
+            if (!canUpdate)
+            {
+                EditorUtility.DisplayDialog(
+                    "SDK 업데이트 필요",
+                    $"{BuildBlockMessage(current, recommended)}\n\n{BuildManualUpdateGuide(recommended)}",
+                    "확인"
+                );
+                return true;
+            }
+
+            string latestVersion = GetLatestVersionDisplay();
+            bool shouldUpdate = EditorUtility.DisplayDialog(
+                "SDK 업데이트 필요",
+                BuildBlockMessage(current, recommended),
+                $"{latestVersion}으로 업데이트",
+                "닫기"
+            );
+            if (shouldUpdate)
+            {
+                UpgradeToLatest();
+            }
+
             return true;
         }
 
@@ -447,11 +635,17 @@ namespace AppsInToss.Editor
 
         /// <summary>
         /// Configuration 윈도우 상단에 deprecation 경고 배너를 그립니다.
-        /// deprecated가 아니면 아무것도 그리지 않습니다.
+        /// deprecated면 에러 배너를, 권장 대상이면 Warn은 경고 배너, Block은 에러 배너를 그립니다.
+        /// 둘 다 아니면 아무것도 그리지 않습니다.
+        /// OnGUI에서 매번 불리므로 네트워크·프로세스 호출을 새로 만들지 않습니다.
         /// </summary>
         public static void DrawDeprecationBanner()
         {
-            if (!IsDeprecated()) return;
+            if (!IsDeprecated())
+            {
+                DrawRecommendationBanner();
+                return;
+            }
 
             string latestVersion = GetLatestVersionDisplay();
             EditorGUILayout.HelpBox(
@@ -468,6 +662,53 @@ namespace AppsInToss.Editor
             GUILayout.Space(10);
         }
 
+        /// <summary>
+        /// 업데이트 권장 배너를 그립니다. 업데이트 버튼은 권장 버전 이상 태그가 확인됐을 때만 보입니다.
+        /// </summary>
+        private static void DrawRecommendationBanner()
+        {
+            var level = GetRecommendationLevel();
+            if (level == RecommendationLevel.None) return;
+
+            var current = new Version(AITVersion.Version);
+            var recommended = _cachedRecommendedVersion;
+            bool block = level == RecommendationLevel.Block;
+
+            EditorGUILayout.HelpBox(
+                block ? BuildBlockMessage(current, recommended) : BuildRecommendationMessage(current, recommended),
+                block ? MessageType.Error : MessageType.Warning
+            );
+
+            if (IsRecommendationTarget(PeekLatestTagForGui(), recommended)
+                && GUILayout.Button($"{GetLatestVersionDisplay()}으로 업데이트"))
+            {
+                UpgradeToLatest();
+            }
+
+            GUILayout.Space(10);
+        }
+
+        /// <summary>
+        /// OnGUI에서 쓰는 태그 조회. 이미 조회한 결과만 돌려주고, 아직이면 null을 돌려준 뒤
+        /// GUI 밖(delayCall)에서 한 번만 조회해 다시 그리게 합니다.
+        /// </summary>
+        private static string PeekLatestTagForGui()
+        {
+            if (_tagLookupDone) return _cachedLatestTag;
+
+            if (!_bannerTagPrimeScheduled && !Application.isBatchMode)
+            {
+                _bannerTagPrimeScheduled = true;
+                EditorApplication.delayCall += () =>
+                {
+                    GetLatestTagCached();
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                };
+            }
+
+            return null;
+        }
+
         private static void OnEditorReady()
         {
             if (Application.isBatchMode) return;
@@ -479,34 +720,38 @@ namespace AppsInToss.Editor
                 SessionState.SetBool(AUTO_UPDATE_SESSION_KEY, true);
                 ShowDeprecationDialogPersistent();
             }
-            else if (IsUpdateRecommended())
+            else if (GetRecommendationLevel() != RecommendationLevel.None)
             {
-                ShowRecommendationDialogIfDue();
+                ShowRecommendationDialogOncePerSession();
             }
         }
 
         /// <summary>
-        /// 업데이트 권장 다이얼로그를 프로젝트별로 하루 한 번 표시합니다.
-        /// 권장 버전 이상의 태그를 찾지 못하면 표시하지 않고, 다음 에디터 시작 때 다시 시도합니다.
+        /// 업데이트 권장 다이얼로그를 에디터 세션마다 한 번 표시합니다.
+        /// 정적 생성자는 도메인 리로드마다 돌아 이 메서드도 매번 불리지만, SessionState 키가 리로드를 넘어
+        /// 유지되므로 에디터를 새로 켤 때만 다시 뜹니다. 스위치가 켜진 Block도 같은 1회입니다.
+        /// 권장 버전 이상의 태그를 찾지 못하면 표시하지 않고 키도 남기지 않아 다음 기회에 다시 시도합니다.
         /// </summary>
-        private static void ShowRecommendationDialogIfDue()
+        private static void ShowRecommendationDialogOncePerSession()
         {
-            string today = DateTime.Now.ToString("yyyy-MM-dd");
-            string key = $"{RECOMMENDATION_PROMPT_KEY_PREFIX}{Application.dataPath.GetHashCode():X8}";
-            if (EditorPrefs.GetString(key, "") == today) return;
+            if (SessionState.GetBool(RECOMMENDATION_SESSION_KEY, false)) return;
 
-            if (!IsRecommendationTarget(GetLatestTagCached(), _cachedRecommendedVersion)) return;
+            var recommended = _cachedRecommendedVersion;
+            if (!IsRecommendationTarget(GetLatestTagCached(), recommended)) return;
 
-            EditorPrefs.SetString(key, today);
+            // 다이얼로그 도중 업그레이드로 리로드가 일어나도 반복하지 않도록 먼저 기록합니다.
+            SessionState.SetBool(RECOMMENDATION_SESSION_KEY, true);
             // AITAutoUpdater의 업데이트 다이얼로그와 중복 표시 방지
             SessionState.SetBool(AUTO_UPDATE_SESSION_KEY, true);
 
+            var current = new Version(AITVersion.Version);
             string latestVersion = GetLatestVersionDisplay();
+            bool block = GetRecommendationLevel() == RecommendationLevel.Block;
             bool shouldUpdate = EditorUtility.DisplayDialog(
-                "SDK 업데이트 권장",
-                BuildRecommendationMessage(new Version(AITVersion.Version), _cachedRecommendedVersion),
+                block ? "SDK 업데이트 필요" : "SDK 업데이트 권장",
+                block ? BuildBlockMessage(current, recommended) : BuildRecommendationMessage(current, recommended),
                 $"{latestVersion}으로 업데이트",
-                "나중에"
+                block ? "닫기" : "나중에"
             );
 
             if (shouldUpdate)
@@ -639,7 +884,19 @@ namespace AppsInToss.Editor
             _cachedMinVersion = null;
             _minVersionLookupDone = false;
             _cachedRecommendedVersion = null;
+            _cachedEnforceRecommended = false;
+            _bannerTagPrimeScheduled = false;
             _upgradeInProgress = false;
+        }
+
+        /// <summary>
+        /// 테스트용: 권장 버전과 차단 스위치를 직접 설정합니다.
+        /// 정책 조회를 막으려면 SetMinVersionForTesting도 함께 호출해야 합니다.
+        /// </summary>
+        internal static void SetRecommendationForTesting(Version recommendedVersion, bool enforce)
+        {
+            _cachedRecommendedVersion = recommendedVersion;
+            _cachedEnforceRecommended = enforce;
         }
 
         /// <summary>

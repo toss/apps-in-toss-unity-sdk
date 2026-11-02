@@ -81,7 +81,7 @@ namespace AppsInToss
             GUILayout.Space(20);
             GUILayout.Label("빌드", EditorStyles.boldLabel);
 
-            if (GUILayout.Button("미니앱으로 변환", GUILayout.Height(40)))
+            if (GUILayout.Button("미니앱으로 변환", GUILayout.Height(40)) && !AITDeprecationChecker.BlockIfDeprecated())
             {
                 var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: true);
                 if (result == AITConvertCore.AITExportError.SUCCEED)
@@ -100,7 +100,7 @@ namespace AppsInToss
                 }
             }
 
-            if (GUILayout.Button("WebGL 빌드만 실행"))
+            if (GUILayout.Button("WebGL 빌드만 실행") && !AITDeprecationChecker.BlockIfDeprecated())
             {
                 var result = AITConvertCore.DoExport(buildWebGL: true, doPackaging: false);
                 if (result == AITConvertCore.AITExportError.SUCCEED)

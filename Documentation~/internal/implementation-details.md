@@ -105,6 +105,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 - **설정 창 배너** — `OnGUI`에서 네트워크나 프로세스를 새로 부르지 않습니다. 태그가 아직 조회되지 않았으면 `delayCall`에서 한 번만 조회하고 다시 그립니다. 업데이트 버튼은 유효 태그가 확인된 뒤에만 보입니다.
 - **차단 스위치의 도달 범위** — 이 코드가 든 태그만 영향을 받습니다. `enforceRecommendedVersion`을 `true`로 바꾸면 `recommendedVersion` 미만 중 이 코드가 든 태그(현재는 3.0.x)가 재릴리즈 없이 차단됩니다. 이 코드가 없는 2.x 태그와 `release/v3.0.1-beta.*` 태그는 그대로입니다. 되돌리려면 `false`로 되돌리면 됩니다(에디터를 다시 켜면 반영).
 - **문구** — `BuildRecommendationMessage`(Warn)와 `BuildBlockMessage`(Block)는 순수 함수입니다. 3.0.x에는 두 문구 모두 `AIT.MigrationGetOriginStorage()` 안내가 붙고, Block 문구에는 "계속 진행" 표현을 넣지 않습니다.
+- **`AIT.MigrationGetOriginStorage()` 확인 결과** — Android 에뮬레이터(WebView 134)에서 3.0.5 번들을 한 번 연 뒤 3.9 번들로 호출해 JS와 C# 모두 성공했습니다. 복합 keyPath도 역직렬화됩니다. IndexedDB 11.5MB까지 약 1~2.5초였고, 그보다 큰 덤프와 iOS는 확인하지 못했습니다. web-framework의 대기 시간은 60초 고정이라 C#의 `timeoutMs=0`이어도 60초에 실패합니다. 콘솔 QR 같은 비공개 환경에서 그 기기로 3.0.x 번들을 연 적이 없으면 이전 origin 페이지가 403을 돌려주고, 호스트가 HTTP 오류를 바로 전달하지 않아 호출이 60초 뒤 타임아웃으로 끝납니다. 이 타임아웃을 SDK 결함으로 보지 말고 먼저 3.0.x 번들을 연 적이 있는지 확인합니다.
 
 ## PlayerPrefs 레거시 origin 마이그레이션
 

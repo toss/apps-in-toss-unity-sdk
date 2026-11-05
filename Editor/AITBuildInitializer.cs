@@ -65,9 +65,21 @@ namespace AppsInToss.Editor
             // Apps in Toss는 Toss 앱 WebView(Android Chrome, iOS Safari)에서만 실행되므로
             // WebGL 2.0만 지원하면 충분함.
             var currentAPIs = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
-            bool needsGraphicsAPIUpdate = PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL)
+            var pocGraphics = System.Environment.GetEnvironmentVariable("AIT_POC_GRAPHICS");
+            if (!string.IsNullOrEmpty(pocGraphics)
+                && System.Enum.TryParse("WebGPU", out UnityEngine.Rendering.GraphicsDeviceType webGpu))
+            {
+                var apis = pocGraphics == "webgpu-only"
+                    ? new[] { webGpu }
+                    : new[] { webGpu, UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 };
+                PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
+                PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, apis);
+                Debug.Log($"[AIT-POC] Graphics APIs = {string.Join(", ", PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL))}");
+                currentAPIs = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
+            }
+            bool needsGraphicsAPIUpdate = string.IsNullOrEmpty(pocGraphics) && (PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL) = PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL)
                 || currentAPIs.Length != 1
-                || currentAPIs[0] != UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3;
+                || currentAPIs[0] != UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3);
 
             if (needsGraphicsAPIUpdate)
             {

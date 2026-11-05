@@ -82,6 +82,10 @@ on:
         type: string
         required: false
         default: ''
+      poc-graphics:
+        type: string
+        required: false
+        default: ''
       fast-build:
         description: 'E2E 고속 빌드 프로필 (dev build + 압축 비활성화 + IL2CPP Debug, PR #551). 산출물을 ait deploy로 콘솔에 배포하는 호출자(preview 등)는 false 필수 — dev 빌드 wasm(6000.x 기준 ~134MiB)이 콘솔 번들 크기 제한을 초과해 서버측 BUILD_FAILED가 남. false면 env 오버라이드 없이 SDK 기본 프로필(release 빌드)로 빌드. perf 하네스도 false 를 넘겨 배포 동일 Release wasm 을 측정한다.'
         type: boolean
@@ -143,7 +147,7 @@ jobs:
     # 운영 측 라벨: macos-1-N / windows-2-N → ait-slot-N (N=1..5)
     # 매핑에 없는 버전은 라벨이 "ait-slot-"가 되어 잡이 큐에 남으므로 즉시
     # 발견된다(silent fallback 없음).
-    runs-on: ${{ fromJSON(format('["self-hosted", "{0}", "{1}", "enabled", "ait-slot-{2}"]', inputs.os == 'macos' && 'macOS' || 'Windows', inputs.os == 'macos' && 'ARM64' || 'X64', fromJSON('{"2021.3":"1","2022.3":"2","6000.0":"3","6000.6":"4","6000.3":"5"}')[inputs.unity-version])) }}
+    runs-on: ${{ fromJSON(format('["self-hosted", "{0}", "{1}", "enabled", "ait-slot-{2}"]', inputs.os == 'macos' && 'macOS' || 'Windows', inputs.os == 'macos' && 'ARM64' || 'X64', fromJSON('{"2021.3":"1","2022.3":"2","6000.0":"3","6000.6":"4","6000.7":"4","6000.3":"5"}')[inputs.unity-version])) }}
     timeout-minutes: 110
     # 동시성 정책: 호출자(test-e2e / preview / release)의 잡 concurrency가 ref
     # 기반 cancel을 담당하므로 reusable workflow는 (os, unity-version) 단위로만
@@ -835,6 +839,7 @@ jobs:
           #   E2E 기본 fast-build(true)→0(Disabled, vite preview 전용·압축 불필요·wallclock 절감).
           #   preview/perf 의 fast-build=false 경로에서 빈 값이면 ''(SDK 기본 압축). perf 는 '1' 명시.
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          AIT_POC_GRAPHICS: ${{ inputs.poc-graphics }}
           # Development Build / IL2CPP 프로필: fast-build 단일 스위치가 담당(main PR #551).
           #   fast-build=true(E2E) → dev build + Debug(Link_WebGL_wasm -O3 단축, wallclock 절감).
           #   fast-build=false(preview·perf) → ''(SDK 기본 release 프로필 = 배포와 동일한 wasm).
@@ -876,6 +881,7 @@ jobs:
         env:
           # macOS step의 동일 주석 참조 (compression-format 명시 우선, dev/il2cpp 는 fast-build 단일 스위치).
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
+          AIT_POC_GRAPHICS: ${{ inputs.poc-graphics }}
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

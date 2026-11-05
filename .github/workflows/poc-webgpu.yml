@@ -4,19 +4,86 @@ on:
     branches: [poc/webgpu]
 permissions:
   contents: read
+  actions: read
 jobs:
-  probe:
+  install:
     runs-on: ["self-hosted", "macOS", "ARM64", "enabled", "ait-slot-4"]
-    timeout-minutes: 15
+    timeout-minutes: 90
+    env:
+      V: 6000.7.0b7
+      C: 74fb57f88838
     steps:
-      - name: Installed editors
+      - name: Install Unity 6000.7 beta
         run: |
-          ls /Applications/Unity/Hub/Editor
-          for d in /Applications/Unity/Hub/Editor/6000.*; do echo "$d webgl=$([ -d "$d/PlaybackEngines/WebGLSupport" ] && echo yes || echo no)"; done
-          df -h /Applications | tail -1
-      - name: Hub CLI
-        run: |
+          D="/Applications/Unity/Hub/Editor/$V"
+          ok() { [ -x "$D/Unity.app/Contents/MacOS/Unity" ] && [ -d "$D/PlaybackEngines/WebGLSupport" ]; }
+          if ok; then echo "already installed"; exit 0; fi
           HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
-          ls -la "$HUB" || exit 0
-          timeout 120 "$HUB" -- --headless editors --releases 2>/dev/null | grep -E "^6000\.(6|7)" | head -20 || true
-          timeout 60 "$HUB" -- --headless help 2>/dev/null | head -30 || true
+          "$HUB" -- --headless install --version "$V" --changeset "$C" --architecture arm64 2>&1 | grep -v -i -E "token|license" | tail -15 || true
+          "$HUB" -- --headless install-modules --version "$V" -m webgl 2>&1 | grep -v -i -E "token|license" | tail -15 || true
+          if ok; then echo "installed by hub"; exit 0; fi
+          echo "hub install did not finish; using pkg payloads"
+          T="$RUNNER_TEMP/u67"; mkdir -p "$T"; cd "$T"
+          B="https://download.unity3d.com/download_unity/$C"
+          [ -x "$D/Unity.app/Contents/MacOS/Unity" ] || {
+            curl -fsSLo Unity.pkg "$B/MacEditorInstallerArm64/Unity-$V.pkg"
+            pkgutil --expand-full Unity.pkg ue
+            APP=$(find ue -maxdepth 4 -type d -name Unity.app | head -1); echo "app=$APP"
+            mkdir -p "$D"; ditto "$APP" "$D/Unity.app"
+          }
+          [ -d "$D/PlaybackEngines/WebGLSupport" ] || {
+            curl -fsSLo WebGL.pkg "$B/MacEditorTargetInstaller/UnitySetup-WebGL-Support-for-Editor-$V.pkg"
+            pkgutil --expand-full WebGL.pkg we
+            W=$(find we -maxdepth 6 -type d -name WebGLSupport | head -1); echo "webgl=$W"
+            mkdir -p "$D/PlaybackEngines"; ditto "$W" "$D/PlaybackEngines/WebGLSupport"
+          }
+          rm -rf "$T"
+          ok && echo "installed from pkg" || { echo "::error::install failed"; ls -la "$D" "$D/PlaybackEngines" || true; exit 1; }
+
+  build:
+    needs: install
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        unity-version: ['6000.6', '6000.7']
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      os: macos
+      unity-version: ${{ matrix.unity-version }}
+      poc-graphics: webgpu
+    secrets: inherit
+
+  probe:
+    needs: build
+    if: always()
+    runs-on: ["self-hosted", "macOS", "ARM64", "enabled", "ait-slot-4"]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: ait-build-macos-*
+          path: builds
+      - name: Install Playwright deps
+        working-directory: Tests~/E2E/tests
+        run: |
+          corepack enable >/dev/null 2>&1 || true
+          pnpm install --frozen-lockfile 2>&1 | tail -3
+          cp "$GITHUB_WORKSPACE/.github/poc-webgpu/probe.mjs" ./poc-probe.mjs
+      - name: Probe
+        working-directory: Tests~/E2E/tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/poc"
+          for b in "$GITHUB_WORKSPACE"/builds/*; do
+            WEB=$(find "$b" -type d -path '*ait-build/dist/web' | head -1)
+            [ -n "$WEB" ] || { echo "no web dir in $b"; continue; }
+            node poc-probe.mjs "$(basename "$b")" "$WEB" "$RUNNER_TEMP/poc" || true
+          done
+          cat "$RUNNER_TEMP/poc/results.jsonl" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: poc-webgpu-results
+          path: ${{ runner.temp }}/poc
+          retention-days: 3

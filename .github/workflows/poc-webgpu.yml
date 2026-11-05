@@ -7,6 +7,7 @@ permissions:
   actions: read
 jobs:
   install:
+    if: ${{ !contains(github.event.head_commit.message, '[probe-only]') }}
     runs-on: ["self-hosted", "macOS", "ARM64", "enabled", "ait-slot-4"]
     timeout-minutes: 90
     env:
@@ -42,6 +43,7 @@ jobs:
 
   build:
     needs: install
+    if: ${{ !contains(github.event.head_commit.message, '[probe-only]') }}
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -65,6 +67,8 @@ jobs:
         with:
           pattern: ait-build-macos-*
           path: builds
+          run-id: ${{ contains(github.event.head_commit.message, '[probe-only]') && '41978826539' || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Install Playwright deps
         working-directory: Tests~/E2E/tests
         run: |
@@ -76,7 +80,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/poc"
           for b in "$GITHUB_WORKSPACE"/builds/*; do
-            WEB=$(find "$b" -type d -path '*ait-build/dist/web' | head -1)
+            WEB=$(find "$b" -type d -path '*dist/web' | head -1)
             [ -n "$WEB" ] || { echo "no web dir in $b"; continue; }
             node poc-probe.mjs "$(basename "$b")" "$WEB" "$RUNNER_TEMP/poc" || true
           done

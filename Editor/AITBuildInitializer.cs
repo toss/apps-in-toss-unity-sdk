@@ -77,7 +77,7 @@ namespace AppsInToss.Editor
                 Debug.Log($"[AIT-POC] Graphics APIs = {string.Join(", ", PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL))}");
                 currentAPIs = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
             }
-            bool needsGraphicsAPIUpdate = string.IsNullOrEmpty(pocGraphics) && (PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL) = PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL)
+            bool needsGraphicsAPIUpdate = string.IsNullOrEmpty(pocGraphics) && (PlayerSettings.GetUseDefaultGraphicsAPIs(BuildTarget.WebGL)
                 || currentAPIs.Length != 1
                 || currentAPIs[0] != UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3);
 

@@ -1,0 +1,22 @@
+name: PoC WebGPU
+on:
+  push:
+    branches: [poc/webgpu]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ["self-hosted", "macOS", "ARM64", "enabled", "ait-slot-4"]
+    timeout-minutes: 15
+    steps:
+      - name: Installed editors
+        run: |
+          ls /Applications/Unity/Hub/Editor
+          for d in /Applications/Unity/Hub/Editor/6000.*; do echo "$d webgl=$([ -d "$d/PlaybackEngines/WebGLSupport" ] && echo yes || echo no)"; done
+          df -h /Applications | tail -1
+      - name: Hub CLI
+        run: |
+          HUB="/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
+          ls -la "$HUB" || exit 0
+          timeout 120 "$HUB" -- --headless editors --releases 2>/dev/null | grep -E "^6000\.(6|7)" | head -20 || true
+          timeout 60 "$HUB" -- --headless help 2>/dev/null | head -30 || true

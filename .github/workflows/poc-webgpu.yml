@@ -53,7 +53,7 @@ jobs:
     with:
       os: macos
       unity-version: ${{ matrix.unity-version }}
-      poc-graphics: ${{ contains(github.event.head_commit.message, '[webgl2]') && '' || 'webgpu' }}
+      poc-graphics: ${{ contains(github.event.head_commit.message, '[webgl2]') && 'none' || 'webgpu' }}
       fast-build: false
     secrets: inherit
 

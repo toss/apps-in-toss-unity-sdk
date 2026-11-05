@@ -66,6 +66,7 @@ namespace AppsInToss.Editor
             // WebGL 2.0만 지원하면 충분함.
             var currentAPIs = PlayerSettings.GetGraphicsAPIs(BuildTarget.WebGL);
             var pocGraphics = System.Environment.GetEnvironmentVariable("AIT_POC_GRAPHICS");
+            if (pocGraphics == "none") pocGraphics = null;
             if (!string.IsNullOrEmpty(pocGraphics)
                 && System.Enum.TryParse("WebGPU", out UnityEngine.Rendering.GraphicsDeviceType webGpu))
             {

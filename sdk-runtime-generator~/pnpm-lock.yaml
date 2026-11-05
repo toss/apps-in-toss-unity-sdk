@@ -1009,8 +1009,8 @@ packages:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
-  electron-to-chromium@1.5.468:
-    resolution: {integrity: sha512-8XdEp3sIqO+PzmVPxhzqHq/3+yCxp44m27cm2WY1sRn3ZhwKyKmqSi2hx6gEhmnOXmh8NUuYE00z6Onzn5m6DA==}
+  electron-to-chromium@1.5.472:
+    resolution: {integrity: sha512-s4+nfT29b0FKpVKoaIxl2pWsoNcn7A/nMPSrxayw4T3BsmPeV2lF9Y06BsAQeMGhCTQ4nYJ5XST7jkqe4ZEqFw==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -1071,12 +1071,12 @@ packages:
   flatted@3.4.4:
     resolution: {integrity: sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==}
 
-  flow-estree@0.337.0:
-    resolution: {integrity: sha512-8u9x/Ur45zWAdlD8SKHq3MnMttR6MB0x2xna3mNlwfs8BSJ0rCH/1Cyrfvq7eSq61ppshRHZbmQhOp870WmAOA==}
+  flow-estree@0.338.0:
+    resolution: {integrity: sha512-ol4C6cIEcL9nep6G0qa3BuJcO5cZCH07shxNpChJ/TotKQaz5OWtn4IqgpMNF0kHISdOnMApirDwp2LwWL+KhQ==}
     engines: {node: '>=18'}
 
-  flow-parser@0.337.0:
-    resolution: {integrity: sha512-jGsqT5qJ6J/7gD870pKgL7K8x8l6IzUvtBlRX+OdLP4EGrpDF+3sUqF8HpyR/YcAJs2mVMVhW2GZsxmtXc+aIw==}
+  flow-parser@0.338.0:
+    resolution: {integrity: sha512-GF+ohfrTVlvsNhxfRkON49QKG5j+5oqGb8qpGwE6mYlhIBaXDsss/JzfIxpSwVXgWtw8z8kabf/pNo1jXor5NA==}
     engines: {node: '>=0.4.0'}
 
   fsevents@2.3.3:
@@ -1268,8 +1268,8 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
-  node-releases@2.0.62:
-    resolution: {integrity: sha512-A0Eq+qVDQI97IbAD6g/HriIuv256el9N8EwF4+xqJ49pwrdRYpdCSmLk0sO4I3fnS6hpYE5v22B73Bk+WArEoQ==}
+  node-releases@2.0.63:
+    resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
     engines: {node: '>=18'}
 
   obug@2.2.1:
@@ -1431,8 +1431,8 @@ packages:
   ts-morph@28.0.0:
     resolution: {integrity: sha512-Wp3tnZ2bzwxyTZMtgWVzXDfm7lB1Drz+y9DmmYH/L702PQhPyVrp3pkou3yIz4qjS14GY9kcpmLiOOMvl8oG1g==}
 
-  tslib@2.8.1:
-    resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+  tslib@2.9.1:
+    resolution: {integrity: sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==}
 
   tsx@4.23.15:
     resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
@@ -2582,7 +2582,7 @@ snapshots:
 
   ast-types@0.16.3:
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   balanced-match@4.0.4: {}
 
@@ -2596,8 +2596,8 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.34
       caniuse-lite: 1.0.30001820
-      electron-to-chromium: 1.5.468
-      node-releases: 2.0.62
+      electron-to-chromium: 1.5.472
+      node-releases: 2.0.63
       update-browserslist-db: 1.3.4(browserslist@4.29.5)
 
   buffer-from@1.1.2: {}
@@ -2659,7 +2659,7 @@ snapshots:
 
   dotenv@17.4.2: {}
 
-  electron-to-chromium@1.5.468: {}
+  electron-to-chromium@1.5.472: {}
 
   es-module-lexer@2.3.2: {}
 
@@ -2732,11 +2732,11 @@ snapshots:
 
   flatted@3.4.4: {}
 
-  flow-estree@0.337.0: {}
+  flow-estree@0.338.0: {}
 
-  flow-parser@0.337.0:
+  flow-parser@0.338.0:
     dependencies:
-      flow-estree: 0.337.0
+      flow-estree: 0.338.0
 
   fsevents@2.3.3:
     optional: true
@@ -2786,7 +2786,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/register': 7.29.7(@babel/core@7.29.7)
-      flow-parser: 0.337.0
+      flow-parser: 0.338.0
       graceful-fs: 4.2.11
       neo-async: 2.6.2
       picocolors: 1.1.1
@@ -2890,7 +2890,7 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  node-releases@2.0.62: {}
+  node-releases@2.0.63: {}
 
   obug@2.2.1: {}
 
@@ -2970,7 +2970,7 @@ snapshots:
       esprima: 4.0.1
       source-map: 0.6.1
       tiny-invariant: 1.3.3
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   rolldown@1.2.16:
     dependencies:
@@ -3050,7 +3050,7 @@ snapshots:
       '@ts-morph/common': 0.29.0
       code-block-writer: 13.0.3
 
-  tslib@2.8.1: {}
+  tslib@2.9.1: {}
 
   tsx@4.23.15:
     dependencies:

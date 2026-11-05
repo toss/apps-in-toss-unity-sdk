@@ -54,6 +54,7 @@ jobs:
       os: macos
       unity-version: ${{ matrix.unity-version }}
       poc-graphics: webgpu
+      fast-build: false
     secrets: inherit
 
   probe:

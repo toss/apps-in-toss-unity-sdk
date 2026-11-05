@@ -19,8 +19,5 @@
         ]
       }
     ]
-  },
-  "enabledPlugins": {
-    "playwright@claude-plugins-official": true
   }
 }

@@ -146,6 +146,17 @@ namespace AppsInToss.Editor.Package
                 return AITConvertCore.AITExportError.REQUIRED_FILE_MISSING;
             }
 
+            // framework 텍스트 패치(context-resume-offset). 복사보다 먼저 buildSrc 의 파일을 제자리에서 고쳐 복사본이 패치본이 되게 한다.
+            // Decompression Fallback(.unityweb)은 감지 마커 때문에 건드리지 않는다. 실패해도 빌드는 계속된다(fail-open).
+            bool unitywebBuild = decompressionFallback
+                || (dataFile?.EndsWith(".unityweb", System.StringComparison.OrdinalIgnoreCase) ?? false)
+                || (frameworkFile?.EndsWith(".unityweb", System.StringComparison.OrdinalIgnoreCase) ?? false)
+                || (wasmFile?.EndsWith(".unityweb", System.StringComparison.OrdinalIgnoreCase) ?? false);
+            if (!unitywebBuild)
+            {
+                AITFrameworkPatcher.Apply(buildSrc);
+            }
+
             // 필수 파일만 선별 복사 (변경분만 — 크기/내용이 같으면 스킵해 초 단위 I/O를 줄인다)
             var filesToCopy = new List<string> { loaderFile, dataFile, frameworkFile, wasmFile };
             if (!string.IsNullOrEmpty(symbolsFile))

@@ -85,10 +85,13 @@ namespace AppsInToss
             LoadVersionInfo();
         }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void Initialize()
+        /// <summary>
+        /// 버전 배너 로그를 한 번 남긴다. 부팅 훅(RuntimeInitializeOnLoadMethod)에서 Resources 로드와
+        /// JSON 파싱을 하면 엔진 초기화(callMain)에 그대로 얹히므로, 버전 정보는 첫 접근 때 읽고
+        /// 배너는 AITPerformanceLogger 가 첫 프레임 뒤에 호출한다.
+        /// </summary>
+        internal static void LogBanner()
         {
-            EnsureLoaded();
             Debug.Log($"[AIT] Apps in Toss Unity SDK v{FullVersion}");
         }
 

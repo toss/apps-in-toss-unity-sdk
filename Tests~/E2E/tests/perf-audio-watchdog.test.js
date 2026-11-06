@@ -5,28 +5,27 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 
 /**
- * Apps in Toss Unity SDK — ait-audio.js 단위 테스트 (iOS 앱 복귀 오디오 복구)
+ * Apps in Toss Unity SDK — ait-pacing.js 오디오 복구/진단 테스트 (P1-3)
  *
  *  - AudioContext 'interrupted' 복구: 1초 간격 최대 10회 resume 재시도, 첫 터치/클릭, visible 복귀
- *  - hidden 에서 running context suspend + 재생 중 미디어 pause, visible 에서 우리가 멈춘 것만 재개
- *  - running 인데 currentTime 이 멈춘 context 는 suspend → resume 으로 다시 연다(자동 5회, 이후 터치마다)
- *  - 복귀 마스터 gain 40ms 페이드 인, 짧은 효과음 start 보정
- *  - 끄는 법: window.__AIT_AUDIO_RESUME=false / __AIT_PERF.mobileLifecycle=false / ?aitaudio=0
+ *  - 우리가 suspend 하지 않은 plain 'suspended' context 는 건드리지 않는다
+ *  - 미디어 stall watchdog: 재생 가능한데 currentTime 이 멈추면 seek → pause/play 로 깨우고 audioLog/audioStalls 에 남긴다
+ *  - ?aitaudiowd=0 이면 watchdog 비활성
  *
- * Unity 빌드가 필요 없다. 가짜 origin 의 빈 페이지에 ait-audio.js 를 올리고 page.clock 으로 setInterval 을 결정론적으로 돌린다.
+ * Unity 빌드가 필요 없다. 가짜 origin 의 빈 페이지에 ait-pacing.js 를 올리고 page.clock 으로 setInterval 을 결정론적으로 돌린다.
  * AudioContext 는 상태를 테스트가 정하는 가짜 클래스로, HTMLMediaElement.play/pause 는 호출 횟수만 세는 스파이로 대체한다
- * (ait-audio.js 가 로드 시점에 원본을 붙잡으므로 preScript 로 먼저 심는다).
+ * (ait-pacing.js 가 로드 시점에 원본을 붙잡으므로 preScript 로 먼저 심는다).
  */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const RUNTIME_DIR = path.resolve(__dirname, '../../../WebGLTemplates/AITTemplate/Runtime');
-const AUDIO_JS = fs.readFileSync(path.join(RUNTIME_DIR, 'ait-audio.js'), 'utf8');
+const PACING_JS = fs.readFileSync(path.join(RUNTIME_DIR, 'ait-pacing.js'), 'utf8');
 
 const HARNESS_ORIGIN = 'https://ait-harness.test';
 
-/** ait-audio.js 보다 먼저 실행되는 스크립트: 가짜 AudioContext + play/pause 스파이 + visibility 헬퍼. */
+/** ait-pacing.js 보다 먼저 실행되는 스크립트: 가짜 AudioContext + play/pause 스파이 + visibility 헬퍼. */
 const PRE_SCRIPT = `
   window.__ctxs = [];
   class FakeAudioContext extends EventTarget {
@@ -35,18 +34,7 @@ const PRE_SCRIPT = `
       this._state = 'running';
       this.resumeCalls = 0;
       this.suspendCalls = 0;
-      this.destination = { kind: 'destination' };
       window.__ctxs.push(this);
-    }
-    // 마스터 gain 용: 호출을 [종류, 값, 시각] 로 남긴다.
-    createGain() {
-      const calls = [];
-      const param = {
-        cancelScheduledValues() { calls.push(['cancel']); },
-        setValueAtTime(v, t) { calls.push(['set', v, t]); },
-        linearRampToValueAtTime(v, t) { calls.push(['ramp', v, t]); },
-      };
-      return { gain: param, __calls: calls, connect() {} };
     }
     get state() { return this._state; }
     // 테스트가 상태를 정하고 statechange 를 쏜다.
@@ -73,49 +61,52 @@ const PRE_SCRIPT = `
   };
 `;
 
-function harnessHtml(flags, pre) {
+function harnessHtml(flags, extraHead = '') {
   return [
     '<!doctype html><html><head><meta charset="utf-8"><title>ait-audio-harness</title>',
-    `<script>window.__AIT_PERF = ${JSON.stringify(flags)};${pre || ''}</script>`,
+    `<script>window.__AIT_PERF = ${JSON.stringify(flags)};</script>`,
+    extraHead ? `<script>${extraHead}</script>` : '',
     `<script>${PRE_SCRIPT}</script>`,
     '</head><body>',
-    `<script>${AUDIO_JS}</script>`,
+    `<script>${PACING_JS}</script>`,
     '</body></html>',
   ].join('\n');
 }
 
 /**
  * @param {import('@playwright/test').Page} page
- * @param {{query?: string, flags?: object, pre?: string}} [opts]
+ * @param {{query?: string, flags?: object, head?: string}} [opts]
  */
 async function openSynthetic(page, opts = {}) {
   await page.clock.install({ time: 0 });
   await page.route(`${HARNESS_ORIGIN}/**`, (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: harnessHtml(opts.flags || {}, opts.pre) }));
+    route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: harnessHtml(opts.flags || {}, opts.head || '') }));
   await page.goto(`${HARNESS_ORIGIN}/index.html${opts.query || ''}`);
 }
 
 const resumeCalls = (page, i = 0) => page.evaluate((idx) => /** @type {any} */ (window).__ctxs[idx].resumeCalls, i);
 const setCtxState = (page, i, s) => page.evaluate(([idx, st]) => /** @type {any} */ (window).__ctxs[idx].__set(st), [i, s]);
-const audioState = (page) => page.evaluate(() => /** @type {any} */ (window).AITAudio.getState());
+const pacingState = (page) => page.evaluate(() => /** @type {any} */ (window).AITPacing.getState());
 const mediaCalls = (page) => page.evaluate(() => ({ .../** @type {any} */ (window).__media }));
 
-/** 재생 중인 <audio> 를 만들어 래핑된 play() 로 등록한다. window.__paused 로 paused 상태를 정한다. */
-async function addPlayingAudio(page) {
-  await page.evaluate(() => {
+/** 재생 중이고 currentTime 만 멈춘 <audio> 를 만들어 래핑된 play() 로 등록한다. seek 시도는 window.__seeks 로 센다. */
+async function addFrozenAudio(page, { paused = false } = {}) {
+  await page.evaluate((isPaused) => {
     const w = /** @type {any} */ (window);
-    w.__paused = false;
+    w.__seeks = 0;
     const el = document.createElement('audio');
     document.body.appendChild(el);
     el.play(); // 래핑된 play → trackMedia
-    Object.defineProperty(el, 'paused', { get: () => w.__paused, configurable: true });
+    Object.defineProperty(el, 'paused', { get: () => isPaused, configurable: true });
     Object.defineProperty(el, 'ended', { get: () => false, configurable: true });
+    Object.defineProperty(el, 'seeking', { get: () => false, configurable: true });
+    Object.defineProperty(el, 'readyState', { get: () => 4, configurable: true });
+    Object.defineProperty(el, 'playbackRate', { get: () => 1, configurable: true });
+    Object.defineProperty(el, 'currentTime', { get: () => 12.5, set: () => { w.__seeks++; }, configurable: true });
     w.__el = el;
     w.__media.play = 0; // 등록용 play() 호출은 센 값에서 뺀다
-  });
+  }, paused);
 }
-
-const masterCalls = (page, i = 0) => page.evaluate((idx) => /** @type {any} */ (window).__ctxs[idx].destination.__calls, i);
 
 test.describe('AudioContext interrupted 복구', () => {
   test('visible 에서 interrupted 가 되면 1초 간격으로 resume 을 반복하고 running 이 되면 멈춘다, 클릭은 즉시 resume', async ({ page }) => {
@@ -131,7 +122,7 @@ test.describe('AudioContext interrupted 복구', () => {
     await page.clock.runFor(3000);
     expect(await resumeCalls(page)).toBe(3);
 
-    const log = (await audioState(page)).audioLog;
+    const log = (await pacingState(page)).audioLog;
     expect(log.filter((e) => e.ev === 'ctx').map((e) => e.state)).toEqual(['interrupted', 'running']);
     expect(log[0]).toMatchObject({ ev: 'ctx', vis: 'visible' });
 
@@ -153,7 +144,7 @@ test.describe('AudioContext interrupted 복구', () => {
     await openSynthetic(page);
     await page.evaluate(() => { new AudioContext(); });
     await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
-    expect((await audioState(page)).hidden).toBe(true);
+    expect((await pacingState(page)).hidden).toBe(true);
 
     await setCtxState(page, 0, 'interrupted');
     await page.clock.runFor(3000);
@@ -216,7 +207,7 @@ test.describe('AudioContext interrupted 복구', () => {
     }
     await page.clock.runFor(10000);
     expect(await suspendCalls()).toBe(7);
-    expect((await audioState(page)).audioLog.some((e) => e.ev === 'clockOk')).toBe(true);
+    expect((await pacingState(page)).audioLog.some((e) => e.ev === 'clockOk')).toBe(true);
   });
 
   test('hidden 전에 interrupted 가 온 context 도 복귀 뒤 suspended 재시도와 멈춘 시계 복구를 받는다', async ({ page }) => {
@@ -304,125 +295,76 @@ test.describe('AudioContext interrupted 복구', () => {
   });
 });
 
-test.describe('hidden / visible 전이', () => {
-  test('hidden 에서 running context 를 suspend 하고 미디어를 pause, visible 에서 우리가 멈춘 것만 재개한다', async ({ page }) => {
+test.describe('미디어 stall watchdog', () => {
+  test('재생 가능한데 currentTime 이 멈추면 stall 1회 기록 + seek, 이어서 pause/play', async ({ page }) => {
+    const warns = [];
+    page.on('console', (m) => { if (m.text().includes('[AIT-Audio] stall')) warns.push(m.text()); });
     await openSynthetic(page);
-    await page.evaluate(() => { new AudioContext(); });
-    await addPlayingAudio(page);
-    expect((await audioState(page)).trackedMedia).toBe(1);
+    await addFrozenAudio(page);
+    expect((await pacingState(page)).trackedMedia).toBe(1);
 
-    await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
-    let s = await audioState(page);
-    expect(s.hidden).toBe(true);
-    expect(s.hiddenCount).toBe(1);
-    expect(s.suspendedContexts).toBe(1);
-    expect(s.heldMedia).toBe(1);
-    expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].suspendCalls)).toBe(1);
-    expect(await mediaCalls(page)).toEqual({ play: 0, pause: 1 });
+    // 틱 1: 기준값 기록, 틱 2: frozen=1, 틱 3: frozen=2 → stall + seek
+    await page.clock.runFor(3000);
+    let s = await pacingState(page);
+    expect(s.audioStalls).toBe(1);
+    const stallLog = s.audioLog.filter((e) => e.ev === 'stall');
+    expect(stallLog).toHaveLength(1);
+    expect(stallLog[0]).toMatchObject({ ct: 12.5, rs: 4, vis: 'visible' });
+    expect(warns).toHaveLength(1);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__seeks)).toBe(1);
+    expect(await mediaCalls(page)).toEqual({ play: 0, pause: 0 });
 
-    await page.evaluate(() => { /** @type {any} */ (window).__paused = true; });
-    await setCtxState(page, 0, 'suspended');
-    await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
-    s = await audioState(page);
-    expect(s.hidden).toBe(false);
-    expect(s.heldMedia).toBe(0);
-    expect(await resumeCalls(page)).toBe(1);
+    // 틱 5: frozen=4 → 원본 pause → play (스파이로 확인)
+    await page.clock.runFor(2000);
     expect(await mediaCalls(page)).toEqual({ play: 1, pause: 1 });
-    expect(s.audioLog.map((e) => e.ev).filter((ev) => ev === 'hide' || ev === 'show')).toEqual(['hide', 'show']);
+    s = await pacingState(page);
+    expect(s.audioStalls).toBe(1);
+    expect(warns).toHaveLength(1);
+    expect(s.heldMedia).toBe(0);
   });
 
-  test('게임이 hidden 중에 직접 pause 한 미디어는 복귀 때 재개하지 않는다', async ({ page }) => {
+  test('60초 안에는 3회까지만 개입한다', async ({ page }) => {
     await openSynthetic(page);
-    await addPlayingAudio(page);
+    await addFrozenAudio(page);
+    // 한 번의 정지 구간에 개입 2회(seek, replay). 계속 멈춰 있어도 frozen 이 4를 넘으면 더는 개입하지 않는다.
+    await page.clock.runFor(30000);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__seeks)).toBe(1);
+    expect(await mediaCalls(page)).toEqual({ play: 1, pause: 1 });
+  });
+
+  test('paused 요소는 stall 로 보지 않는다', async ({ page }) => {
+    await openSynthetic(page);
+    await addFrozenAudio(page, { paused: true });
+    await page.clock.runFor(6000);
+    const s = await pacingState(page);
+    expect(s.audioStalls).toBe(0);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__seeks)).toBe(0);
+    expect(await mediaCalls(page)).toEqual({ play: 0, pause: 0 });
+  });
+
+  test('document 가 hidden 이면 stall 로 보지 않는다', async ({ page }) => {
+    await openSynthetic(page);
+    await addFrozenAudio(page);
     await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
-    await page.evaluate(() => { const w = /** @type {any} */ (window); w.__paused = true; w.__el.pause(); }); // 래핑된 pause → 게임 소유
-    await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
-    expect(await mediaCalls(page)).toMatchObject({ play: 0 });
+    await page.clock.runFor(6000);
+    const s = await pacingState(page);
+    expect(s.audioStalls).toBe(0);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__seeks)).toBe(0);
+    // hidden 진입 시 게이트가 요소를 pause 한다(원본 pause 1회) — 그 외 개입은 없다.
+    expect((await mediaCalls(page)).play).toBe(0);
   });
 
-  test('pagehide / pageshow 도 같은 전이를 일으킨다', async ({ page }) => {
-    await openSynthetic(page);
-    await page.evaluate(() => { new AudioContext(); });
-    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-    expect((await audioState(page)).hidden).toBe(true);
-    expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].suspendCalls)).toBe(1);
-    await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
-    expect((await audioState(page)).hidden).toBe(false);
-    expect(await resumeCalls(page)).toBe(1);
-  });
-});
-
-test.describe('마스터 gain 페이드', () => {
-  test('destination 이 마스터 gain 으로 바뀌고, hidden 에서 0 으로 내려 복귀 때 40ms 로 올린다', async ({ page }) => {
-    await openSynthetic(page);
-    // currentTime 을 준 context 는 복귀 뒤 시계 감시 대상이 되지만, 이 테스트는 page.clock 을 돌리지 않아 틱이 오지 않는다.
-    await page.evaluate(() => { new AudioContext(); /** @type {any} */ (window).__ctxs[0].currentTime = 0; });
-    expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].destination.__calls !== undefined)).toBe(true);
-
-    await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
-    let calls = await masterCalls(page);
-    expect(calls[calls.length - 1]).toEqual(['set', 0, 0]);
-
-    await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
-    calls = await masterCalls(page);
-    expect(calls.slice(-3)).toEqual([['cancel'], ['set', 0, 0], ['ramp', 1, 0.04]]);
+  test('?aitaudiowd=0 이면 watchdog 이 동작하지 않는다', async ({ page }) => {
+    await openSynthetic(page, { query: '?aitaudiowd=0' });
+    await addFrozenAudio(page);
+    await page.clock.runFor(8000);
+    const s = await pacingState(page);
+    expect(s.audioStalls).toBe(0);
+    expect(s.audioLog.filter((e) => e.ev === 'stall')).toHaveLength(0);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__seeks)).toBe(0);
+    expect(await mediaCalls(page)).toEqual({ play: 0, pause: 0 });
   });
 
-  test('?aitaudiofade=0 이면 마스터 gain 을 만들지 않는다', async ({ page }) => {
-    await openSynthetic(page, { query: '?aitaudiofade=0' });
-    await page.evaluate(() => { new AudioContext(); });
-    expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].destination.kind)).toBe('destination');
-  });
-
-  test('?aitaudiofade=0 이면 짧은 효과음 start 도 그대로 둔다', async ({ page }) => {
-    await page.addInitScript(() => {
-      /** @type {any} */ (window).__starts = [];
-      AudioBufferSourceNode.prototype.start = function (when, offset) { /** @type {any} */ (window).__starts.push([when, offset]); };
-    });
-    await openSynthetic(page, { query: '?aitaudiofade=0' });
-    const got = await page.evaluate(() => {
-      const c = new OfflineAudioContext(1, 44100, 44100);
-      const s = c.createBufferSource();
-      s.buffer = c.createBuffer(1, 8820, 44100);
-      s.start(0, 0.0027);
-      return /** @type {any} */ (window).__starts;
-    });
-    expect(got).toEqual([[0, 0.0027]]);
-  });
-});
-
-test.describe('끄기', () => {
-  const variants = [
-    ['window.__AIT_AUDIO_RESUME = false', { pre: 'window.__AIT_AUDIO_RESUME = false;' }],
-    ['__AIT_PERF.mobileLifecycle = false', { flags: { mobileLifecycle: false } }],
-    ['?aitaudio=0', { query: '?aitaudio=0' }],
-  ];
-  for (const [label, opts] of variants) {
-    test(`${label} 이면 아무것도 설치하지 않는다`, async ({ page }) => {
-      await openSynthetic(page, /** @type {any} */ (opts));
-      await page.evaluate(() => { new AudioContext(); });
-      expect((await audioState(page)).enabled).toBe(false);
-      expect(await page.evaluate(() => /** @type {any} */ (window).AudioContext.__aitAudio === true)).toBe(false);
-      expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].destination.kind)).toBe('destination');
-
-      await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
-      await setCtxState(page, 0, 'interrupted');
-      await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
-      await page.clock.runFor(5000);
-      expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].suspendCalls)).toBe(0);
-      expect(await resumeCalls(page)).toBe(0);
-    });
-  }
-
-  test('기본(플래그 없음)은 켜짐이고 AudioContext 생성자가 감싸진다', async ({ page }) => {
-    await openSynthetic(page);
-    expect((await audioState(page)).enabled).toBe(true);
-    expect(await page.evaluate(() => /** @type {any} */ (window).AudioContext.__aitAudio === true)).toBe(true);
-    expect(await page.evaluate(() => new AudioContext() instanceof /** @type {any} */ (window).__ctxs[0].constructor)).toBe(true);
-  });
-});
-
-test.describe('진단', () => {
   test('audioLog 는 최근 120건만 유지하고 복사본을 돌려준다', async ({ page }) => {
     await openSynthetic(page);
     await page.evaluate(() => { new AudioContext(); });
@@ -430,9 +372,49 @@ test.describe('진단', () => {
       await setCtxState(page, 0, 'suspended');
       await setCtxState(page, 0, 'running');
     }
-    const s = await audioState(page);
+    const s = await pacingState(page);
     expect(s.audioLog).toHaveLength(120);
     s.audioLog.length = 0;
-    expect((await audioState(page)).audioLog).toHaveLength(120);
+    expect((await pacingState(page)).audioLog).toHaveLength(120);
+  });
+});
+
+test.describe('오디오 복구 옵트아웃 (__AIT_AUDIO_RESUME=false, ?aitaudio=0)', () => {
+  const cases = [
+    { name: 'window.__AIT_AUDIO_RESUME = false', opts: { head: 'window.__AIT_AUDIO_RESUME = false;' } },
+    { name: '?aitaudio=0', opts: { query: '?aitaudio=0' } },
+  ];
+  for (const c of cases) {
+    test(`${c.name}: AudioContext 복구는 꺼지고 hidden 게이트·미디어 pause 는 유지된다`, async ({ page }) => {
+      await openSynthetic(page, c.opts);
+      await page.evaluate(() => { new AudioContext(); });
+      expect((await pacingState(page)).trackedContexts).toBe(0);
+
+      // interrupted 가 돼도 재시도하지 않는다.
+      await setCtxState(page, 0, 'interrupted');
+      await page.clock.runFor(3000);
+      expect(await resumeCalls(page)).toBe(0);
+
+      // hidden 이어도 context 를 suspend 하지 않지만 라이프사이클 게이트는 켜져 있다.
+      await setCtxState(page, 0, 'running');
+      await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
+      let s = await pacingState(page);
+      expect(s.hidden).toBe(true);
+      expect(s.audioRecovery).toBe(false);
+      expect(await page.evaluate(() => /** @type {any} */ (window).__ctxs[0].suspendCalls)).toBe(0);
+      await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
+      expect(await resumeCalls(page)).toBe(0);
+      expect((await pacingState(page)).hidden).toBe(false);
+      expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.getState().enabled)).toBe(false);
+    });
+  }
+
+  test('옵트아웃이 없으면 AITAudio.getState 가 enabled 이고 복구가 동작한다', async ({ page }) => {
+    await openSynthetic(page);
+    await page.evaluate(() => { new AudioContext(); });
+    await setCtxState(page, 0, 'interrupted');
+    await page.clock.runFor(2000);
+    expect(await resumeCalls(page)).toBe(2);
+    expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.getState().enabled)).toBe(true);
   });
 });

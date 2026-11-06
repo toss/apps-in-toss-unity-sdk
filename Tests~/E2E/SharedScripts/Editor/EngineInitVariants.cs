@@ -26,6 +26,10 @@ using AppsInToss.Editor;
 ///                      부팅 때 LZ4 해제가 한 번 더 돈다.
 ///   symbols-embedded : productionProfile.debugSymbolsExternal=false → WebGLDebugSymbolMode.Embedded. wasm 에 name section 이 들어가
 ///                      함수 이름 단위로 코드 크기와 부팅 프로파일을 귀속할 수 있다(측정 전용, 전송량은 늘어난다).
+///   sdk-keep         : Assets/link.xml 로 AppsInTossSDK·AppsInToss.Helpers 를 통째로 보존한다(Runtime/SDK/link.xml 이 의도한 범위 +
+///                      Helpers). minimal 빈 씬에서는 SDK 어셈블리를 참조하는 코드가 없어 IL2CPP 가 두 어셈블리를 통째로 지우고
+///                      RuntimeInitializeOnLoad 훅도 돌지 않는다(global-metadata 이미지 목록으로 확인). SDK 를 실제로 쓰는 게임처럼
+///                      SDK 코드가 실린 빌드에서 SDK 몫을 재기 위한 변형이다. minimal posture 가 지운 Assets/link.xml 자리에 쓴다.
 ///   codeopt-speed    : WebGL Code Optimization 을 실행 속도 쪽(6000.0: RuntimeSpeed, 6000.x: RuntimeSpeedLTO, 2021/2022: Speed)으로.
 ///                      SDK 기본(DiskSizeLTO, -Oz 계열)이 엔진 초기화 CPU 를 늘리는지 보는 대조군이다.
 /// </summary>
@@ -165,6 +169,24 @@ public static class EngineInitVariants
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("[AIT-Variant] symbols-embedded: productionProfile.debugSymbolsExternal=false (Embedded)");
+    }
+
+    internal const string SdkKeepLinkXmlPath = "Assets/link.xml";
+
+    [HeavyVariant("sdk-keep")]
+    public static void ApplySdkKeep(AITEditorScriptObject config)
+    {
+        if (System.IO.File.Exists(SdkKeepLinkXmlPath))
+        {
+            throw new System.InvalidOperationException($"[AIT-Variant] sdk-keep: {SdkKeepLinkXmlPath} 가 이미 있습니다(픽스처 link.xml 과 섞이지 않게 minimal posture 에서만 쓴다).");
+        }
+        System.IO.File.WriteAllText(SdkKeepLinkXmlPath,
+            "<linker>\n" +
+            "  <assembly fullname=\"AppsInTossSDK\" preserve=\"all\"/>\n" +
+            "  <assembly fullname=\"AppsInToss.Helpers\" preserve=\"all\"/>\n" +
+            "</linker>\n");
+        AssetDatabase.ImportAsset(SdkKeepLinkXmlPath);
+        Debug.Log($"[AIT-Variant] sdk-keep: {SdkKeepLinkXmlPath} 작성 (AppsInTossSDK, AppsInToss.Helpers preserve=all)");
     }
 
     [HeavyVariant("codeopt-speed")]

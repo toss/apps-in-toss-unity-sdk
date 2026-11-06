@@ -19,6 +19,8 @@ using AppsInToss.Editor;
 ///   envrefl-16       : 새로 만드는 씬의 기본 반사 큐브맵 해상도를 128 → 16 으로(RenderSettings.defaultReflectionResolution).
 ///                      빈 씬에서도 스카이박스 반사 큐브맵(128² × 6면 × 밉, 약 520KB)이 sharedassets0 에 구워져 부팅 때 올라간다.
 ///                      E2EBuildRunner 가 빌드 직전에 씬을 새로 만들므로 newSceneCreated 훅으로 건다.
+///   envrefl-off      : 새로 만드는 씬의 기본 반사를 Custom(텍스처 없음)으로 둬 스카이박스 반사 큐브맵을 굽지 않는다.
+///                      envrefl-16 으로 sharedassets0 크기가 그대로였던 것을 확인하는 대조군이다.
 ///   codeopt-speed    : WebGL Code Optimization 을 실행 속도 쪽(6000.0: RuntimeSpeed, 6000.x: RuntimeSpeedLTO, 2021/2022: Speed)으로.
 ///                      SDK 기본(DiskSizeLTO, -Oz 계열)이 엔진 초기화 CPU 를 늘리는지 보는 대조군이다.
 /// </summary>
@@ -111,6 +113,31 @@ public static class EngineInitVariants
         // 이미 열린 씬을 그대로 빌드하는 posture(game 등)에도 걸리도록 현재 씬에도 적용한다.
         RenderSettings.defaultReflectionResolution = ReflectionResolution;
         Debug.Log($"[AIT-Variant] envrefl-16: newSceneCreated 훅 설치, 현재 씬 defaultReflectionResolution={ReflectionResolution}");
+    }
+
+    private static bool _reflectionOffHookInstalled;
+
+    [HeavyVariant("envrefl-off")]
+    public static void ApplyEnvReflectionOff(AITEditorScriptObject config)
+    {
+        if (!_reflectionOffHookInstalled)
+        {
+            _reflectionOffHookInstalled = true;
+            EditorSceneManager.newSceneCreated += (scene, setup, mode) => SetCustomReflectionNone("newSceneCreated");
+            EditorSceneManager.sceneSaving += (scene, path) => SetCustomReflectionNone("sceneSaving " + path);
+        }
+        SetCustomReflectionNone("현재 씬");
+    }
+
+    private static void SetCustomReflectionNone(string where)
+    {
+        RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
+#if UNITY_2022_1_OR_NEWER
+        RenderSettings.customReflectionTexture = null;
+#else
+        RenderSettings.customReflection = null;
+#endif
+        Debug.Log($"[AIT-Variant] envrefl-off: {where} defaultReflectionMode={RenderSettings.defaultReflectionMode}");
     }
 
     [HeavyVariant("codeopt-speed")]

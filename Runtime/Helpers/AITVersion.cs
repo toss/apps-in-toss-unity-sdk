@@ -88,6 +88,8 @@ namespace AppsInToss
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
         {
+            using var _hookTimer = AITHookTimer.Begin("AITVersion");
+
             EnsureLoaded();
             Debug.Log($"[AIT] Apps in Toss Unity SDK v{FullVersion}");
         }

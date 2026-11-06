@@ -21,6 +21,9 @@ using AppsInToss.Editor;
 ///                      E2EBuildRunner 가 빌드 직전에 씬을 새로 만들므로 newSceneCreated 훅으로 건다.
 ///   envrefl-off      : 새로 만드는 씬의 기본 반사를 Custom(텍스처 없음)으로 둬 스카이박스 반사 큐브맵을 굽지 않는다.
 ///                      envrefl-16 으로 sharedassets0 크기가 그대로였던 것을 확인하는 대조군이다.
+///   lz4-off          : productionProfile.enableLZ4Compression=false(BuildOptions.CompressWithLz4 끔). .data 안의 data.unity3d 가
+///                      LZ4 로 미리 압축돼 바깥 brotli/gzip 이 거의 못 줄이고(297KB→197KB, 풀어 둔 내용물은 ~139KB),
+///                      부팅 때 LZ4 해제가 한 번 더 돈다.
 ///   codeopt-speed    : WebGL Code Optimization 을 실행 속도 쪽(6000.0: RuntimeSpeed, 6000.x: RuntimeSpeedLTO, 2021/2022: Speed)으로.
 ///                      SDK 기본(DiskSizeLTO, -Oz 계열)이 엔진 초기화 CPU 를 늘리는지 보는 대조군이다.
 /// </summary>
@@ -138,6 +141,17 @@ public static class EngineInitVariants
         RenderSettings.customReflection = null;
 #endif
         Debug.Log($"[AIT-Variant] envrefl-off: {where} defaultReflectionMode={RenderSettings.defaultReflectionMode}");
+    }
+
+    [HeavyVariant("lz4-off")]
+    public static void ApplyLz4Off(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+        if (config.productionProfile == null) config.productionProfile = AITBuildProfile.CreateProductionProfile();
+        config.productionProfile.enableLZ4Compression = false;
+        EditorUtility.SetDirty(config);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[AIT-Variant] lz4-off: productionProfile.enableLZ4Compression=false");
     }
 
     [HeavyVariant("codeopt-speed")]

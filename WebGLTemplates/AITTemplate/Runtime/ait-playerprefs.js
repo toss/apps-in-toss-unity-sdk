@@ -316,41 +316,93 @@
         return mock;
     }
 
-    /** 오버라이드 훅 우선 → 없으면 플랫폼 Storage를 bounded polling으로 대기 */
+    /**
+     * 부팅 구간 성능 마크. performance.mark 가 없거나 throw 해도 부팅에 영향이 없다.
+     * detail 은 지원하는 브라우저에서만 실린다(미지원 시 이름만 남긴다).
+     */
+    function perfMark(name, detail) {
+        try {
+            if (typeof performance === 'undefined' || !performance.mark) return;
+            if (detail !== undefined) {
+                try { performance.mark(name, { detail: detail }); return; } catch (e) { /* 옵션 미지원 → 이름만 */ }
+            }
+            performance.mark(name);
+        } catch (e) { /* 마크 실패는 무시 */ }
+    }
+
+    /**
+     * 오버라이드 훅 우선 → 없으면 플랫폼 Storage를 대기한다.
+     *
+     * 대기는 이벤트 + 폴링 이중이다:
+     *  - 동기 확인: 스크립트 로드 시점에 이미 설치돼 있으면 즉시 해석한다.
+     *  - `ait:bridge-ready`: unity-bridge.ts 가 window.AppsInToss 네임스페이스를 설치한 직후
+     *    dispatch 하는 계약 이벤트(BuildConfig~/unity-bridge.ts 참조). 폴링 틱을 기다리지
+     *    않고 바로 해석해 스냅샷 fetch 시작이 최대 50ms(CPU 스로틀 시 더) 늦어지는 것을 막는다.
+     *  - 폴링(50ms/1500ms 상한): 이벤트를 쏘지 않는 구 브리지·이벤트 유실 시 폴백. 기존 동작 그대로.
+     * resolved 가드로 어느 경로가 먼저 와도 정확히 1회만 해석한다.
+     */
     function resolveStorage() {
         if (storagePromise) return storagePromise;
         storagePromise = new Promise(function (resolve) {
             var direct = getOverrideStorage();
             if (direct) {
                 state.backend = 'override';
+                perfMark('ait:pp-storage-resolved', { backend: 'override' });
                 resolve(direct);
                 return;
             }
             var waited = 0;
-            var tick = function () {
+            var resolved = false;
+            var timer = null;
+
+            function onBridgeReady() { attempt(false); }
+
+            function settle(storage) {
+                resolved = true;
+                if (timer) { clearTimeout(timer); timer = null; }
+                try { window.removeEventListener('ait:bridge-ready', onBridgeReady); } catch (e) { /* 무시 */ }
+                perfMark('ait:pp-storage-resolved', { backend: state.backend });
+                resolve(storage);
+            }
+
+            // 해석되면 true. polling=true 일 때만 대기 시간을 누적하고 타임아웃을 판정한다.
+            function attempt(polling) {
+                if (resolved) return true;
                 var override = getOverrideStorage();
                 if (override) {
                     state.backend = 'override';
                     maybeWarnProdOverride();
-                    resolve(override);
-                    return;
+                    settle(override);
+                    return true;
                 }
                 var platform = getPlatformStorage();
                 if (platform) {
                     state.backend = 'platform';
-                    resolve(platform);
-                    return;
+                    settle(platform);
+                    return true;
                 }
-                waited += STORAGE_POLL_INTERVAL_MS;
-                if (waited >= STORAGE_POLL_TIMEOUT_MS) {
-                    var mock = installDevMockIfNeeded();
-                    state.backend = mock ? 'override' : 'none';
-                    resolve(mock);
-                    return;
+                if (polling) {
+                    waited += STORAGE_POLL_INTERVAL_MS;
+                    if (waited >= STORAGE_POLL_TIMEOUT_MS) {
+                        var mock = installDevMockIfNeeded();
+                        state.backend = mock ? 'override' : 'none';
+                        settle(mock);
+                        return true;
+                    }
                 }
-                setTimeout(tick, STORAGE_POLL_INTERVAL_MS);
-            };
-            setTimeout(tick, STORAGE_POLL_INTERVAL_MS);
+                return false;
+            }
+
+            function tick() {
+                timer = null;
+                if (attempt(true)) return;
+                timer = setTimeout(tick, STORAGE_POLL_INTERVAL_MS);
+            }
+
+            // 이미 설치돼 있으면 같은 task 안에서 해석한다
+            if (attempt(false)) return;
+            try { window.addEventListener('ait:bridge-ready', onBridgeReady); } catch (e) { /* 무시 → 폴링만 */ }
+            timer = setTimeout(tick, STORAGE_POLL_INTERVAL_MS);
         });
         return storagePromise;
     }
@@ -410,6 +462,7 @@
             return;
         }
         snapshotPromise = fetchSnapshot().then(function (res) {
+            perfMark('ait:pp-snapshot-settled', { kind: res.kind });
             if (res.kind === 'unavailable') {
                 // L1: 가용성 프로브 실패 → 이번 세션만 AIT 쓰기 금지(in-memory).
                 // sessionStorage kill(L3)은 걸지 않는다 — 일시적 타이밍 문제(느린 폴링 등)일
@@ -1795,6 +1848,7 @@
             if (settled) return;
             settled = true;
             if (gate) clearTimeout(gate);
+            perfMark('ait:pp-gate-open', { mode: mode });
             setMode(mode);
             // Unity의 addRunDependency 게이트를 푸는 유일한 지점 — 정확히 1회
             try { callback(null); } catch (e) { recordError('populate 콜백', e); }
@@ -1836,8 +1890,10 @@
         // 앵커를 오발화시키지 않게 한다. persistPath는 이 플래그와 무관하다(계약 7).
         // 카운터이므로 겹친 populate가 있어도 가장 안쪽 콜백이 끝나야 0으로 내려간다.
         inEnginePopulate++;
+        perfMark('ait:pp-populate-start');
         callOrig(mount, true, function (populateErr) {
             inEnginePopulate--;
+            perfMark('ait:pp-populate-done');
             // 원본과 동일하게 삼키되(Unity도 로그만 남기고 진행) 관측 가능하게 기록
             if (populateErr) recordError('원본 populate', populateErr);
             if (settled) return;

@@ -26,6 +26,10 @@
  *      - 미디어 stall watchdog: 재생 가능 상태(!paused, readyState>=3, playbackRate>0)인데 currentTime 이 2초(1초 틱 2회) 동안 안 움직이면
  *        audioStalls 를 올리고 audioLog 에 남긴 뒤 seek(currentTime=currentTime)로 깨운다. 4초째에도 멈춰 있으면 원본 pause→play 로 한 번 더 시도한다.
  *        60초 안에 3회까지만 개입한다. 래퍼를 거치지 않으므로 heldByUs 에는 영향이 없다.
+ *      - 브라우저가 멈춘 미디어: Android WebView 는 다른 재생기(영상 광고 등)가 오디오 포커스를 가져가면 재생 중인
+ *        HTMLMediaElement 를 멈추고 다시 틀지 않는다. 페이지는 visible 이고 AudioContext 도 running 이라 hidden 복구가 돌지 않는다.
+ *        pause() 호출 없이 온 pause 이벤트를 browserPaused 로 적어 두고 visible 복귀, 다음 첫 터치/클릭,
+ *        window.AITAudio.recover()(광고 dismissed 콜백) 에서 다시 재생한다.
  *
  * 2) 프레임 governor (frameRateCap, adaptiveFrameRate)
  *    rAF 간격 중앙값으로 주사율을 재서 100Hz 이상(= 상한 fps 의 1.6배 이상)이면 preMainLoop 에서 프레임을 건너뛰어 상한 fps 로 맞춘다.
@@ -490,6 +494,9 @@
     var origPause = mediaProto && mediaProto.pause;
     var playing = [];       // 재생 중이라고 아는 요소
     var heldByUs = [];      // hidden 때문에 우리가 멈춘 요소
+    var browserPaused = []; // pause() 호출 없이 브라우저가 멈춘 요소(오디오 포커스 상실 등)
+    var scriptPaused = typeof WeakSet === 'function' ? new WeakSet() : null; // pause() 호출이 낼 pause 이벤트 표시
+    var mediaTapInstalled = false;
     var listened = typeof WeakSet === 'function' ? new WeakSet() : null;
 
     function arrRemove(arr, item) {
@@ -502,11 +509,25 @@
             if (playing.indexOf(el) < 0) playing.push(el);
             if (listened && !listened.has(el)) {
                 listened.add(el);
-                el.addEventListener('play', function () { if (playing.indexOf(el) < 0) playing.push(el); });
+                el.addEventListener('play', function () {
+                    if (playing.indexOf(el) < 0) playing.push(el);
+                    arrRemove(browserPaused, el);
+                });
                 var drop = function () { if (heldByUs.indexOf(el) < 0) arrRemove(playing, el); };
-                el.addEventListener('pause', drop);
-                el.addEventListener('ended', drop);
-                el.addEventListener('emptied', drop);
+                var forget = function () { arrRemove(browserPaused, el); drop(); };
+                el.addEventListener('pause', function () {
+                    if (!scriptPaused) { drop(); return; }
+                    if (scriptPaused.has(el)) {
+                        scriptPaused.delete(el);
+                    } else if (!el.ended && browserPaused.indexOf(el) < 0 && mediaRecoverOn()) {
+                        browserPaused.push(el);
+                        alog({ ev: 'mediaPaused' });
+                        installMediaTap();
+                    }
+                    drop();
+                });
+                el.addEventListener('ended', forget);
+                el.addEventListener('emptied', forget);
             }
         } catch (e) { /* 추적 실패 무시 */ }
     }
@@ -517,6 +538,8 @@
         var wrappedPlay = function () {
             // 게임이 직접 재생을 시작하면 그 요소는 게임 소유다(우리가 멈춘 목록에서 뺀다).
             arrRemove(heldByUs, this);
+            arrRemove(browserPaused, this);
+            if (scriptPaused) scriptPaused.delete(this);
             var r = origPlay.apply(this, arguments);
             trackMedia(this);
             return r;
@@ -525,6 +548,8 @@
         var wrappedPause = function () {
             // 게임이 직접 멈추면(Unity 가 context suspend 에 반응해 자기 채널을 pause 하는 경우 포함) 재개 책임도 게임에 있다.
             arrRemove(heldByUs, this);
+            arrRemove(browserPaused, this);
+            if (scriptPaused && !this.paused) scriptPaused.add(this);
             return origPause.apply(this, arguments);
         };
         wrappedPause.__aitPacing = true;
@@ -545,6 +570,7 @@
             try {
                 if (el.paused || el.ended) continue;
                 if (heldByUs.indexOf(el) < 0) heldByUs.push(el);
+                if (scriptPaused) scriptPaused.add(el);
                 origPause.call(el); // 래퍼를 거치지 않는다(거치면 heldByUs 에서 빠진다)
                 n++;
             } catch (e) { /* 개별 요소 실패 무시 */ }
@@ -566,6 +592,50 @@
             } catch (e) { /* 자동 재생 정책 등으로 거부돼도 무시 */ }
         }
         return n;
+    }
+
+    // 브라우저가 멈춘 미디어 복구는 오디오 복구 옵트아웃과 라이프사이클 게이트를 따른다.
+    function mediaRecoverOn() { return audioOn && gateEnabled(); }
+
+    // 브라우저가 멈춘 요소를 다시 재생한다. play() 가 거절되면 목록에 되돌려 다음 터치에서 다시 시도한다.
+    function recoverMedia(source) {
+        if (applied || !browserPaused.length || typeof origPlay !== 'function') return 0;
+        if (!mediaRecoverOn()) { browserPaused = []; return 0; }
+        var list = browserPaused;
+        browserPaused = [];
+        var n = 0;
+        var retry = function (el) {
+            return function () {
+                if (el.paused && !el.ended && browserPaused.indexOf(el) < 0) { browserPaused.push(el); installMediaTap(); }
+            };
+        };
+        for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            try {
+                if (!el.paused || el.ended) continue;
+                var p = origPlay.call(el);
+                n++;
+                if (p && typeof p.catch === 'function') p.catch(retry(el));
+            } catch (e) { /* 개별 요소 실패 무시 */ }
+        }
+        alog({ ev: 'mediaRecover', source: source, n: n });
+        if (n) log('브라우저가 멈춘 미디어 ' + n + '개 다시 재생(' + source + ')');
+        return n;
+    }
+
+    function installMediaTap() {
+        if (mediaTapInstalled) return;
+        try {
+            mediaTapInstalled = true;
+            var handler = function () {
+                for (var i = 0; i < TAP_EVENTS.length; i++) {
+                    try { window.removeEventListener(TAP_EVENTS[i], handler, true); } catch (e) { /* 무시 */ }
+                }
+                mediaTapInstalled = false;
+                recoverMedia('tap');
+            };
+            for (var i = 0; i < TAP_EVENTS.length; i++) window.addEventListener(TAP_EVENTS[i], handler, { capture: true, passive: true });
+        } catch (e) { mediaTapInstalled = false; }
     }
 
     // ------------------------------------------------------------------ 미디어 stall watchdog
@@ -611,6 +681,7 @@
             if (typeof origPause === 'function' && typeof origPlay === 'function' && wdNudgesLeft(s)) {
                 s.nudges.push(Date.now());
                 // 래퍼를 거치지 않는다(heldByUs 와 playing 추적에 영향을 주지 않는다).
+                if (scriptPaused) scriptPaused.add(el); // 브라우저가 멈춘 것으로 오인하지 않게
                 origPause.call(el);
                 swallow(origPlay.call(el));
             }
@@ -669,7 +740,7 @@
         if (resumePending.length) installInterruptedTap();
         var ia = resumeInterrupted(ours); // hidden 사이에 iOS 가 interrupted 로 옮긴 context
         for (var j = 0; j < contexts.length; j++) if (contexts[j].state === 'running') fadeInMaster(contexts[j]);
-        var m = resumeMedia();
+        var m = resumeMedia() + recoverMedia('show');
         log('visible(' + source + '): ' + st.lastHiddenMs + 'ms 뒤 재개, AudioContext ' + a + '개 resume' +
             (ia ? '(+interrupted ' + ia + '개)' : '') + ', 미디어 ' + m + '개 play');
     }
@@ -886,6 +957,7 @@
                 suspendedContexts: suspendedByUs.length,
                 trackedMedia: playing.length,
                 heldMedia: heldByUs.length,
+                browserPausedMedia: browserPaused.length,
                 hints: hints,
                 audioLog: audioLog.slice(),
                 audioContexts: contexts.map(function (c) { return { state: c.state, t: c.currentTime }; }),
@@ -901,8 +973,13 @@
         window.AITAudio = {
             getState: function () {
                 var s = api.getState();
-                return { enabled: audioOn && lifecycleOn, contexts: s.audioContexts, log: s.audioLog, stalls: s.audioStalls };
-            }
+                return {
+                    enabled: audioOn && lifecycleOn, contexts: s.audioContexts, log: s.audioLog, stalls: s.audioStalls,
+                    browserPausedMedia: s.browserPausedMedia
+                };
+            },
+            // 브라우저가 멈춘 미디어를 다시 재생하고 시도한 개수를 돌려준다(광고 dismissed 콜백 등에서 호출).
+            recover: function (source) { return recoverMedia(source || 'api'); }
         };
     }
 })();

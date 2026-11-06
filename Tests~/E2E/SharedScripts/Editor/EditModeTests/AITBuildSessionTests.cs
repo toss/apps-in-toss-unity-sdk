@@ -30,6 +30,47 @@ namespace AppsInToss.Editor.EditModeTests
         }
 
         [Test]
+        public void Capture_RoundTrips_SplashScreenSettings()
+        {
+            bool originalShow = PlayerSettings.SplashScreen.show;
+            bool originalShowUnityLogo = PlayerSettings.SplashScreen.showUnityLogo;
+
+            // Personal 라이선스 에디터에서는 SplashScreen.show=false 대입이 조용히 무시된다
+            // (Plus/Pro 전용 기능). round-trip은 값 변경이 전제이므로 setter가 유효한 환경에서만 검증.
+            PlayerSettings.SplashScreen.show = false;
+            bool setterEffective = PlayerSettings.SplashScreen.show == false;
+            PlayerSettings.SplashScreen.show = originalShow;
+            if (!setterEffective)
+            {
+                Assert.Ignore("Personal 라이선스 에디터에서는 SplashScreen setter가 무시되어 round-trip을 검증할 수 없습니다.");
+                return;
+            }
+
+            try
+            {
+                PlayerSettings.SplashScreen.show = true;
+                PlayerSettings.SplashScreen.showUnityLogo = true;
+                var snapshot = PlayerSettingsSnapshot.Capture();
+
+                PlayerSettings.SplashScreen.show = false;
+                PlayerSettings.SplashScreen.showUnityLogo = false;
+                Assert.IsFalse(PlayerSettings.SplashScreen.show);
+                Assert.IsFalse(PlayerSettings.SplashScreen.showUnityLogo);
+
+                snapshot.Restore();
+                Assert.IsTrue(PlayerSettings.SplashScreen.show,
+                    "Restore must return SplashScreen.show to the captured pre-build value");
+                Assert.IsTrue(PlayerSettings.SplashScreen.showUnityLogo,
+                    "Restore must return SplashScreen.showUnityLogo to the captured pre-build value");
+            }
+            finally
+            {
+                PlayerSettings.SplashScreen.show = originalShow;
+                PlayerSettings.SplashScreen.showUnityLogo = originalShowUnityLogo;
+            }
+        }
+
+        [Test]
         public void IsSerializable_CanRoundTripThroughJsonUtility()
         {
             var snapshot = PlayerSettingsSnapshot.Capture();

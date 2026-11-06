@@ -354,6 +354,9 @@
     </script>
     <!-- PlayerPrefs 영속화 레이어 — Unity 로더보다 먼저 로드해 스냅샷 fetch를 미리 착수 -->
     <script src="Runtime/ait-playerprefs.js"></script>
+    <!-- iOS 앱 복귀 오디오 복구(AudioContext interrupted/멈춘 시계 재개, 복귀 페이드 인, 짧은 효과음 시작 보정).
+         Unity 로더보다 먼저 로드해 AudioContext 생성자를 감싼다. 끄려면 이 스크립트보다 먼저 window.__AIT_AUDIO_RESUME = false 로 정의하거나 URL ?aitaudio=0 -->
+    <script src="Runtime/ait-audio.js"></script>
     <!-- Web Framework Bridge - @apps-in-toss/web-framework 함수를 window.AppsInToss에 노출 -->
     <script type="module" src="./unity-bridge.ts"></script>
 

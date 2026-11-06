@@ -30,6 +30,9 @@ using AppsInToss.Editor;
 ///                      Helpers). minimal 빈 씬에서는 SDK 어셈블리를 참조하는 코드가 없어 IL2CPP 가 두 어셈블리를 통째로 지우고
 ///                      RuntimeInitializeOnLoad 훅도 돌지 않는다(global-metadata 이미지 목록으로 확인). SDK 를 실제로 쓰는 게임처럼
 ///                      SDK 코드가 실린 빌드에서 SDK 몫을 재기 위한 변형이다. minimal posture 가 지운 Assets/link.xml 자리에 쓴다.
+///   nsjson-trim      : SDK 패키지의 Runtime/SDK/link.xml 에서 Newtonsoft.Json 어셈블리 단위 preserve="all" 만 떼고 타입 단위 보존은
+///                      남긴 사본으로 이 빌드 동안만 바꾼다(에디터 종료 시 원복, CI 체크아웃도 되돌린다). 어셈블리 통째 보존이
+///                      XmlNodeConverter·DataSet 변환기를 거쳐 System.Xml·System.Data 를 끌어오는지 재는 변형이다. sdk-keep 과 함께 쓴다.
 ///   codeopt-speed    : WebGL Code Optimization 을 실행 속도 쪽(6000.0: RuntimeSpeed, 6000.x: RuntimeSpeedLTO, 2021/2022: Speed)으로.
 ///                      SDK 기본(DiskSizeLTO, -Oz 계열)이 엔진 초기화 CPU 를 늘리는지 보는 대조군이다.
 /// </summary>
@@ -187,6 +190,26 @@ public static class EngineInitVariants
             "</linker>\n");
         AssetDatabase.ImportAsset(SdkKeepLinkXmlPath);
         Debug.Log($"[AIT-Variant] sdk-keep: {SdkKeepLinkXmlPath} 작성 (AppsInTossSDK, AppsInToss.Helpers preserve=all)");
+    }
+
+    internal const string SdkLinkXmlPackagePath = "Packages/im.toss.apps-in-toss-unity-sdk/Runtime/SDK/link.xml";
+    internal const string NewtonsoftPreserveAll = "<assembly fullname=\"Newtonsoft.Json\" preserve=\"all\">";
+
+    [HeavyVariant("nsjson-trim")]
+    public static void ApplyNewtonsoftTrim(AITEditorScriptObject config)
+    {
+        string path = System.IO.Path.GetFullPath(SdkLinkXmlPackagePath);
+        string original = System.IO.File.ReadAllText(path);
+        if (!original.Contains(NewtonsoftPreserveAll))
+        {
+            throw new System.InvalidOperationException($"[AIT-Variant] nsjson-trim: {path} 에 Newtonsoft 어셈블리 preserve=all 항목이 없습니다.");
+        }
+        System.IO.File.WriteAllText(path, original.Replace(NewtonsoftPreserveAll, "<assembly fullname=\"Newtonsoft.Json\">"));
+        EditorApplication.quitting += () =>
+        {
+            try { System.IO.File.WriteAllText(path, original); } catch (System.Exception) { /* CI 체크아웃이 되돌린다 */ }
+        };
+        Debug.Log($"[AIT-Variant] nsjson-trim: {path} 의 Newtonsoft.Json preserve=all 제거(빌드 동안만)");
     }
 
     [HeavyVariant("codeopt-speed")]

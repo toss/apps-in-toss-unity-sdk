@@ -24,6 +24,8 @@ using AppsInToss.Editor;
 ///   lz4-off          : productionProfile.enableLZ4Compression=false(BuildOptions.CompressWithLz4 끔). .data 안의 data.unity3d 가
 ///                      LZ4 로 미리 압축돼 바깥 brotli/gzip 이 거의 못 줄이고(297KB→197KB, 풀어 둔 내용물은 ~139KB),
 ///                      부팅 때 LZ4 해제가 한 번 더 돈다.
+///   symbols-embedded : productionProfile.debugSymbolsExternal=false → WebGLDebugSymbolMode.Embedded. wasm 에 name section 이 들어가
+///                      함수 이름 단위로 코드 크기와 부팅 프로파일을 귀속할 수 있다(측정 전용, 전송량은 늘어난다).
 ///   codeopt-speed    : WebGL Code Optimization 을 실행 속도 쪽(6000.0: RuntimeSpeed, 6000.x: RuntimeSpeedLTO, 2021/2022: Speed)으로.
 ///                      SDK 기본(DiskSizeLTO, -Oz 계열)이 엔진 초기화 CPU 를 늘리는지 보는 대조군이다.
 /// </summary>
@@ -152,6 +154,17 @@ public static class EngineInitVariants
         EditorUtility.SetDirty(config);
         AssetDatabase.SaveAssets();
         Debug.Log("[AIT-Variant] lz4-off: productionProfile.enableLZ4Compression=false");
+    }
+
+    [HeavyVariant("symbols-embedded")]
+    public static void ApplySymbolsEmbedded(AITEditorScriptObject config)
+    {
+        if (config == null) throw new System.ArgumentNullException(nameof(config));
+        if (config.productionProfile == null) config.productionProfile = AITBuildProfile.CreateProductionProfile();
+        config.productionProfile.debugSymbolsExternal = false;
+        EditorUtility.SetDirty(config);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[AIT-Variant] symbols-embedded: productionProfile.debugSymbolsExternal=false (Embedded)");
     }
 
     [HeavyVariant("codeopt-speed")]

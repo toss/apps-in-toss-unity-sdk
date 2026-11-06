@@ -1,0 +1,359 @@
+[
+  {
+    "source": "DEPRECATED_API_OVERRIDES",
+    "field": "name",
+    "key": "TossAdsAttach",
+    "matches": 1,
+    "callPath": "TossAds.attach"
+  },
+  {
+    "source": "DEPRECATED_API_OVERRIDES",
+    "field": "name",
+    "key": "TossAdsAttachBanner",
+    "matches": 1,
+    "callPath": "TossAds.attachBanner"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "AppsInTossSignTossCert",
+    "matches": 1,
+    "callPath": "appsInTossSignTossCert"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "CheckoutPayment",
+    "matches": 1,
+    "callPath": "checkoutPayment"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "EventLog",
+    "matches": 1,
+    "callPath": "eventLog"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "FetchAlbumItems",
+    "matches": 1,
+    "callPath": "fetchAlbumItems"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetAnonymousKey",
+    "matches": 1,
+    "callPath": "getAnonymousKey"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetConsentedUserData",
+    "matches": 1,
+    "callPath": "getConsentedUserData"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetDeviceId",
+    "matches": 1,
+    "callPath": "getDeviceId"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetGameCenterGameProfile",
+    "matches": 1,
+    "callPath": "getGameCenterGameProfile"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetGroupId",
+    "matches": 1,
+    "callPath": "getGroupId"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetIsTossLoginIntegratedService",
+    "matches": 1,
+    "callPath": "getIsTossLoginIntegratedService"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetLocale",
+    "matches": 1,
+    "callPath": "getLocale"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetNetworkStatus",
+    "matches": 1,
+    "callPath": "getNetworkStatus"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetOperationalEnvironment",
+    "matches": 1,
+    "callPath": "getOperationalEnvironment"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetPermission",
+    "matches": 1,
+    "callPath": "getPermission"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetPlatformOS",
+    "matches": 1,
+    "callPath": "getPlatformOS"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetSchemeUri",
+    "matches": 1,
+    "callPath": "getSchemeUri"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetServerTime",
+    "matches": 1,
+    "callPath": "getServerTime"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetTossAppVersion",
+    "matches": 1,
+    "callPath": "getTossAppVersion"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetTossShareLink",
+    "matches": 1,
+    "callPath": "getTossShareLink"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GetUserKeyForGame",
+    "matches": 1,
+    "callPath": "getUserKeyForGame"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GoogleAdMobIsAppsInTossAdMobLoaded",
+    "matches": 1,
+    "callPath": "GoogleAdMob.isAppsInTossAdMobLoaded"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GoogleAdMobLoadAppsInTossAdMob",
+    "matches": 1,
+    "callPath": "GoogleAdMob.loadAppsInTossAdMob"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GoogleAdMobShowAppsInTossAdMob",
+    "matches": 1,
+    "callPath": "GoogleAdMob.showAppsInTossAdMob"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GrantPromotionReward",
+    "matches": 1,
+    "callPath": "grantPromotionReward"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "GrantPromotionRewardForGame",
+    "matches": 1,
+    "callPath": "grantPromotionRewardForGame"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "IsMinVersionSupported",
+    "matches": 1,
+    "callPath": "isMinVersionSupported"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "MigrationGetOriginStorage",
+    "matches": 1,
+    "callPath": "Migration.getOriginStorage"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "OpenGameCenterLeaderboard",
+    "matches": 1,
+    "callPath": "openGameCenterLeaderboard"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "OpenPDFViewer",
+    "matches": 1,
+    "callPath": "openPDFViewer"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "OpenPermissionDialog",
+    "matches": 1,
+    "callPath": "openPermissionDialog"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "OpenURL",
+    "matches": 1,
+    "callPath": "openURL"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "PartnerAddAccessoryButton",
+    "matches": 1,
+    "callPath": "partner.addAccessoryButton"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "PartnerRemoveAccessoryButton",
+    "matches": 1,
+    "callPath": "partner.removeAccessoryButton"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "RequestPermission",
+    "matches": 1,
+    "callPath": "requestPermission"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "RequestTossPayPaysBilling",
+    "matches": 1,
+    "callPath": "requestTossPayPaysBilling"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SafeAreaInsetsGet",
+    "matches": 1,
+    "callPath": "SafeAreaInsets.get"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SaveBase64Data",
+    "matches": 1,
+    "callPath": "saveBase64Data"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SetDeviceOrientation",
+    "matches": 1,
+    "callPath": "setDeviceOrientation"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SetIosSwipeGestureEnabled",
+    "matches": 1,
+    "callPath": "setIosSwipeGestureEnabled"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SetScreenAwakeMode",
+    "matches": 1,
+    "callPath": "setScreenAwakeMode"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SetSecureScreen",
+    "matches": 1,
+    "callPath": "setSecureScreen"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "SubmitGameCenterLeaderBoardScore",
+    "matches": 1,
+    "callPath": "submitGameCenterLeaderBoardScore"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossAdsAttach",
+    "matches": 1,
+    "callPath": "TossAds.attach"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossAdsAttachBanner",
+    "matches": 1,
+    "callPath": "TossAds.attachBanner"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossAdsDestroy",
+    "matches": 1,
+    "callPath": "TossAds.destroy"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossAdsDestroyAll",
+    "matches": 1,
+    "callPath": "TossAds.destroyAll"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossAdsInitialize",
+    "matches": 1,
+    "callPath": "TossAds.initialize"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossPayCheckoutPayment",
+    "matches": 1,
+    "callPath": "TossPay.checkoutPayment"
+  },
+  {
+    "source": "DOC_FALLBACKS",
+    "field": "pascalName",
+    "key": "TossPayRequestTossPayPaysBilling",
+    "matches": 1,
+    "callPath": "TossPay.requestTossPayPaysBilling"
+  }
+]

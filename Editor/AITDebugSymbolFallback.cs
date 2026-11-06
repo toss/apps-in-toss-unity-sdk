@@ -13,7 +13,7 @@ namespace AppsInToss.Editor
     /// 버전은 EditorPrefs 에 기억해 다음 빌드부터 처음부터 Off 로 빌드한다(링크 한 번 낭비를 반복하지 않게).
     ///
     /// Off 를 쓰는 이유: Embedded 는 심볼을 wasm 안에 넣어 다운로드 크기가 늘어난다. 외부 심볼 파일은 선택 산출물
-    /// (빌드 검증도 "디버그 심볼 (선택)"으로 다룬다)이라 빠져도 빌드 결과는 같다. 바꾼 값은 PlayerSettingsSnapshot 이 원복한다.
+    /// (메모리 예산 리포트의 코드 Top 20)이라 빠져도 빌드 결과는 같다. 바꾼 값은 PlayerSettingsSnapshot 이 원복한다.
     /// </summary>
     internal static class AITDebugSymbolFallback
     {

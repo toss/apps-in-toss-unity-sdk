@@ -1366,8 +1366,8 @@ packages:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
     hasBin: true
 
-  semver@7.8.5:
-    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+  semver@7.8.6:
+    resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -1816,7 +1816,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.10.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1829,7 +1829,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.10.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1842,7 +1842,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.0.3(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1855,7 +1855,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.0.4(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1868,7 +1868,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.0.5(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1881,7 +1881,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.1.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1894,7 +1894,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.1.1(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1907,7 +1907,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.2.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1920,7 +1920,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.3.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1933,7 +1933,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.4.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1946,7 +1946,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.4.1(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1959,7 +1959,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.5.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1972,7 +1972,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.6.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1985,7 +1985,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.7.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1998,7 +1998,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.8.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -2011,7 +2011,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.9.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -3016,7 +3016,7 @@ snapshots:
 
   semver@6.3.1: {}
 
-  semver@7.8.5: {}
+  semver@7.8.6: {}
 
   shallow-clone@3.0.1:
     dependencies:

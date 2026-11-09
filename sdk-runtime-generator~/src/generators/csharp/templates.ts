@@ -20,6 +20,7 @@ interface TemplateCache {
   mainTemplate?: HandlebarsTemplateDelegate;
   categoryPartialTemplate?: HandlebarsTemplateDelegate;
   unionResultTemplate?: HandlebarsTemplateDelegate;
+  jsonRuntimeTemplate?: HandlebarsTemplateDelegate;
 }
 
 const templateCache: TemplateCache = {};
@@ -107,6 +108,9 @@ export async function loadAllTemplates(): Promise<TemplateCache> {
   }
   if (!templateCache.categoryPartialTemplate) {
     templateCache.categoryPartialTemplate = await loadTemplate('csharp-category-partial');
+  }
+  if (!templateCache.jsonRuntimeTemplate) {
+    templateCache.jsonRuntimeTemplate = await loadTemplate('csharp-json');
   }
 
   return templateCache;

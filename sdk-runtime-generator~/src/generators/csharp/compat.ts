@@ -298,7 +298,7 @@ function applyOptionalNumber(units: GeneratedTypeUnit[], entry: OptionalNumberCo
     `        [Obsolete("Use ${typed}")]\n` +
     `        public double ${entry.member};\n`;
   const added =
-    `\n        /// <summary>와이어에 <see cref="${entry.member}"/> 값이 왔는지 여부. Newtonsoft가 역직렬화할 때 채운다.</summary>\n` +
+    `\n        /// <summary>와이어에 <see cref="${entry.member}"/> 값이 왔는지 여부. SDK가 JSON을 읽을 때 채운다.</summary>\n` +
     `        [JsonIgnore]\n` +
     `        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]\n` +
     `        public bool ${specified} { get; set; }\n` +

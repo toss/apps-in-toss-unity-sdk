@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -42,10 +41,9 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class EventLogParams
+    public partial class EventLogParams
     {
         [Preserve]
-        [JsonProperty("log_type")]
         [Obsolete("Use Log_typeTyped")]
         public string Log_type;
 
@@ -53,21 +51,17 @@ namespace AppsInToss
         /// <see cref="Log_type"/>를 <see cref="EventLogParamsLog_type"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
         /// 그 문자열은 <see cref="Log_type"/>에 그대로 남는다. 값을 쓰면 <see cref="Log_type"/>도 함께 바뀐다.
         /// </summary>
-        [JsonIgnore]
         public EventLogParamsLog_type? Log_typeTyped
         {
             get => AITCompat.ParseEnum<EventLogParamsLog_type>(Log_type);
             set => Log_type = AITCompat.ToWire(value);
         }
         [Preserve]
-        [JsonProperty("log_name")]
         public string Log_name;
         [Preserve]
-        [JsonProperty("params")]
         public Dictionary<string, object> Params;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

@@ -4,8 +4,6 @@
 // -----------------------------------------------------------------------
 
 using AppsInToss;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 [TestFixture]
@@ -29,13 +27,14 @@ public class OriginStorageDumpTests
     [Test]
     public void KeyPath_AcceptsStringNullAndArray()
     {
-        var dump = JsonConvert.DeserializeObject<OriginStorageDump>(Dump);
+        var dump = AITJsonSettings.Deserialize<OriginStorageDump>(Dump);
         var stores = dump.IndexedDB[0].ObjectStores;
 
         Assert.AreEqual("id", stores[0].KeyPath);
         Assert.IsNull(stores[1].KeyPath);
-        Assert.IsInstanceOf<JArray>(stores[2].KeyPath);
-        Assert.AreEqual(2, ((JArray)stores[2].KeyPath).Count);
-        Assert.IsInstanceOf<JArray>(stores[2].Indexes[0].KeyPath);
+        Assert.IsInstanceOf<JsonValue>(stores[2].KeyPath);
+        Assert.AreEqual(JsonValueKind.Array, ((JsonValue)stores[2].KeyPath).Kind);
+        Assert.AreEqual(2, ((JsonValue)stores[2].KeyPath).Count);
+        Assert.IsInstanceOf<JsonValue>(stores[2].Indexes[0].KeyPath);
     }
 }

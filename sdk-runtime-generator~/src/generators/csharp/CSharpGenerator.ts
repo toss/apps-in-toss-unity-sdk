@@ -293,6 +293,18 @@ export class CSharpGenerator {
   }
 
   /**
+   * AITJson.cs 생성 (JsonValue, 작성기, 읽기·쓰기 도우미 - 타입과 무관한 고정 코드)
+   */
+  async generateJsonRuntimeFile(): Promise<string> {
+    await this.loadTemplates();
+    const templates = getTemplateCache();
+    if (!templates.jsonRuntimeTemplate) {
+      throw new Error('JSON runtime template not loaded');
+    }
+    return templates.jsonRuntimeTemplate({});
+  }
+
+  /**
    * 메인 AIT.cs 파일 생성 (partial class 선언만)
    */
   async generateMainFile(webFrameworkTag: string, apiCount: number): Promise<string> {

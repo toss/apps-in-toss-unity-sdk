@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -16,14 +15,12 @@ namespace AppsInToss
 {
     [Serializable]
     [Preserve]
-    public class AppsInTossSignTossCertParams
+    public partial class AppsInTossSignTossCertParams
     {
         [Preserve]
-        [JsonProperty("txId")]
         public string TxId;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -16,17 +15,14 @@ namespace AppsInToss
 {
     [Serializable]
     [Preserve]
-    public class IsMinVersionSupportedMinVersions
+    public partial class IsMinVersionSupportedMinVersions
     {
         [Preserve]
-        [JsonProperty("android")]
         public string Android;
         [Preserve]
-        [JsonProperty("ios")]
         public string Ios;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

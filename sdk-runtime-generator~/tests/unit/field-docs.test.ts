@@ -68,7 +68,7 @@ describe('필드 XML 문서 오버라이드', () => {
 
     // 필드 선언 바로 위에 </remarks>가 오는지로 "붙어 있음"을 확인한다.
     const attached = source.match(
-      /\/\/\/ <\/remarks>\s*\n\s*\[JsonIgnore\]\s*\n\s*public System\.Func<[^>]*ProcessProductGrantParam[^;]*ProcessProductGrant;/g,
+      /\/\/\/ <\/remarks>\s*\n\s*public System\.Func<[^>]*ProcessProductGrantParam[^;]*ProcessProductGrant;/g,
     );
 
     expect(attached).not.toBeNull();

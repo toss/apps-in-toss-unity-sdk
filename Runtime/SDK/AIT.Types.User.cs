@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -20,18 +19,15 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class GetAnonymousKeyResult
+    public partial class GetAnonymousKeyResult
     {
         [Preserve]
-        [JsonProperty("_type")]
         public string _type;
 
         [Preserve]
-        [JsonProperty("_successJson")]
         public GetAnonymousKeySuccessResponse _successData;
 
         [Preserve]
-        [JsonProperty("_errorCode")]
         public string _errorCode;
 
         /// <summary>성공 여부를 나타냅니다.</summary>
@@ -97,25 +93,21 @@ namespace AppsInToss
         }
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
 
     [Serializable]
     [Preserve]
-    public class UserCreateAnonymousKeyAuthCodeResult
+    public partial class UserCreateAnonymousKeyAuthCodeResult
     {
         [Preserve]
-        [JsonProperty("code")]
         public string Code;
         [Preserve]
-        [JsonProperty("expiresIn")]
         public double ExpiresIn;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     public enum GetConsentedUserDataErrorCode
@@ -138,48 +130,40 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class GetAnonymousKeySuccessResponse
+    public partial class GetAnonymousKeySuccessResponse
     {
         [Preserve]
-        [JsonProperty("hash")]
         public string Hash;
         [Preserve]
-        [JsonProperty("type")]
         public string Type;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class GetConsentedUserDataOptions
+    public partial class GetConsentedUserDataOptions
     {
         /// <summary>동의 항목 키예요 (예: "cud_delivery").</summary>
         [Preserve]
-        [JsonProperty("consentedUserDataKey")]
         public string ConsentedUserDataKey;
         /// <summary>사용자가 이전에 거부했어도 약관 웹뷰를 다시 띄울지예요. 기본은 false예요.</summary>
         [Preserve]
-        [JsonProperty("shouldRequestAgreementWhenUserDeclined")]
         public bool? ShouldRequestAgreementWhenUserDeclined; // optional
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class GetDeclaredAgeRangeParams
+    public partial class GetDeclaredAgeRangeParams
     {
         [Preserve]
-        [JsonProperty("ageGates")]
         public double[] AgeGates;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

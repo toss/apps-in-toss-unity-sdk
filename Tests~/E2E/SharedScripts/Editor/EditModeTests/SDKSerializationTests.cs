@@ -4,21 +4,12 @@
 // -----------------------------------------------------------------------
 
 using NUnit.Framework;
-using Newtonsoft.Json;
 using System;
 using AppsInToss;
 
 [TestFixture]
 public class SDKSerializationTests
 {
-    private JsonSerializerSettings settings;
-
-    [SetUp]
-    public void Setup()
-    {
-        settings = AITJsonSettings.Default;
-    }
-
     // =====================================================
     // Enum 직렬화 Round-trip 테스트
     // =====================================================
@@ -44,12 +35,12 @@ public class SDKSerializationTests
         var enumValue = Enum.Parse(enumType, valueName);
 
         // C# → JSON
-        string json = JsonConvert.SerializeObject(enumValue, settings);
+        string json = AITJsonSettings.Serialize(enumValue);
         Assert.IsNotNull(json, $"Serialization of {enumType.Name}.{valueName} should not return null");
         Assert.IsNotEmpty(json, $"Serialization of {enumType.Name}.{valueName} should not return empty");
 
         // JSON → C#
-        var deserialized = JsonConvert.DeserializeObject(json, enumType, settings);
+        var deserialized = AITJsonSettings.Deserialize(json, enumType);
         Assert.AreEqual(enumValue, deserialized,
             $"Round-trip failed for {enumType.Name}.{valueName}: serialized={json}");
     }
@@ -73,7 +64,7 @@ public class SDKSerializationTests
     {
         // JS 브릿지가 보내는 실제 문자열(예: "4G")로 역직렬화 가능한지 검증
         var json = $"\"{jsonValue}\"";
-        var result = JsonConvert.DeserializeObject(json, enumType, settings);
+        var result = AITJsonSettings.Deserialize(json, enumType);
         Assert.IsNotNull(result, $"Failed to deserialize \"{jsonValue}\" to {enumType.Name}");
     }
 
@@ -122,7 +113,7 @@ public class SDKSerializationTests
 #pragma warning disable CS0618 // 하위 호환 경로: 옛 string Log_type 은 알 수 없는 값도 보존한다
         var original = new EventLogParams { Log_name = "test_event", Log_type = "custom" };
         Assert.IsNull(original.Log_typeTyped, "알 수 없는 값은 Typed 가 null");
-        var restored = JsonConvert.DeserializeObject<EventLogParams>(JsonConvert.SerializeObject(original, settings), settings);
+        var restored = AITJsonSettings.Deserialize<EventLogParams>(AITJsonSettings.Serialize(original));
         Assert.AreEqual("custom", restored.Log_type);
         restored.Log_typeTyped = EventLogParamsLog_type.Event;
         Assert.AreEqual("event", restored.Log_type, "Typed 설정이 string 에 반영돼야 함");
@@ -135,7 +126,7 @@ public class SDKSerializationTests
 #pragma warning disable CS0618
         var options = new CheckoutPaymentOptions { PayToken = "legacy-token" };
         Assert.AreEqual("legacy-token", options.Params.PayToken);
-        Assert.IsTrue(JsonConvert.SerializeObject(options, settings).Contains("legacy-token"));
+        Assert.IsTrue(AITJsonSettings.Serialize(options).Contains("legacy-token"));
 #pragma warning restore CS0618
     }
 
@@ -148,7 +139,7 @@ public class SDKSerializationTests
     {
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
 
-        var result = JsonConvert.DeserializeObject<MockUnionResult>(successJson, settings);
+        var result = AITJsonSettings.Deserialize<GetAnonymousKeyResult>(successJson);
         Assert.IsNotNull(result, "Deserialization should succeed");
         Assert.IsTrue(result.IsSuccess, "Should be a success result");
         Assert.AreEqual("test-hash-123", result.GetSuccess()?.Hash, "Hash should match");
@@ -157,36 +148,12 @@ public class SDKSerializationTests
     [Test]
     public void DiscriminatedUnion_Error()
     {
-        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
+        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""ERROR""}";
 
-        var result = JsonConvert.DeserializeObject<MockUnionResult>(errorJson, settings);
+        var result = AITJsonSettings.Deserialize<GetAnonymousKeyResult>(errorJson);
         Assert.IsNotNull(result, "Deserialization should succeed");
         Assert.IsTrue(result.IsError, "Should be an error result");
-        Assert.AreEqual("INVALID_CATEGORY", result.GetErrorCode(), "Error code should match");
-    }
-
-    // =====================================================
-    // 테스트 전용 mock discriminated union 타입
-    // =====================================================
-
-    [System.Serializable]
-    private class MockUnionResult
-    {
-        [JsonProperty("_type")] public string _type;
-        [JsonProperty("_successJson")] public MockSuccessData _successData;
-        [JsonProperty("_errorCode")] public string _errorCode;
-
-        public bool IsSuccess => _type == "success";
-        public bool IsError => _type == "error";
-        public MockSuccessData GetSuccess() => IsSuccess ? _successData : null;
-        public string GetErrorCode() => IsError ? _errorCode : null;
-    }
-
-    [System.Serializable]
-    private class MockSuccessData
-    {
-        [JsonProperty("hash")] public string Hash;
-        [JsonProperty("type")] public string Type;
+        Assert.AreEqual("ERROR", result.GetErrorCode(), "Error code should match");
     }
 
     // =====================================================
@@ -195,19 +162,13 @@ public class SDKSerializationTests
 
     private void AssertClassRoundTrip<T>(T original) where T : class
     {
-        var serSettings = new JsonSerializerSettings
-        {
-            Converters = settings.Converters,
-            NullValueHandling = NullValueHandling.Ignore
-        };
-
-        string json = JsonConvert.SerializeObject(original, serSettings);
+        string json = AITJsonSettings.Serialize(original);
         Assert.IsNotNull(json, $"Serialization of {typeof(T).Name} should not return null");
 
-        var deserialized = JsonConvert.DeserializeObject<T>(json, serSettings);
+        var deserialized = AITJsonSettings.Deserialize<T>(json);
         Assert.IsNotNull(deserialized, $"Deserialization of {typeof(T).Name} should not return null");
 
-        string reserializedJson = JsonConvert.SerializeObject(deserialized, serSettings);
+        string reserializedJson = AITJsonSettings.Serialize(deserialized);
         Assert.AreEqual(json, reserializedJson,
             $"Round-trip JSON should be consistent for {typeof(T).Name}");
     }

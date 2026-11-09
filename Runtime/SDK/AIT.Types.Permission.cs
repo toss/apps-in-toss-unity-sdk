@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -16,49 +15,40 @@ namespace AppsInToss
 {
     [Serializable]
     [Preserve]
-    public class GetPermissionPermission
+    public partial class GetPermissionPermission
     {
         [Preserve]
-        [JsonProperty("name")]
         public PermissionName Name;
         [Preserve]
-        [JsonProperty("access")]
         public PermissionAccess Access;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class OpenPermissionDialogPermission
+    public partial class OpenPermissionDialogPermission
     {
         [Preserve]
-        [JsonProperty("name")]
         public PermissionName Name;
         [Preserve]
-        [JsonProperty("access")]
         public PermissionAccess Access;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class RequestPermissionPermission
+    public partial class RequestPermissionPermission
     {
         [Preserve]
-        [JsonProperty("name")]
         public PermissionName Name;
         [Preserve]
-        [JsonProperty("access")]
         public PermissionAccess Access;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

@@ -247,17 +247,17 @@ describe('생성된 Runtime/SDK 에 반영', () => {
 
   /** `public class <name> { ... }` 본문 (다음 클래스/enum 선언 직전까지) */
   function classBody(name: string): string {
-    const start = typeText.search(new RegExp(`public class ${name}\\b`));
+    const start = typeText.search(new RegExp(`public (?:partial )?class ${name}\\b`));
     expect(start, `class ${name}`).toBeGreaterThanOrEqual(0);
     const rest = typeText.slice(start + 1);
-    const next = rest.search(/\n    (?:public (?:class|enum)|\[Serializable\])/);
+    const next = rest.search(/\n    (?:public (?:partial )?(?:class|enum)|\[Serializable\])/);
     return rest.slice(0, next < 0 ? undefined : next);
   }
 
   test.each(STRING_ENUM_COMPAT)('$type.$member: string 필드 [Obsolete] + $memberTyped', ({ type, member }) => {
     const body = classBody(type);
     expect(body).toMatch(new RegExp(`\\[Obsolete\\("Use ${member}Typed"\\)\\]\\n\\s+public string ${member};`));
-    expect(body).toMatch(new RegExp(`\\[JsonIgnore\\]\\n\\s+public \\w+\\? ${member}Typed\\n`));
+    expect(body).toMatch(new RegExp(`\\n\\s+public \\w+\\? ${member}Typed\\n`));
   });
 
   test.each(OPTIONAL_NUMBER_COMPAT)('$type.$member: double [Obsolete] + double? $memberTyped', ({ type, member }) => {
@@ -278,7 +278,7 @@ describe('생성된 Runtime/SDK 에 반영', () => {
   });
 
   test.each(LEGACY_TYPES)('$name: 옛 타입이 [Obsolete] 로 남아 있다', ({ name }) => {
-    expect(typeText).toMatch(new RegExp(`\\[Obsolete\\("[^"]+"\\)\\]\\n\\s+public class ${name}\\n`));
+    expect(typeText).toMatch(new RegExp(`\\[Obsolete\\("[^"]+"\\)\\]\\n\\s+public (?:partial )?class ${name}\\n`));
   });
 
   test.each(Object.entries(ENUM_MEMBER_ORDER))('%s: 이전 SDK 멤버 순서를 앞에 둔다', (name, order) => {

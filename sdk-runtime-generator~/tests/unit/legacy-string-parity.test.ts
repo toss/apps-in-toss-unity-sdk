@@ -73,7 +73,7 @@ describe('옛 string 반환 멤버: 이전 SDK와 같은 문자열', () => {
     const start = core.indexOf('case "string":');
     const block = core.slice(start, core.indexOf('case "bool":', start));
     expect(block).toContain('stringData.StartsWith("\\"") && stringData.EndsWith("\\"") && stringData.Length >= 2');
-    expect(block).toContain('stringData = JsonConvert.DeserializeObject<string>(stringData);');
+    expect(block).toContain('stringData = AITJson.Str(AITJson.Parse(stringData));');
     expect(block).toContain('stringCallback(stringData);');
   });
 

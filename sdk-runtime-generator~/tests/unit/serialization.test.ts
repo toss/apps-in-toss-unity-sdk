@@ -239,31 +239,15 @@ describe('JSON 스키마 일치성 검증', () => {
       expect(classesWithoutPreserve).toHaveLength(0);
     });
 
-    test('모든 public 프로퍼티가 [Preserve] 어트리뷰트를 가져야 함', () => {
-      // JsonProperty가 있는 프로퍼티 찾기
-      // 패턴: [Preserve]와 [JsonProperty]가 순서에 상관없이 있어야 함
-      const propertyRegex = /(?:\[Preserve\]\s*)?(?:\[JsonProperty\([^\]]+\)\])\s*(?:\[Preserve\])?\s*public\s+\w+\s+(\w+)/g;
-      const matches = [...typesFileContent.matchAll(propertyRegex)];
-
-      let propertiesWithPreserve = 0;
-      let propertiesWithoutPreserve = 0;
-
-      for (const match of matches) {
-        const fullMatch = match[0];
-
-        if (fullMatch.includes('[Preserve]')) {
-          propertiesWithPreserve++;
-        } else {
-          propertiesWithoutPreserve++;
-        }
-      }
-
-      console.log(
-        `✅ 프로퍼티 분석: ${propertiesWithPreserve}개 [Preserve] 있음, ${propertiesWithoutPreserve}개 없음`
-      );
-
-      // 모든 JsonProperty에 Preserve가 있어야 함
-      expect(propertiesWithoutPreserve).toBe(0);
+    test('모든 [Serializable] 타입에 생성된 JSON 읽기·쓰기 코드가 있어야 함', () => {
+      const codec = allCSharpFiles.get('AITJsonCodec.cs');
+      expect(codec).toBeDefined();
+      const names = [...typesFileContent.matchAll(/\[Serializable\]\s*\n(?:\s*\[[^\n]*\]\s*\n)*\s*public partial class (\w+)/g)].map(m => m[1]);
+      expect(names.length).toBeGreaterThan(100);
+      const missingReader = names.filter(n => !codec!.includes(`internal static ${n} R_${n}(JsonValue j)`));
+      const missingWriter = names.filter(n => !codec!.includes(`partial class ${n} : IAITJsonWritable`));
+      expect(missingReader).toEqual([]);
+      expect(missingWriter).toEqual([]);
     });
   });
 
@@ -345,7 +329,7 @@ describe('JSON 스키마 일치성 검증', () => {
             'AITCore.cs에서 Enum.TryParse를 사용하고 있습니다.\n' +
               'Enum.TryParse는 C# 멤버 이름만 인식하고 [EnumMember] 어트리뷰트를 무시하므로,\n' +
               `Value≠식별자인 enum(${mismatchedEnums.map(([_, v, id]) => `"${v}"→${id}`).join(', ')})에서 파싱이 실패합니다.\n` +
-              'JsonConvert.DeserializeObject를 사용하세요.'
+              '생성된 enum 읽기(AITJsonCodec.RE_*)를 사용하세요.'
           );
         }
         console.log('✅ AITCore.cs에서 Enum.TryParse 미사용 확인');
@@ -354,17 +338,12 @@ describe('JSON 스키마 일치성 검증', () => {
   });
 
   describe('JSON 직렬화 옵션', () => {
-    test('AITCore.cs에 JsonSerializerSettings가 정의되어야 함', () => {
-      const coreFile = allCSharpFiles.get('AITCore.cs');
-      expect(coreFile).toBeDefined();
-
-      // JsonSerializerSettings 또는 JsonSerializerOptions 확인
-      const hasJsonSettings =
-        coreFile!.includes('JsonSerializerSettings') ||
-        coreFile!.includes('JsonSerializerOptions') ||
-        coreFile!.includes('JsonConvert');
-
-      expect(hasJsonSettings).toBe(true);
+    test('AITJson.cs가 AITJsonSettings.Serialize를 정의하고, SDK는 Newtonsoft를 참조하지 않아야 함', () => {
+      const runtime = allCSharpFiles.get('AITJson.cs');
+      expect(runtime).toBeDefined();
+      expect(runtime!).toContain('public static string Serialize(object obj)');
+      const offenders = [...allCSharpFiles.entries()].filter(([, code]) => code.includes('Newtonsoft')).map(([f]) => f);
+      expect(offenders).toEqual([]);
     });
   });
 

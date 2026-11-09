@@ -98,7 +98,7 @@ describe('공개 타입 이름 pin', () => {
     for (const shim of DEPRECATED_TYPE_SHIMS) {
       expect(publicNames.has(shim.name), `${shim.name}은 기존 공개 이름이어야 한다`).toBe(true);
       expect(generated.has(shim.base), `${shim.name}의 기반 ${shim.base}가 생성돼야 한다`).toBe(true);
-      expect(text).toMatch(new RegExp(`\\[Obsolete\\("[^"]*"\\)\\]\\s+public class ${shim.name} : ${shim.base}\\b`));
+      expect(text).toMatch(new RegExp(`\\[Obsolete\\("[^"]*"\\)\\]\\s+public (?:partial )?class ${shim.name} : ${shim.base}\\b`));
     }
   });
 

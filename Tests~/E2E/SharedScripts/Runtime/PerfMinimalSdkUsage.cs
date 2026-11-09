@@ -1,0 +1,33 @@
+#if AIT_PERF_MINIMAL
+using UnityEngine;
+using AppsInToss;
+
+/// <summary>
+/// perf minimal posture 의 "SDK 를 실제로 쓰는 빈 게임" 대역.
+/// SDK 를 참조하는 코드가 하나도 없으면 IL2CPP 가 SDK 어셈블리를 통째로 지워 SDK 몫(코드 크기·부팅 훅)이 측정에서 빠진다.
+/// 반대로 어셈블리를 통째로 보존하면 실제 게임보다 많이 실린다. 그래서 미니게임이 흔히 부르는 API 묶음을
+/// 실행되지 않는 분기에서 참조해, 실제 게임과 같은 범위의 SDK 코드(호출 경로·DTO·직렬화)가 빌드에 남게 한다.
+/// 분기 조건은 런타임 값이라 IL2CPP 가 지우지 못하고, 측정 중에는 API 를 부르지 않는다(호스트 없는 헤드리스에서 오류를 내지 않게).
+/// </summary>
+public static class PerfMinimalSdkUsage
+{
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void OnAfterSceneLoad()
+    {
+        if (Application.absoluteURL == "ait-perf-never") Use();
+    }
+
+    private static async void Use()
+    {
+        string userKey = await AIT.GetUserKeyForGame();
+        var insets = await AIT.GetSafeAreaInsets();
+        await AIT.GenerateHapticFeedback(new HapticFeedbackOptions { Type = HapticFeedbackType.Tap });
+        await AIT.Share(new ShareMessage { Message = userKey });
+        string saved = await AIT.StorageGetItem("best");
+        await AIT.StorageSetItem("best", saved + insets.Top);
+        await AIT.SubmitGameCenterLeaderBoardScore(new SubmitGameCenterLeaderBoardScoreParams { Score = "1" });
+        await AIT.GetLocale();
+        AIT.LoadFullScreenAd("ait-perf", e => AIT.ShowFullScreenAd("ait-perf", _ => { }, null), null);
+    }
+}
+#endif

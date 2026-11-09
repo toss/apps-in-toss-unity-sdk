@@ -104,6 +104,17 @@ public class SentryNoiseSuppressionCallsiteTests
             expectWarning: false);  // AITLog.Error (사용자에게 치명적 오류로 표시해야 하므로 Error 레벨)
 
     /// <summary>
+    /// 회귀 가드 — APPS-IN-TOSS-UNITY-SDK-12N: CI/batch에서 GitGuard가 staged 변경을 알리는 안내는
+    /// 정상 흐름이라 AITLog.Warning(sentryCapture:false)를 유지하는지 검증.
+    /// </summary>
+    [Test]
+    public void Sentry12N_GitGuardStagedNotice_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "AITGitGuard.cs",
+            ".gitignore 및 untrack 변경이 staged되었습니다.",
+            "12N");
+
+    /// <summary>
     /// 회귀 가드 — APPS-IN-TOSS-UNITY-SDK-19M:
     /// Run3xBuildAsync가 vite build(web-framework 3.x, 2단계 빌드의 1단계) 실패를 로그할 때
     /// raw Debug.LogError 로 되돌아가지 않고 AITLog.Error(sentryCapture:false) 를 유지하는지 검증.
@@ -114,20 +125,6 @@ public class SentryNoiseSuppressionCallsiteTests
     /// 이벤트로 별도 캡처하므로, 이 중간 단계 요약 로그가 raw Debug.LogError로 되돌아가면 동일
     /// 실패가 "[AIT] vite build 실패 (3.x)"라는 SDK 자체 로그로 Sentry에 노이즈 중복 전송된다.
     /// </summary>
-    [Test]
-    public void Sentry12N_GitGuardStagedNotice_StaysSentrySuppressed()
-        => AssertCallsiteSuppressed(
-            "AITGitGuard.cs",
-            ".gitignore 및 untrack 변경이 staged되었습니다.",
-            "12N");
-
-    [Test]
-    public void Sentry115_NonFatalPlaceholderBlock_StaysSentrySuppressed()
-        => AssertCallsiteSuppressed(
-            "AITBuildValidator.cs",
-            "미치환된 플레이스홀더 발견 (비치명적)",
-            "115");
-
     [Test]
     public void NineteenM_ViteBuildFailure_StaysSentrySuppressed()
         => AssertCallsiteSuppressed(

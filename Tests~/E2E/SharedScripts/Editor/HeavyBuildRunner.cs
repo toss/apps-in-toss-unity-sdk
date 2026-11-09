@@ -107,6 +107,8 @@ public class HeavyBuildRunner
         // game posture 가 아니면 항상 먼저 지운다(game 은 아래에서 Generate 가 다시 만든다).
         if (posture != "game") GameFixtureBuilder.Cleanup();
         if (posture != "mobilegame" && posture != "mobileheavy") MobileGameBuilder.Cleanup();
+        // minimal 이 둔 SDK 참조 대역이 남으면 다른 posture 빌드에도 SDK 코드가 더 실린다.
+        if (posture != "minimal") AssetDatabase.DeleteAsset(MinimalSdkUsageDir);
 
         // perf mobilegame posture: 세로 화면 탭 점프 러너(스프라이트·uGUI·BGM/효과음·PlayerPrefs, 엔진 물리 없음)를 절차 생성해 빌드한다.
         // 하이퍼캐주얼 미니게임 형태의 실제 앱으로 로드·프레임·메모리를 재고 mobile-game.test.js 로 플레이 기능을 검증한다.
@@ -119,6 +121,7 @@ public class HeavyBuildRunner
             AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
             // 헤비 픽스처의 콜라이더를 지키는 link.xml 이 남으면 쓰지 않는 PhysX 가 실린다.
             AssetDatabase.DeleteAsset("Assets/link.xml");
+            StageMinimalSdkUsage();
             System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
             string[] runScenes;
             try
@@ -180,6 +183,7 @@ public class HeavyBuildRunner
             AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
             // 픽스처의 CreatePrimitive 콜라이더를 지키는 link.xml 이 남으면 빈 씬에도 PhysX(wasm ~2.5MB)가 실린다.
             AssetDatabase.DeleteAsset("Assets/link.xml");
+            StageMinimalSdkUsage();
             System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
             Debug.Log("[heavy] minimal posture: 생성 콘텐츠·픽스처·Sentry 없이 빈 씬 + SDK 로 빌드");
             if (!ApplyPerfVariants()) return;
@@ -298,6 +302,25 @@ public class HeavyBuildRunner
     public static void CommandLineHeavyBuild()
     {
         BuildHeavy();
+    }
+
+    internal const string MinimalSdkUsageDir = "Assets/PerfMinimal";
+    internal const string MinimalSdkUsageAsset = MinimalSdkUsageDir + "/PerfMinimalSdkUsage.cs";
+
+    /// <summary>minimal 빈 씬에 "SDK 를 쓰는 게임 코드" 대역을 Assembly-CSharp 로 넣는다. 원본은 패키지의 Editor/PerfMinimal~ 에 있다.
+    /// 실패하면 SDK 몫이 빠진 채로 재게 되므로 빌드를 멈춘다.</summary>
+    private static void StageMinimalSdkUsage()
+    {
+        var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(HeavyBuildRunner).Assembly);
+        if (pkg == null || string.IsNullOrEmpty(pkg.resolvedPath))
+        {
+            throw new System.InvalidOperationException("[heavy] minimal posture: 테스트 스크립트 패키지 경로를 찾지 못했습니다");
+        }
+        string src = Path.Combine(pkg.resolvedPath, "Editor", "PerfMinimal~", "PerfMinimalSdkUsage.cs.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(MinimalSdkUsageAsset)));
+        File.Copy(src, Path.GetFullPath(MinimalSdkUsageAsset), overwrite: true);
+        AssetDatabase.ImportAsset(MinimalSdkUsageAsset, ImportAssetOptions.ForceSynchronousImport);
+        Debug.Log($"[heavy] minimal posture: {MinimalSdkUsageAsset} 배치(SDK API 참조 대역)");
     }
 
     private static void GenerateHeavyContent()

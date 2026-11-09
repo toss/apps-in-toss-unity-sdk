@@ -42,7 +42,7 @@ describe('콜백 디스패치 템플릿 HTML escape 회귀 (csharp-core.hbs)', (
 
     // 제네릭 인자가 raw여야 C# 컴파일 가능
     expect(rendered).toContain(`TryGetCallback<${DICT}>`);
-    expect(rendered).toContain(`JsonConvert.DeserializeObject<${DICT}>`);
+    expect(rendered).toContain(`AITJsonCodec.Deserialize<${DICT}>`);
 
     // 에러 콜백 AITException 메시지의 타입명도 raw
     expect(rendered).toContain(`new AITException("${DICT}", apiResponse.error, apiResponse.errorName)`);

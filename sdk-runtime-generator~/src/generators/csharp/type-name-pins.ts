@@ -70,7 +70,10 @@ export const TYPE_NAME_PINS: Readonly<Record<string, string>> = {
  * 의도적으로 제거한다 (`tests/fixtures/public-type-names.json` 검증에서 이 목록은 건너뛴다).
  */
 export const REMOVED_PUBLIC_TYPE_NAMES: readonly string[] = [
-  // 비어 있다: 공개 타입은 하나도 지우지 않는다. 3.x 에서 사라진 타입도 compat.ts 의 LEGACY_TYPES 가 `[Obsolete]` 로 남긴다.
+  // 3.x 에서 사라진 타입은 compat.ts 의 LEGACY_TYPES 가 `[Obsolete]` 로 남긴다. 여기에는 남길 수 없는 것만 둔다.
+  // Newtonsoft.Json.JsonConverter 하위 클래스라 SDK가 Newtonsoft를 참조하지 않으면 정의할 수 없다.
+  // SDK 직렬화는 생성 코드(AITJsonCodec.cs)가 맡고, enum은 [EnumMember] 값을 그대로 쓴다.
+  'SmartEnumConverter',
 ];
 
 /**

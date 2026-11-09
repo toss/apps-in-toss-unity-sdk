@@ -33,10 +33,10 @@ async function main() {
   // Golden 디렉토리 생성
   await fs.mkdir(GOLDEN_DIR, { recursive: true });
 
-  // 복사할 파일 목록 — 타입 정의는 카테고리별로 분할되므로 동적 수집 (+ AITCore.cs 고정)
+  // 복사할 파일 목록 — 타입 정의는 카테고리별로 분할되므로 동적 수집 (+ AITCore.cs, AITJsonCodec.cs 고정)
   const generatedFiles = await fs.readdir(SDK_GENERATED_DIR).catch(() => [] as string[]);
   const typeFiles = generatedFiles.filter(f => TYPE_FILE_RE.test(f)).sort();
-  const FILES_TO_COPY = [...typeFiles, 'AITCore.cs'];
+  const FILES_TO_COPY = [...typeFiles, 'AITCore.cs', 'AITJsonCodec.cs'];
 
   // 더 이상 생성되지 않는 타입 golden 정리 (구버전 단일 AIT.Types.cs.golden, 카테고리 리네임 등)
   const keep = new Set(FILES_TO_COPY.map(f => `${f}.golden`));

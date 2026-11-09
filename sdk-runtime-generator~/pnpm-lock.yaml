@@ -127,6 +127,10 @@ packages:
     resolution: {integrity: sha512-ljYMvh/dCuv8YZEDLbbkf2LDXEhi3VHMQgKFi3BWplkKxu6Kcm9EP3OOiGr7tHTjT83U8u8RIbrZeLDwtZFs/Q==}
     hasBin: true
 
+  '@apps-in-toss/cli@3.10.0':
+    resolution: {integrity: sha512-rqtMfOat591nAmSFb2G/tVuuh3bLIRud0hewjR1G+g7W+IhCus86V5nAaoVvuG2MTmOx0d6qcDaJP3JgK1nwgg==}
+    hasBin: true
+
   '@apps-in-toss/cli@3.2.0':
     resolution: {integrity: sha512-qbHyhP1GGBvgecR/BQmKefXmYvR/gJ+y94/sQIAEy1BYcdbxX1AHio3nwwNzTiwlGtrageEz/Jx0fNyrm/O/ew==}
     hasBin: true
@@ -922,8 +926,8 @@ packages:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
     engines: {node: 18 || 20 || >=22}
 
-  baseline-browser-mapping@2.11.34:
-    resolution: {integrity: sha512-Aqr8mA1kIvyJ3UY5YAY7ib8LSo1DmDMbMnVqGPtsKW1LxaFQFwn9Eb3yvq2fUKJsRvaXjnAV7R5osqETapzNiA==}
+  baseline-browser-mapping@2.11.35:
+    resolution: {integrity: sha512-GNk8KX52CHqeNKGk8+7tZnQab/2k1t/BgrUHPKNdijzpEhF1saPQZHVKb6m5loSAxB39gyrTYw34Qf9CQ3u1qQ==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -1009,8 +1013,8 @@ packages:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
-  electron-to-chromium@1.5.472:
-    resolution: {integrity: sha512-s4+nfT29b0FKpVKoaIxl2pWsoNcn7A/nMPSrxayw4T3BsmPeV2lF9Y06BsAQeMGhCTQ4nYJ5XST7jkqe4ZEqFw==}
+  electron-to-chromium@1.5.473:
+    resolution: {integrity: sha512-9njcRQK+6FOXNAWw5g+h2RPiyazqo5RFMVJ39ZMHjDHUNnnFlhnOGV7O0WmJetODDx19ES5p+FLi+KCVFQGugw==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -1354,16 +1358,16 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
-  semver@5.7.2:
-    resolution: {integrity: sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==}
+  semver@5.7.3:
+    resolution: {integrity: sha512-kM18BPOqTi0+TB68703/GJRpAML5Me+IDQsR1J26YB3EFKKNEyHIVZuWDX7+WKQB3tHwDwgk24BfhdpWUbytvQ==}
     hasBin: true
 
-  semver@6.3.1:
-    resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
+  semver@6.3.2:
+    resolution: {integrity: sha512-GYrCADwpu6yV5OAvchkQ27Z5wwMxWAEMg5NNWjyHh/5DboFFqbdbvYNIvZouQpxXyeMPoTOh0vdPYKlf0ZswdQ==}
     hasBin: true
 
-  semver@7.8.5:
-    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+  semver@7.8.6:
+    resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -1658,6 +1662,21 @@ snapshots:
       - supports-color
       - typanion
 
+  '@apps-in-toss/cli@3.10.0(typanion@3.14.0)':
+    dependencies:
+      '@apps-in-toss/ait-format': 1.0.0
+      '@clack/prompts': 1.8.1
+      c12: 3.3.4
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      jscodeshift: 17.4.0
+      picocolors: 1.1.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+
   '@apps-in-toss/cli@3.2.0(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
@@ -1795,9 +1814,9 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.1(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.9.0(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.10.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1808,9 +1827,9 @@ snapshots:
 
   '@apps-in-toss/web-framework@3.0.2(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.9.0(typanion@3.14.0)
+      '@apps-in-toss/cli': 3.10.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1823,7 +1842,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.0.3(typanion@3.14.0)
       '@webview-bridge/web': 1.7.9
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1836,7 +1855,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.0.4(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1849,7 +1868,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.0.5(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1862,7 +1881,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.1.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1875,7 +1894,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.1.1(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1888,7 +1907,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.2.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1901,7 +1920,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.3.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1914,7 +1933,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.4.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1927,7 +1946,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.4.1(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1940,7 +1959,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.5.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1953,7 +1972,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.6.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1966,7 +1985,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.7.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1979,7 +1998,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.8.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -1992,7 +2011,7 @@ snapshots:
     dependencies:
       '@apps-in-toss/cli': 3.9.0(typanion@3.14.0)
       '@webview-bridge/web': 1.7.10
-      semver: 7.8.5
+      semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
       - '@babel/preset-env'
@@ -2025,7 +2044,7 @@ snapshots:
       debug: 4.4.3
       gensync: 1.0.0-beta.2
       json5: 2.2.3
-      semver: 6.3.1
+      semver: 6.3.2
     transitivePeerDependencies:
       - supports-color
 
@@ -2047,7 +2066,7 @@ snapshots:
       '@babel/helper-validator-option': 7.29.7
       browserslist: 4.29.5
       lru-cache: 5.1.1
-      semver: 6.3.1
+      semver: 6.3.2
 
   '@babel/helper-create-class-features-plugin@7.29.12(@babel/core@7.29.7)':
     dependencies:
@@ -2058,7 +2077,7 @@ snapshots:
       '@babel/helper-replace-supers': 7.29.7(@babel/core@7.29.7)
       '@babel/helper-skip-transparent-expression-wrappers': 7.29.7
       '@babel/traverse': 7.29.12
-      semver: 6.3.1
+      semver: 6.3.2
     transitivePeerDependencies:
       - supports-color
 
@@ -2586,7 +2605,7 @@ snapshots:
 
   balanced-match@4.0.4: {}
 
-  baseline-browser-mapping@2.11.34: {}
+  baseline-browser-mapping@2.11.35: {}
 
   brace-expansion@5.0.12:
     dependencies:
@@ -2594,9 +2613,9 @@ snapshots:
 
   browserslist@4.29.5:
     dependencies:
-      baseline-browser-mapping: 2.11.34
+      baseline-browser-mapping: 2.11.35
       caniuse-lite: 1.0.30001820
-      electron-to-chromium: 1.5.472
+      electron-to-chromium: 1.5.473
       node-releases: 2.0.63
       update-browserslist-db: 1.3.4(browserslist@4.29.5)
 
@@ -2659,7 +2678,7 @@ snapshots:
 
   dotenv@17.4.2: {}
 
-  electron-to-chromium@1.5.472: {}
+  electron-to-chromium@1.5.473: {}
 
   es-module-lexer@2.3.2: {}
 
@@ -2872,7 +2891,7 @@ snapshots:
   make-dir@2.1.0:
     dependencies:
       pify: 4.0.1
-      semver: 5.7.2
+      semver: 5.7.3
 
   minimatch@10.2.6:
     dependencies:
@@ -2993,11 +3012,11 @@ snapshots:
       '@rolldown/binding-win32-arm64-msvc': 1.2.16
       '@rolldown/binding-win32-x64-msvc': 1.2.16
 
-  semver@5.7.2: {}
+  semver@5.7.3: {}
 
-  semver@6.3.1: {}
+  semver@6.3.2: {}
 
-  semver@7.8.5: {}
+  semver@7.8.6: {}
 
   shallow-clone@3.0.1:
     dependencies:

@@ -37,7 +37,7 @@ const TYPE_FILE_RE = /^AIT\.Types\..+\.cs$/;
  * 비교할 주요 파일 목록을 동적으로 수집한다.
  * 타입 정의는 카테고리별로 분할(AIT.Types.{Category}.cs)되므로 생성 디렉토리와
  * golden 디렉토리 양쪽에서 발견되는 타입 파일의 합집합을 대상으로 한다
- * (카테고리 추가/삭제 모두 회귀로 검출). AITCore.cs는 항상 포함.
+ * (카테고리 추가/삭제 모두 회귀로 검출). AITCore.cs와 AITJsonCodec.cs는 항상 포함.
  */
 function discoverGoldenFiles(): string[] {
   const typeFiles = new Set<string>();
@@ -53,7 +53,7 @@ function discoverGoldenFiles(): string[] {
       }
     }
   } catch { /* golden 디렉토리 없음 */ }
-  return [...Array.from(typeFiles).sort(), 'AITCore.cs'];
+  return [...Array.from(typeFiles).sort(), 'AITCore.cs', 'AITJsonCodec.cs'];
 }
 
 // 비교할 주요 파일들 (jslib 파일은 자주 변경되므로 선택적으로 포함)

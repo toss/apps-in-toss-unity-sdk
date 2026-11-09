@@ -167,7 +167,7 @@ public class SerializationTester : MonoBehaviour
         TestClassSerialization("GetCurrentLocationOptions", new GetCurrentLocationOptions
         {
             Accuracy = Accuracy.Balanced
-        }, json => json.ToLower().Contains("balanced"));
+        }, json => json.Contains("\"accuracy\":3")); // 숫자 enum은 숫자로 나간다(SDK 와이어 형식)
 
         // HapticFeedbackOptions 테스트
         TestClassSerialization("HapticFeedbackOptions", new HapticFeedbackOptions

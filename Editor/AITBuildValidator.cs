@@ -82,15 +82,15 @@ namespace AppsInToss.Editor
                 else
                 {
                     // 비치명적 플레이스홀더 (경고만)
-                    Debug.LogWarning("[AIT] ========================================");
-                    Debug.LogWarning("[AIT] ⚠ 미치환된 플레이스홀더 발견 (비치명적)");
-                    Debug.LogWarning("[AIT] ========================================");
+                    AITLog.Warning("[AIT] ========================================", sentryCapture: false);
+                    AITLog.Warning("[AIT] ⚠ 미치환된 플레이스홀더 발견 (비치명적)", sentryCapture: false);
+                    AITLog.Warning("[AIT] ========================================", sentryCapture: false);
                     foreach (var placeholder in uniquePlaceholders)
                     {
-                        Debug.LogWarning($"[AIT]   - {placeholder}");
+                        AITLog.Warning($"[AIT]   - {placeholder}", sentryCapture: false);
                     }
-                    Debug.LogWarning($"[AIT] 파일: {filePath}");
-                    Debug.LogWarning("[AIT] ========================================");
+                    AITLog.Warning($"[AIT] 파일: {filePath}", sentryCapture: false);
+                    AITLog.Warning("[AIT] ========================================", sentryCapture: false);
                 }
             }
 

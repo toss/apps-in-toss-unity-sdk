@@ -115,6 +115,20 @@ public class SentryNoiseSuppressionCallsiteTests
     /// 실패가 "[AIT] vite build 실패 (3.x)"라는 SDK 자체 로그로 Sentry에 노이즈 중복 전송된다.
     /// </summary>
     [Test]
+    public void Sentry12N_GitGuardStagedNotice_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "AITGitGuard.cs",
+            ".gitignore 및 untrack 변경이 staged되었습니다.",
+            "12N");
+
+    [Test]
+    public void Sentry115_NonFatalPlaceholderBlock_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed(
+            "AITBuildValidator.cs",
+            "미치환된 플레이스홀더 발견 (비치명적)",
+            "115");
+
+    [Test]
     public void NineteenM_ViteBuildFailure_StaysSentrySuppressed()
         => AssertCallsiteSuppressed(
             "GraniteBuildRunner.cs",

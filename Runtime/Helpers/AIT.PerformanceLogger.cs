@@ -39,7 +39,9 @@ namespace AppsInToss
         // first-interactive 관련 상수 및 상태
         private const string ProxyBootScenePrefix = "AITProxyBoot";
         private static bool _firstInteractiveSent;
+#if UNITY_WEBGL && !UNITY_EDITOR
         private static int _firstInteractiveEnabledCache = -1; // -1=미확인, 0=비활성, 1=활성
+#endif
 
         // Rate limit constants
         private const float LowMemoryIntervalSec = 30f;

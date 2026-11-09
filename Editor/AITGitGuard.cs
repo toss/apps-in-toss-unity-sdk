@@ -239,7 +239,7 @@ namespace AppsInToss.Editor
                 if (AITPlatformHelper.IsNonInteractive)
                 {
                     // CI/batch mode — 커밋은 사용자에게 맡김
-                    Debug.LogWarning("[AIT] GitGuard: .gitignore 및 untrack 변경이 staged되었습니다. 필요 시 직접 커밋해주세요: git commit -m \"정리: Git 보호 설정\"");
+                    AITLog.Warning("[AIT] GitGuard: .gitignore 및 untrack 변경이 staged되었습니다. 필요 시 직접 커밋해주세요: git commit -m \"정리: Git 보호 설정\"", sentryCapture: false);
                 }
                 else
                 {

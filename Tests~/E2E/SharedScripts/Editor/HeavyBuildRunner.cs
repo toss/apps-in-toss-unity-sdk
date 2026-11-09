@@ -121,7 +121,6 @@ public class HeavyBuildRunner
             AssetDatabase.DeleteAsset("Assets/Resources/Sentry/SentryOptions.asset");
             // 헤비 픽스처의 콜라이더를 지키는 link.xml 이 남으면 쓰지 않는 PhysX 가 실린다.
             AssetDatabase.DeleteAsset("Assets/link.xml");
-            StageMinimalSdkUsage();
             System.Environment.SetEnvironmentVariable("SENTRY_DSN", null);
             string[] runScenes;
             try

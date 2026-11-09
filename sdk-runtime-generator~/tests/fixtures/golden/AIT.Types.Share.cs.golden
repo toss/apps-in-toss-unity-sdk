@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -64,163 +63,128 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class ShareSendMessageMessage
+    public partial class ShareSendMessageMessage
     {
         [Preserve]
-        [JsonProperty("message")]
         public string Message;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ViralGetCampaignOptions
+    public partial class ViralGetCampaignOptions
     {
         [Preserve]
-        [JsonProperty("campaignId")]
         public string CampaignId;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ViralGetCampaignResult
+    public partial class ViralGetCampaignResult
     {
         [Preserve]
-        [JsonProperty("campaignId")]
         public string CampaignId;
         [Preserve]
-        [JsonProperty("benefitName")]
         public string BenefitName;
         [Preserve]
-        [JsonProperty("display")]
         public ViralGetCampaignResultDisplay Display;
         [Preserve]
-        [JsonProperty("active")]
         public bool Active;
         [Preserve]
-        [JsonProperty("campaignStatus")]
         public ViralGetCampaignResultCampaignStatus CampaignStatus;
         [Preserve]
-        [JsonProperty("participationAvailable")]
         public bool ParticipationAvailable;
         [Preserve]
-        [JsonProperty("participationUnavailableReason")]
         public ViralGetCampaignResultParticipationUnavailableReason ParticipationUnavailableReason;
         [Preserve]
-        [JsonProperty("rules")]
         public ViralGetCampaignResultRule[] Rules;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ViralGetCampaignResultDisplay
+    public partial class ViralGetCampaignResultDisplay
     {
         [Preserve]
-        [JsonProperty("title")]
         public string Title;
         [Preserve]
-        [JsonProperty("benefitText")]
         public string BenefitText;
         [Preserve]
-        [JsonProperty("conditionText")]
         public string ConditionText;
         [Preserve]
-        [JsonProperty("ctaText")]
         public string CtaText;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ViralGetCampaignResultRule
+    public partial class ViralGetCampaignResultRule
     {
         [Preserve]
-        [JsonProperty("ruleId")]
         public string RuleId;
         [Preserve]
-        [JsonProperty("ruleKey")]
         public string RuleKey;
         [Preserve]
-        [JsonProperty("revision")]
         public double Revision;
         [Preserve]
-        [JsonProperty("title")]
         public string Title;
         [Preserve]
-        [JsonProperty("currentValue")]
         public double CurrentValue;
         [Preserve]
-        [JsonProperty("targetValue")]
         public double TargetValue;
         [Preserve]
-        [JsonProperty("status")]
         public ViralGetCampaignResultRuleStatus Status;
         [Preserve]
-        [JsonProperty("achievedAt")]
         public string AchievedAt;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ViralShareOptions
+    public partial class ViralShareOptions
     {
         [Preserve]
-        [JsonProperty("campaignId")]
         public string CampaignId;
         [Preserve]
-        [JsonProperty("title")]
         public string Title; // optional
         [Preserve]
-        [JsonProperty("description")]
         public string Description; // optional
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class TrackViralParams
+    public partial class TrackViralParams
     {
         [Preserve]
-        [JsonProperty("eventName")]
         public string EventName;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ShareMessage
+    public partial class ShareMessage
     {
         [Preserve]
-        [JsonProperty("message")]
         public string Message;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     /// <summary>
@@ -228,22 +192,19 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class ContactsViralEventData
+    public partial class ContactsViralEventData
     {
         [Preserve]
-        [JsonProperty("rewardAmount", NullValueHandling = NullValueHandling.Ignore)]
         [Obsolete("Use RewardAmountTyped")]
         public double RewardAmount;
 
-        /// <summary>와이어에 <see cref="RewardAmount"/> 값이 왔는지 여부. Newtonsoft가 역직렬화할 때 채운다.</summary>
-        [JsonIgnore]
+        /// <summary>와이어에 <see cref="RewardAmount"/> 값이 왔는지 여부. SDK가 JSON을 읽을 때 채운다.</summary>
         [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
         public bool RewardAmountSpecified { get; set; }
 
         /// <summary>
         /// <see cref="RewardAmount"/>를 값이 없으면 null로 돌려준다. 값을 쓰면 <see cref="RewardAmount"/>도 함께 바뀐다.
         /// </summary>
-        [JsonIgnore]
         public double? RewardAmountTyped
         {
             get => RewardAmountSpecified || RewardAmount != 0 ? RewardAmount : (double?)null;
@@ -254,94 +215,73 @@ namespace AppsInToss
             }
         }
         [Preserve]
-        [JsonProperty("rewardUnit")]
         public string RewardUnit; // optional
         [Preserve]
-        [JsonProperty("closeReason")]
         public ContactsViralEventDataCloseReason? CloseReason; // optional
         [Preserve]
-        [JsonProperty("sentRewardAmount")]
         public double? SentRewardAmount; // optional
         [Preserve]
-        [JsonProperty("sendableRewardsCount")]
         public double? SendableRewardsCount; // optional
         [Preserve]
-        [JsonProperty("sentRewardsCount")]
         public double? SentRewardsCount; // optional
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ContactsViralEvent
+    public partial class ContactsViralEvent
     {
         [Preserve]
-        [JsonProperty("type")]
         public string Type;
         [Preserve]
-        [JsonProperty("data")]
         public ContactsViralEventData Data;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ContactsViralSuccessEventData
+    public partial class ContactsViralSuccessEventData
     {
         [Preserve]
-        [JsonProperty("closeReason")]
         public ContactsViralSuccessEventDataCloseReason CloseReason;
         [Preserve]
-        [JsonProperty("sentRewardAmount")]
         public double? SentRewardAmount; // optional
         [Preserve]
-        [JsonProperty("sendableRewardsCount")]
         public double? SendableRewardsCount; // optional
         [Preserve]
-        [JsonProperty("sentRewardsCount")]
         public double SentRewardsCount;
         [Preserve]
-        [JsonProperty("rewardUnit")]
         public string RewardUnit; // optional
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ContactsViralParamsOptions
+    public partial class ContactsViralParamsOptions
     {
         [Preserve]
-        [JsonProperty("moduleId")]
         public string ModuleId;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class ContactsViralParams
+    public partial class ContactsViralParams
     {
         [Preserve]
-        [JsonProperty("options")]
         public ContactsViralParamsOptions Options;
-        [JsonIgnore]
         public System.Action<ContactsViralEvent> OnEvent;
-        [JsonIgnore]
         public System.Action<object> OnError;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

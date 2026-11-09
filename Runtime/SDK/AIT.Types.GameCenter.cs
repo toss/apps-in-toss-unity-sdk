@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -32,18 +31,15 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameResult
+    public partial class GetUserKeyForGameResult
     {
         [Preserve]
-        [JsonProperty("_type")]
         public string _type;
 
         [Preserve]
-        [JsonProperty("_successJson")]
         public GetAnonymousKeySuccessResponse _successData;
 
         [Preserve]
-        [JsonProperty("_errorCode")]
         public string _errorCode;
 
         /// <summary>성공 여부를 나타냅니다.</summary>
@@ -109,83 +105,69 @@ namespace AppsInToss
         }
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
 
     [Serializable]
     [Preserve]
-    public class GameSetLeaderboardScoreParams
+    public partial class GameSetLeaderboardScoreParams
     {
         [Preserve]
-        [JsonProperty("score")]
         public string Score;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class GrantPromotionRewardResult
+    public partial class GrantPromotionRewardResult
     {
         [Preserve]
-        [JsonProperty("key")]
         public string Key;
         [Preserve]
-        [JsonProperty("errorCode")]
         public string ErrorCode;
         [Preserve]
-        [JsonProperty("message")]
         public string Message;
         [Preserve]
-        [JsonProperty("code")]
         [Obsolete("오류 코드는 ErrorCode로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
         public string Code;
 
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class SubmitGameCenterLeaderBoardScoreParams
+    public partial class SubmitGameCenterLeaderBoardScoreParams
     {
         [Preserve]
-        [JsonProperty("score")]
         public string Score;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class GetUserKeyForGameResponse
+    public partial class GetUserKeyForGameResponse
     {
         [Preserve]
-        [JsonProperty("hash")]
         public string Hash; // optional
         [Preserve]
-        [JsonProperty("type")]
         public string Type;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class SubmitGameCenterLeaderBoardScoreResponse
+    public partial class SubmitGameCenterLeaderBoardScoreResponse
     {
         [Preserve]
-        [JsonProperty("statusCode")]
         [Obsolete("Use StatusCodeTyped")]
         public string StatusCode;
 
@@ -193,7 +175,6 @@ namespace AppsInToss
         /// <see cref="StatusCode"/>를 <see cref="SubmitGameCenterLeaderBoardScoreResponseStatusCode"/>로 읽고 쓴다. 정의에 없는 문자열이면 읽을 때 null이고,
         /// 그 문자열은 <see cref="StatusCode"/>에 그대로 남는다. 값을 쓰면 <see cref="StatusCode"/>도 함께 바뀐다.
         /// </summary>
-        [JsonIgnore]
         public SubmitGameCenterLeaderBoardScoreResponseStatusCode? StatusCodeTyped
         {
             get => AITCompat.ParseEnum<SubmitGameCenterLeaderBoardScoreResponseStatusCode>(StatusCode);
@@ -201,8 +182,7 @@ namespace AppsInToss
         }
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     /// <summary>
@@ -211,10 +191,9 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     [Obsolete("GrantPromotionRewardParams를 사용하세요.")]
-    public class GrantPromotionRewardForGameParams : GrantPromotionRewardParams
+    public partial class GrantPromotionRewardForGameParams : GrantPromotionRewardParams
     {
         [Preserve]
-        [JsonProperty("params")]
         public new GrantPromotionRewardForGameParamsParams Params;
     }
 
@@ -224,7 +203,7 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     [Obsolete("GrantPromotionRewardParamsParams를 사용하세요.")]
-    public class GrantPromotionRewardForGameParamsParams : GrantPromotionRewardParamsParams
+    public partial class GrantPromotionRewardForGameParamsParams : GrantPromotionRewardParamsParams
     {
     }
 
@@ -234,7 +213,7 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     [Obsolete("GrantPromotionRewardResponse를 사용하세요.")]
-    public class GrantPromotionRewardForGameSuccessResponse : GrantPromotionRewardResponse
+    public partial class GrantPromotionRewardForGameSuccessResponse : GrantPromotionRewardResponse
     {
     }
 
@@ -244,7 +223,7 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     [Obsolete("GrantPromotionRewardErrorResponse를 사용하세요.")]
-    public class GrantPromotionRewardForGameErrorResponse : GrantPromotionRewardErrorResponse
+    public partial class GrantPromotionRewardForGameErrorResponse : GrantPromotionRewardErrorResponse
     {
     }
 
@@ -254,7 +233,7 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     [Obsolete("GrantPromotionRewardErrorResult를 사용하세요.")]
-    public class GrantPromotionRewardForGameErrorResult : GrantPromotionRewardErrorResult
+    public partial class GrantPromotionRewardForGameErrorResult : GrantPromotionRewardErrorResult
     {
     }
 
@@ -264,10 +243,9 @@ namespace AppsInToss
     [Serializable]
     [Preserve]
     [Obsolete("GrantPromotionRewardResponse를 사용하세요.")]
-    public class GrantPromotionRewardForGameResponse : GrantPromotionRewardResponse
+    public partial class GrantPromotionRewardForGameResponse : GrantPromotionRewardResponse
     {
         [Preserve]
-        [JsonProperty("code")]
         public string Code; // optional
     }
 }

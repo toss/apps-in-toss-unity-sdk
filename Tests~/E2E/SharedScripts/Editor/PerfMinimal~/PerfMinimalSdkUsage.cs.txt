@@ -1,9 +1,10 @@
-#if AIT_PERF_MINIMAL
 using UnityEngine;
 using AppsInToss;
 
 /// <summary>
-/// perf minimal posture 의 "SDK 를 실제로 쓰는 빈 게임" 대역.
+/// perf minimal posture 의 "SDK 를 실제로 쓰는 빈 게임" 대역. HeavyBuildRunner 가 minimal 빌드 때 Assets/ 로 복사한다.
+/// 실제 게임 코드처럼 Assembly-CSharp(루트 어셈블리)에 들어가야 링커가 여기서부터 SDK 를 따라간다(테스트 스크립트 패키지 어셈블리는
+/// 아무도 참조하지 않아 RuntimeInitializeOnLoad 훅째로 지워진다).
 /// SDK 를 참조하는 코드가 하나도 없으면 IL2CPP 가 SDK 어셈블리를 통째로 지워 SDK 몫(코드 크기·부팅 훅)이 측정에서 빠진다.
 /// 반대로 어셈블리를 통째로 보존하면 실제 게임보다 많이 실린다. 그래서 미니게임이 흔히 부르는 API 묶음을
 /// 실행되지 않는 분기에서 참조해, 실제 게임과 같은 범위의 SDK 코드(호출 경로·DTO·직렬화)가 빌드에 남게 한다.
@@ -30,4 +31,3 @@ public static class PerfMinimalSdkUsage
         AIT.LoadFullScreenAd("ait-perf", e => AIT.ShowFullScreenAd("ait-perf", _ => { }, null), null);
     }
 }
-#endif

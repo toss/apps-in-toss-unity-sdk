@@ -36,6 +36,71 @@ public class SDKJsonCodecTests
         Assert.AreEqual(expected, AITJsonSettings.Serialize(value));
     }
 
+    // 값의 JSON 타입이 필드 타입과 다른 입력. 이전 SDK가 변환해 읽던 결과를 기록해 둔 것이다.
+    // 숫자·불리언 → 문자열 필드는 JSON 원문, 숫자 문자열 → 숫자 필드(천 단위 쉼표·앞뒤 공백 허용),
+    // 숫자 → 불리언(0이면 false), "true"/"False"(앞뒤 공백 허용) → 불리언, 숫자·숫자 문자열 → enum,
+    // 숫자·불리언·enum 자리의 빈 문자열은 null, getter만 있는 bool 멤버의 키는 bool로 바꿔 _extensionData에 담긴다.
+    [TestCase(typeof(LoadAdMobOptions), @"{""adGroupId"":123}", @"{""adGroupId"":""123"",""referrer"":null}")]
+    [TestCase(typeof(LoadAdMobOptions), @"{""adGroupId"":1.5}", @"{""adGroupId"":""1.5"",""referrer"":null}")]
+    [TestCase(typeof(LoadAdMobOptions), @"{""adGroupId"":1e3}", @"{""adGroupId"":""1e3"",""referrer"":null}")]
+    [TestCase(typeof(LoadAdMobOptions), @"{""adGroupId"":true}", @"{""adGroupId"":""true"",""referrer"":null}")]
+    [TestCase(typeof(SafeAreaInsets), @"{""top"":""47"",""left"":""1,000"",""right"":"" 2.5 "",""bottom"":""-0""}", @"{""top"":47.0,""left"":1000.0,""right"":2.5,""bottom"":0.0,""error"":null}")]
+    [TestCase(typeof(SafeAreaInsets), @"{""top"":""NaN"",""left"":1e3,""right"":9223372036854775808,""bottom"":1}", @"{""top"":""NaN"",""left"":1000.0,""right"":9.2233720368547758E+18,""bottom"":1.0,""error"":null}")]
+    [TestCase(typeof(ContactsViralEventData), @"{""rewardAmount"":"""",""sentRewardAmount"":"""",""sendableRewardsCount"":""3"",""sentRewardsCount"":""1e2""}", @"{""rewardUnit"":null,""closeReason"":null,""sentRewardAmount"":null,""sendableRewardsCount"":3.0,""sentRewardsCount"":100.0}")]
+    [TestCase(typeof(ContactResult), @"{""done"":1,""nextOffset"":""5""}", @"{""result"":null,""nextOffset"":5.0,""done"":true}")]
+    [TestCase(typeof(ContactResult), @"{""done"":0.0}", @"{""result"":null,""nextOffset"":null,""done"":false}")]
+    [TestCase(typeof(ContactResult), @"{""done"":""True""}", @"{""result"":null,""nextOffset"":null,""done"":true}")]
+    [TestCase(typeof(ContactResult), @"{""done"":"" false""}", @"{""result"":null,""nextOffset"":null,""done"":false}")]
+    [TestCase(typeof(GetConsentedUserDataOptions), @"{""consentedUserDataKey"":42,""shouldRequestAgreementWhenUserDeclined"":""""}", @"{""consentedUserDataKey"":""42"",""shouldRequestAgreementWhenUserDeclined"":null}")]
+    [TestCase(typeof(GetConsentedUserDataOptions), @"{""consentedUserDataKey"":false,""shouldRequestAgreementWhenUserDeclined"":2}", @"{""consentedUserDataKey"":""false"",""shouldRequestAgreementWhenUserDeclined"":true}")]
+    [TestCase(typeof(AppLoginResult), @"{""referrer"":1}", @"{""authorizationCode"":null,""referrer"":""SANDBOX"",""error"":null}")]
+    [TestCase(typeof(AppLoginResult), @"{""referrer"":""1""}", @"{""authorizationCode"":null,""referrer"":""SANDBOX"",""error"":null}")]
+    [TestCase(typeof(IapProductListItem), @"{""renewalCycle"":1}", @"{""sku"":null,""displayAmount"":null,""displayName"":null,""iconUrl"":null,""description"":null,""type"":null,""renewalCycle"":""MONTHLY"",""offers"":null}")]
+    [TestCase(typeof(IapProductListItem), @"{""renewalCycle"":""""}", @"{""sku"":null,""displayAmount"":null,""displayName"":null,""iconUrl"":null,""description"":null,""type"":null,""renewalCycle"":null,""offers"":null}")]
+    [TestCase(typeof(GetCurrentLocationOptions), @"{""accuracy"":""2""}", @"{""accuracy"":2}")]
+    [TestCase(typeof(Error), @"{""name"":1,""message"":true,""cause"":9223372036854775808}", @"{""name"":""1"",""message"":""true"",""stack"":null,""cause"":9223372036854775808}")]
+    [TestCase(typeof(GetAnonymousKeyResult), @"{""_type"":""success"",""IsSuccess"":1,""IsError"":""true""}", @"{""_type"":""success"",""_successJson"":null,""_errorCode"":null,""IsSuccess"":true,""IsError"":false,""IsSuccess"":true,""IsError"":true}")]
+    [TestCase(typeof(GetAnonymousKeyResult), @"{""_type"":""error"",""IsSuccess"":"""",""iserror"":0.5}", @"{""_type"":""error"",""_successJson"":null,""_errorCode"":null,""IsSuccess"":false,""IsError"":true,""IsSuccess"":null,""iserror"":true}")]
+    [TestCase(typeof(DeclaredAgeRange), @"{""activeParentalControls"":""""}", @"{""status"":null,""lowerBound"":null,""upperBound"":null,""ageRangeDeclaration"":null,""activeParentalControls"":null,""isEligibleForAgeFeatures"":null,""errorCode"":null}")]
+    [TestCase(typeof(GoogleAdMobLoadAppsInTossAdMobArgs), @"{""options"":""""}", @"{""options"":null}")]
+    public void TypeMismatch_MatchesRecordedNewtonsoftOutput(Type type, string input, string expected)
+    {
+        var value = AITJsonSettings.Deserialize(input, type);
+        Assert.IsNotNull(value);
+        Assert.AreEqual(expected, AITJsonSettings.Serialize(value));
+    }
+
+    [Test]
+    public void TypeMismatch_TopLevelPrimitives_MatchNewtonsoft()
+    {
+        Assert.AreEqual(2L, AITJsonSettings.Deserialize<long>("1.5"));
+        Assert.AreEqual(1L, AITJsonSettings.Deserialize<long>("true"));
+        Assert.AreEqual(1000L, AITJsonSettings.Deserialize<long>("1e3"));
+        Assert.AreEqual(42, AITJsonSettings.Deserialize<int>("\" 42 \""));
+        Assert.AreEqual(1000.0, AITJsonSettings.Deserialize<double>("\"1,000\""));
+        Assert.AreEqual("1.0", AITJsonSettings.Deserialize<string>("1.0"));
+        Assert.AreEqual("false", AITJsonSettings.Deserialize<string>("false"));
+        Assert.IsTrue(AITJsonSettings.Deserialize<bool>("\" true\""));
+        Assert.IsTrue(AITJsonSettings.Deserialize<bool>("-7"));
+        Assert.IsNull(AITJsonSettings.Deserialize<int?>("\"\""));
+        foreach (var json in new[] { "123", "1.5", "true", "\"1,000\"", "\"\"", "9223372036854775808" })
+            Assert.AreEqual(JsonConvert.DeserializeObject<string>(json), AITJsonSettings.Deserialize<string>(json), json);
+    }
+
+    [Test]
+    public void TypeMismatch_InputsNewtonsoftRejected_AreSkippedWithoutThrowing()
+    {
+        // 이전 SDK는 이 입력들에서 예외를 던졌다. 지금은 그 값만 건너뛴다.
+        var dump = AITJsonSettings.Deserialize<OriginStorageDump>("{\"origin\":\"o\",\"opfs\":{\"files\":[{\"path\":\"p\",\"data\":\"not base64!\"}]}}");
+        Assert.AreEqual("o", dump.Origin);
+        Assert.AreEqual("p", dump.Opfs.Files[0].Path);
+        Assert.IsNull(dump.Opfs.Files[0].Data);
+        var insets = AITJsonSettings.Deserialize<SafeAreaInsets>("{\"top\":{},\"left\":[1],\"right\":\"abc\",\"bottom\":3}");
+        Assert.AreEqual(3.0, insets.Bottom);
+        var options = AITJsonSettings.Deserialize<GoogleAdMobLoadAppsInTossAdMobArgs>("{\"options\":123}");
+        Assert.IsNull(options.Options);
+    }
+
     // =====================================================
     // Newtonsoft를 직접 오라클로 쓰는 비교
     // =====================================================

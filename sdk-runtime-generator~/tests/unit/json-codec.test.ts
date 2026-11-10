@@ -133,15 +133,17 @@ describe('코덱 생성', () => {
   const result = applyJsonCodec(new Map([['AIT.Types.Sample.cs', SAMPLE]]));
   const codec = result.codecFile;
 
-  test('읽기: 이름 표, 값 타입은 null을 건너뛰고, 모르는 키는 _extensionData로', () => {
-    expect(codec).toContain('private static readonly string[] N_Outer = { "count", "maybe", "mode", "level", "items", "meta", "amount" };');
-    expect(codec).toContain('case 0: if (!AITJson.IsNull(v)) { o.Count = AITJson.Dbl(v); } break;');
+  test('읽기: 이름 표, 값 타입은 null·빈 문자열을 건너뛰고, 모르는 키는 _extensionData로', () => {
+    expect(codec).toContain('private static readonly string[] N_Outer = { "count", "maybe", "mode", "level", "items", "meta", "amount", "IsBig" };');
+    expect(codec).toContain('case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Count = AITJson.Dbl(v); } break;');
     expect(codec).toContain('case 1: o.Maybe = AITJson.DblN(v); break;');
     expect(codec).toContain('case 2: o.Mode = AITJsonCodec.RE_Mode(v); break;');
-    expect(codec).toContain('case 3: if (!AITJson.IsNull(v)) { o.Level = AITJsonCodec.RE_Level(v).GetValueOrDefault(); } break;');
+    expect(codec).toContain('case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Level = AITJsonCodec.RE_Level(v).GetValueOrDefault(); } break;');
     expect(codec).toContain('case 4: o.Items = AITJson.Arr<Inner>(v, j1 => AITJsonCodec.R_Inner(j1)); break;');
     expect(codec).toContain('case 5: o.Meta = AITJson.Dict<string, object>(v, null, j1 => AITJson.Any(j1)); break;');
-    expect(codec).toContain('case 6: if (!AITJson.IsNull(v)) { o.Amount = AITJson.Dbl(v); o.AmountSpecified = true; } break;');
+    expect(codec).toContain('case 6: if (!AITJson.IsNullOrEmpty(v)) { o.Amount = AITJson.Dbl(v); o.AmountSpecified = true; } break;');
+    // getter만 있는 bool 멤버의 키는 bool로 바꿔 _extensionData에 담는다
+    expect(codec).toContain('case 7: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;');
     expect(codec).toContain('default: AITJson.Ext(ref o._extensionData, p); break;');
   });
 

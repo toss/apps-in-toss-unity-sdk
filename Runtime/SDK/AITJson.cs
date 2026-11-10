@@ -587,6 +587,9 @@ namespace AppsInToss
 
         internal static bool IsNull(JsonValue v) => v == null || v.Kind == JsonValueKind.Null;
 
+        /// <summary>숫자·불리언·enum 자리에서 값 없음으로 보는 값: 키 없음, JSON null, 빈 문자열.</summary>
+        internal static bool IsNullOrEmpty(JsonValue v) => IsNull(v) || (v.Kind == JsonValueKind.String && v._text.Length == 0);
+
         internal static string Str(JsonValue v)
         {
             if (v == null) return null;
@@ -596,7 +599,7 @@ namespace AppsInToss
         private static bool TryNumber(JsonValue v, out double result)
         {
             if (v != null && (v.Kind == JsonValueKind.Number || v.Kind == JsonValueKind.String))
-                return double.TryParse(v._text, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+                return double.TryParse(v._text, v.Kind == JsonValueKind.String ? NumberStyles.Float | NumberStyles.AllowThousands : NumberStyles.Float, CultureInfo.InvariantCulture, out result);
             if (v != null && v.Kind == JsonValueKind.Bool)
             {
                 result = v == JsonValue.True ? 1 : 0;
@@ -618,22 +621,23 @@ namespace AppsInToss
             return d;
         }
 
-        internal static double? DblN(JsonValue v) => IsNull(v) ? (double?)null : Dbl(v);
+        internal static double? DblN(JsonValue v) => IsNullOrEmpty(v) ? (double?)null : Dbl(v);
 
         internal static long Long(JsonValue v)
         {
             if (v != null && (v.Kind == JsonValueKind.Number || v.Kind == JsonValueKind.String) &&
                 long.TryParse(v._text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l))
                 return l;
+            // 소수는 가장 가까운 정수로(반올림 중간값은 짝수 쪽), Convert.ToInt64(double)과 같다
             TryNumber(v, out var d);
-            return (long)d;
+            return (long)Math.Round(d);
         }
 
-        internal static long? LongN(JsonValue v) => IsNull(v) ? (long?)null : Long(v);
+        internal static long? LongN(JsonValue v) => IsNullOrEmpty(v) ? (long?)null : Long(v);
 
         internal static int Int(JsonValue v) => (int)Long(v);
 
-        internal static int? IntN(JsonValue v) => IsNull(v) ? (int?)null : Int(v);
+        internal static int? IntN(JsonValue v) => IsNullOrEmpty(v) ? (int?)null : Int(v);
 
         internal static bool Bool(JsonValue v)
         {
@@ -641,15 +645,15 @@ namespace AppsInToss
             switch (v.Kind)
             {
                 case JsonValueKind.Bool: return v == JsonValue.True;
-                case JsonValueKind.String: return string.Equals(v._text, "true", StringComparison.OrdinalIgnoreCase);
+                case JsonValueKind.String: return bool.TryParse(v._text, out var b) && b;
                 case JsonValueKind.Number: return TryNumber(v, out var d) && d != 0;
                 default: return false;
             }
         }
 
-        internal static bool? BoolN(JsonValue v) => IsNull(v) ? (bool?)null : Bool(v);
+        internal static bool? BoolN(JsonValue v) => IsNullOrEmpty(v) ? (bool?)null : Bool(v);
 
-        /// <summary><c>object</c> 필드: 문자열·불리언·long·double, 배열·객체는 <see cref="JsonValue"/>.</summary>
+        /// <summary><c>object</c> 필드: 문자열·불리언·long·double, long 범위를 넘는 정수와 배열·객체는 <see cref="JsonValue"/>.</summary>
         internal static object Any(JsonValue v)
         {
             if (v == null) return null;
@@ -662,15 +666,30 @@ namespace AppsInToss
                     if (v._text.IndexOf('.') < 0 && v._text.IndexOf('e') < 0 && v._text.IndexOf('E') < 0 &&
                         long.TryParse(v._text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l))
                         return l;
+                    // long 범위를 넘는 정수는 원문을 그대로 들고 있는 JsonValue로 둔다(쓸 때 같은 텍스트로 나간다).
+                    if (IsIntegerText(v._text)) return v;
                     return Dbl(v);
                 default: return v;
             }
         }
 
+        private static bool IsIntegerText(string s)
+        {
+            int i = s.Length > 0 && s[0] == '-' ? 1 : 0;
+            if (i >= s.Length) return false;
+            for (; i < s.Length; i++) if (s[i] < '0' || s[i] > '9') return false;
+            return true;
+        }
+
         internal static byte[] Bytes(JsonValue v)
         {
             if (IsNull(v)) return null;
-            if (v.Kind == JsonValueKind.String) return v._text.Length == 0 ? new byte[0] : Convert.FromBase64String(v._text);
+            if (v.Kind == JsonValueKind.String)
+            {
+                if (v._text.Length == 0) return new byte[0];
+                try { return Convert.FromBase64String(v._text); }
+                catch (FormatException) { return null; }
+            }
             if (v.Kind != JsonValueKind.Array) return null;
             var bytes = new byte[v._items.Count];
             for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)Long(v._items[i]);
@@ -706,6 +725,15 @@ namespace AppsInToss
                 result[k] = read(m.Value);
             }
             return result;
+        }
+
+        /// <summary>bool 자리로 읽은 값을 JSON 값으로: 빈 문자열·null은 null, 그 밖에는 true/false.</summary>
+        internal static JsonValue BoolToken(JsonValue v) => IsNullOrEmpty(v) ? JsonValue.Null : JsonValue.FromBool(Bool(v));
+
+        internal static void Ext(ref IDictionary<string, JsonValue> ext, string key, JsonValue value)
+        {
+            if (ext == null) ext = new Dictionary<string, JsonValue>();
+            ext[key] = value;
         }
 
         /// <summary>타입에 없는 키를 <c>_extensionData</c>에 모은다.</summary>

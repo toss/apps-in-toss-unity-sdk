@@ -36,20 +36,16 @@ if ($unityProcs) {
 }
 Write-Host ""
 
-# This machine is shared: several self-hosted runners (windows-2-1..2-5 etc.)
-# run on one physical Windows host under one user account, differing only by
-# runner directory (actions-runner-N). Killing by process name alone would
-# also kill another concurrently running job's Unity editor on this same
-# host. Only kill a process whose full command line references this job's
-# own workspace (GITHUB_WORKSPACE and/or its actions-runner-N directory).
+# Other jobs' Unity processes may be running on the runner host, so killing
+# by process name alone could take down another job's editor. Only kill a
+# process whose full command line references this job's own workspace
+# (GITHUB_WORKSPACE and/or its runner directory).
 #
-# Unity.Licensing.Client is the single licensing IPC process shared by every
-# job on this host, so it is never killed regardless of workspace match -
-# killing it breaks another live job's license handshake, and the next job
-# that needs 2021.3 then has to spin up its own old bundled client, which can
-# fail with "0 entitlements" (see fix-licensing-client.sh for that issue).
+# Unity.Licensing.Client may be in use by another job, so it is never killed
+# regardless of workspace match - killing it can break a live job's license
+# handshake (see fix-licensing-client.sh for the related issue).
 Write-Host "=== Killing Unity-related Processes (scoped to this job's workspace) ==="
-Write-Host "Always skipped regardless of match: Unity.Licensing.Client (shared licensing IPC client)"
+Write-Host "Always skipped regardless of match: Unity.Licensing.Client (never killed)"
 
 $workspacePatterns = @()
 if ($env:GITHUB_WORKSPACE) {
@@ -73,7 +69,7 @@ if ($workspacePatterns.Count -eq 0) {
   foreach ($proc in $candidates) {
     $isLicenseClient = ($proc.Name -match "Licensing") -or ($proc.CommandLine -and $proc.CommandLine -match "Unity\.Licensing\.Client")
     if ($isLicenseClient) {
-      Write-Host "Skipping $($proc.Name) (PID: $($proc.ProcessId)) - Unity.Licensing.Client is never killed (shared licensing IPC client)"
+      Write-Host "Skipping $($proc.Name) (PID: $($proc.ProcessId)) - Unity.Licensing.Client is never killed (never killed)"
       continue
     }
 

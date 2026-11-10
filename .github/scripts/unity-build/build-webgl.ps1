@@ -96,7 +96,7 @@ if ($exitCode -ne 0) {
 
   # Detect license-related errors (the retry action retries automatically)
   # signature/handshake/IPC failures happen when a LicensingClient from a
-  # different Unity version is still alive on the same self-hosted runner; retry can recover.
+  # different Unity version is still alive; retry can recover.
   $licenseError = $false
   if (Test-Path $logFile) {
     $logContent = Get-Content $logFile -Raw -ErrorAction SilentlyContinue

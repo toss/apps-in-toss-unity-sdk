@@ -10,7 +10,7 @@ description: E2E Tests 워크플로우 실패 시 사용 — 인프라 기인 fl
   ```bash
   gh api repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs -X POST
   ```
-- ⚠️ **동일 Unity 라이선스 시그니처가 2회 연속이면 transient가 아니다** — self-hosted macOS 러너 5개는 라벨은 따로지만 실제로는 물리 머신 한 대와 라이선싱 IPC 채널을 공유해서, 채널을 먼저 만든 에디터의 번들 클라이언트가 오래된 버전이면 entitlement 조회가 비어 라이선스 인증에 실패한다. `fix-licensing-client.sh`가 EditMode 테스트 전에 서명/버전을 비교해 자동으로 최신 클라이언트로 교체하므로 보통은 1회성으로 끝난다. 그런데도 2회 연속 같은 시그니처가 나오면 자동 교체로도 못 고치는 실제 결함이므로 반복 rerun으로 시간 낭비 금지, 수동 수복 필요로 **에스컬레이션**
+- ⚠️ **동일 Unity 라이선스 시그니처가 2회 연속이면 transient가 아니다** — `fix-licensing-client.sh`가 EditMode 테스트 전에 번들 라이선싱 클라이언트의 서명/버전을 비교해 자동으로 최신 클라이언트로 교체하므로 보통은 1회성으로 끝난다. 그런데도 2회 연속 같은 시그니처가 나오면 자동 교체로도 못 고치는 실제 결함이므로 반복 rerun으로 시간 낭비 금지, 수동 수복 필요로 **에스컬레이션**
 - **E2E Tests는 non-required라 머지 차단 안 함** — 단일 leg 랜덤 실패면 transient로 보고 실패 leg만 재실행
 - **Sentry 노이즈 자동화(`auto-resolve`)가 PR을 내는 건 두 유형뿐이고, 머지는 사람이 한다**
   - SDK 밖에서 온 메시지: `Editor/ErrorTracker/AITEditorErrorTracker.NoiseFilter.cs`의 `NonSdkMessagePatterns`·`ExternalAitPrefixes`에 패턴 추가

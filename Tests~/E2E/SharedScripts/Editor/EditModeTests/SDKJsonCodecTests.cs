@@ -90,7 +90,22 @@ public class SDKJsonCodecTests
     [Test]
     public void TypeMismatch_InputsNewtonsoftRejected_AreSkippedWithoutThrowing()
     {
-        // 이전 SDK는 이 입력들에서 예외를 던졌다. 지금은 그 값만 건너뛴다.
+        // 이전 SDK는 이 입력들에서 예외를 던졌다. 지금은 그 값만 건너뛴다: 대입하지 않으므로 필드는
+        // 기본 상태(Specified=false)로 남고, 나머지 필드는 그대로 읽는다.
+        var viral = AITJsonSettings.Deserialize<ContactsViralEventData>("{\"rewardAmount\":{},\"rewardUnit\":\"P\",\"sentRewardAmount\":true}");
+        Assert.IsFalse(viral.RewardAmountSpecified);
+        Assert.IsNull(viral.RewardAmountTyped);
+        Assert.IsNull(viral.SentRewardAmount);
+        Assert.AreEqual("P", viral.RewardUnit);
+        Assert.AreEqual("{\"rewardUnit\":\"P\",\"closeReason\":null,\"sentRewardAmount\":null,\"sendableRewardsCount\":null,\"sentRewardsCount\":null}", AITJsonSettings.Serialize(viral));
+        var login = AITJsonSettings.Deserialize<AppLoginResult>("{\"authorizationCode\":\"c\",\"referrer\":\"unknown-value\"}");
+        Assert.AreEqual(default(AppLoginResultReferrer), login.Referrer);
+        Assert.AreEqual("c", login.AuthorizationCode);
+        var consent = AITJsonSettings.Deserialize<GetConsentedUserDataOptions>("{\"consentedUserDataKey\":{\"a\":1},\"shouldRequestAgreementWhenUserDeclined\":\"yes\"}");
+        Assert.IsNull(consent.ConsentedUserDataKey);
+        Assert.IsNull(consent.ShouldRequestAgreementWhenUserDeclined);
+        var age = AITJsonSettings.Deserialize<DeclaredAgeRange>("{\"activeParentalControls\":[\"a\",{}]}");
+        Assert.IsNull(age.ActiveParentalControls);
         var dump = AITJsonSettings.Deserialize<OriginStorageDump>("{\"origin\":\"o\",\"opfs\":{\"files\":[{\"path\":\"p\",\"data\":\"not base64!\"}]}}");
         Assert.AreEqual("o", dump.Origin);
         Assert.AreEqual("p", dump.Opfs.Files[0].Path);

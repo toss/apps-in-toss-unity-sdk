@@ -418,6 +418,65 @@ export class CodecTypes {
     }
   }
 
+  /**
+   * 멤버 읽기: `jv`를 타입 t로 읽어 `out` 변수 `x`에 넣는 bool 식.
+   * 이전 SDK(Newtonsoft)가 받아들이던 값이면 true, 예외를 던지던 값이면 false(호출하는 쪽이 대입을 건너뛴다).
+   */
+  tryCall(t: TypeNode, jv: string, x: string, depth = 0): string {
+    const rt = renderType(t);
+    switch (t.kind) {
+      case 'name': {
+        const p = PRIMITIVE_READ[t.name];
+        if (p) return `AITJson.Try${p[0]}(${jv}, out ${x})`;
+        if (t.name === 'object') return `AITJson.TryAny(${jv}, out ${x})`;
+        if (t.name === 'JsonValue' || t.name === 'JToken' || t.name === 'Newtonsoft.Json.Linq.JToken') return `AITJson.TryVal(${jv}, out ${x})`;
+        if (this.enums.has(t.name)) return `AITJsonCodec.TE_${t.name}(${jv}, out ${x})`;
+        const c = this.classOf(t.name);
+        if (c) return `AITJson.TryObj<${rt}>(${jv}, AITJsonCodec.R_${codecId(c)}, out ${x})`;
+        throw new Error(`json-codec: 읽기 코드를 만들 수 없는 타입: ${t.name}`);
+      }
+      case 'nullable': {
+        if (t.inner.kind === 'name') {
+          const p = PRIMITIVE_READ[t.inner.name];
+          if (p && VALUE_PRIMITIVES.has(t.inner.name)) return `AITJson.Try${p[1]}(${jv}, out ${x})`;
+          if (this.enums.has(t.inner.name)) return `AITJsonCodec.TEN_${t.inner.name}(${jv}, out ${x})`;
+        }
+        throw new Error(`json-codec: 읽기 코드를 만들 수 없는 nullable 타입: ${rt}`);
+      }
+      case 'array': {
+        if (t.inner.kind === 'name' && t.inner.name === 'byte') return `AITJson.TryBytes(${jv}, out ${x})`;
+        return `AITJson.TryArr<${renderType(t.inner)}>(${jv}, ${this.tryDelegate(t.inner, depth + 1)}, out ${x})`;
+      }
+      case 'generic': {
+        const name = stripGenericNs(t.name);
+        if ((name === 'List' || name === 'IList' || name === 'IReadOnlyList' || name === 'IEnumerable') && t.args.length === 1) {
+          return `AITJson.TryLst<${renderType(t.args[0])}>(${jv}, ${this.tryDelegate(t.args[0], depth + 1)}, out ${x})`;
+        }
+        if ((name === 'Dictionary' || name === 'IDictionary') && t.args.length === 2) {
+          return `AITJson.TryDict<${renderType(t.args[0])}, ${renderType(t.args[1])}>(${jv}, ${this.keyParser(t.args[0])}, ${this.tryDelegate(t.args[1], depth + 1)}, out ${x})`;
+        }
+        throw new Error(`json-codec: 읽기 코드를 만들 수 없는 제네릭 타입: ${rt}`);
+      }
+    }
+  }
+
+  /** 원소 읽기용 `AITJson.TryRead<T>` 델리게이트 식. */
+  private tryDelegate(t: TypeNode, n: number): string {
+    if (t.kind === 'name') {
+      const p = PRIMITIVE_READ[t.name];
+      if (p) return `AITJson.Try${p[0]}`;
+      if (t.name === 'object') return 'AITJson.TryAny';
+      if (t.name === 'JsonValue' || t.name === 'JToken' || t.name === 'Newtonsoft.Json.Linq.JToken') return 'AITJson.TryVal';
+      if (this.enums.has(t.name)) return `AITJsonCodec.TE_${t.name}`;
+    }
+    if (t.kind === 'nullable' && t.inner.kind === 'name') {
+      const p = PRIMITIVE_READ[t.inner.name];
+      if (p && VALUE_PRIMITIVES.has(t.inner.name)) return `AITJson.Try${p[1]}`;
+      if (this.enums.has(t.inner.name)) return `AITJsonCodec.TEN_${t.inner.name}`;
+    }
+    return `(JsonValue j${n}, out ${renderType(t)} y${n}) => ${this.tryCall(t, `j${n}`, `y${n}`, n)}`;
+  }
+
   /** 값 식 `v`를 쓰는 C# 식 (문장 끝 `;` 없음). */
   write(t: TypeNode, w: string, v: string, depth = 0): string {
     const n = depth + 1;
@@ -524,17 +583,16 @@ function generateClassCodec(c: CsClass, types: CodecTypes): { reader: string; wr
   const cases = readable.map((m, i) => {
     const t = parseTypeExpr(m.type);
     const spec = specifiedOf(m, all);
-    const assign = [`o.${m.name} = ${types.read(t, 'v')};`];
+    const assign = [`o.${m.name} = x${i};`];
     if (spec) assign.push(`o.${spec.name} = true;`);
-    // 숫자·불리언·enum 자리의 빈 문자열은 null처럼 건너뛴다
-    const body = types.isValueType(t)
-      ? `if (!AITJson.IsNullOrEmpty(v)) { ${assign.join(' ')} }`
-      : m.nullIgnore
-        ? `if (!AITJson.IsNull(v)) { ${assign.join(' ')} }`
-        : assign.join(' ');
-    return `                    case ${i}: ${body} break;`;
+    // 읽을 수 없는 값(이전 SDK가 예외를 던지던 값)은 대입하지 않고 건너뛴다
+    const cond = `${m.nullIgnore ? '!AITJson.IsNull(v) && ' : ''}${types.tryCall(t, 'v', `${renderType(t)} x${i}`)}`;
+    return `                    case ${i}: if (${cond}) { ${assign.join(' ')} } break;`;
   });
-  getterOnly.forEach((_, k) => cases.push(`                    case ${readable.length + k}: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;`));
+  getterOnly.forEach((_, k) => {
+    const i = readable.length + k;
+    cases.push(`                    case ${i}: if (AITJson.TryBoolToken(v, out var x${i})) AITJson.Ext(ref o._extensionData, p.Key, x${i}); break;`);
+  });
   const fallback = hasExt ? 'AITJson.Ext(ref o._extensionData, p); break;' : 'break;';
   const reader = [
     `        private static readonly string[] N_${id} = { ${names} };`,
@@ -602,6 +660,8 @@ function generateEnumCodec(e: CsEnum, types: CodecTypes): string {
   lines.push(
     `        internal static ${e.name}? RE_${e.name}(JsonValue j) => AITJson.Enum(j, ${wireArr}, EN_${e.name}, ${values}, out var v) ? (${e.name})v : (${e.name}?)null;`,
     `        internal static void WE_${e.name}(AITJsonWriter w, ${e.name}? v) { if (v.HasValue) AITJson.Enum(w, (int)v.Value, ${writeWire}, ${values}); else w.Null(); }`,
+    `        internal static bool TE_${e.name}(JsonValue j, out ${e.name} v) { if (!AITJson.IsNullOrEmpty(j) && AITJson.Enum(j, ${wireArr}, EN_${e.name}, ${values}, out var n)) { v = (${e.name})n; return true; } v = default(${e.name}); return false; }`,
+    `        internal static bool TEN_${e.name}(JsonValue j, out ${e.name}? v) { if (AITJson.IsNullOrEmpty(j)) { v = null; return true; } if (TE_${e.name}(j, out var e)) { v = e; return true; } v = null; return false; }`,
   );
   if (types.enumKeys.has(e.name)) {
     lines.push(

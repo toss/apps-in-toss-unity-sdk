@@ -727,8 +727,217 @@ namespace AppsInToss
             return result;
         }
 
-        /// <summary>bool 자리로 읽은 값을 JSON 값으로: 빈 문자열·null은 null, 그 밖에는 true/false.</summary>
-        internal static JsonValue BoolToken(JsonValue v) => IsNullOrEmpty(v) ? JsonValue.Null : JsonValue.FromBool(Bool(v));
+        // ---------------------------------------------------------------
+        // 멤버 읽기 (Try): 이전 SDK가 받아들이던 값이면 true. 예외를 던지던 값이면 false이고,
+        // 생성 코드는 그 멤버를 대입하지 않고 건너뛴다(기본값을 지어내지 않는다).
+        // ---------------------------------------------------------------
+
+        internal delegate bool TryRead<T>(JsonValue v, out T value);
+
+        /// <summary>문자열 자리: 문자열은 그 값, 숫자·불리언은 JSON 원문, null은 null. 배열·객체는 실패.</summary>
+        internal static bool TryStr(JsonValue v, out string value)
+        {
+            value = null;
+            if (v == null) return false;
+            switch (v.Kind)
+            {
+                case JsonValueKind.Null: return true;
+                case JsonValueKind.String:
+                case JsonValueKind.Number:
+                case JsonValueKind.Bool: value = v._text; return true;
+                default: return false;
+            }
+        }
+
+        /// <summary>숫자 자리: 숫자, 숫자 문자열(천 단위 쉼표·앞뒤 공백 허용), "NaN"/"Infinity"/"-Infinity". 불리언·빈 문자열은 실패.</summary>
+        internal static bool TryDbl(JsonValue v, out double value)
+        {
+            value = 0;
+            if (v == null) return false;
+            if (v.Kind == JsonValueKind.Number)
+                return double.TryParse(v._text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            if (v.Kind != JsonValueKind.String) return false;
+            if (v._text == "NaN") { value = double.NaN; return true; }
+            if (v._text == "Infinity") { value = double.PositiveInfinity; return true; }
+            if (v._text == "-Infinity") { value = double.NegativeInfinity; return true; }
+            return double.TryParse(v._text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value);
+        }
+
+        /// <summary>정수 자리: 정수, 소수(가장 가까운 정수, 중간값은 짝수 쪽), 불리언(1/0), 정수 문자열.</summary>
+        internal static bool TryLong(JsonValue v, out long value)
+        {
+            value = 0;
+            if (v == null) return false;
+            switch (v.Kind)
+            {
+                case JsonValueKind.Bool: value = v == JsonValue.True ? 1 : 0; return true;
+                case JsonValueKind.String: return long.TryParse(v._text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+                case JsonValueKind.Number:
+                    if (long.TryParse(v._text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)) return true;
+                    if (!double.TryParse(v._text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) return false;
+                    d = Math.Round(d);
+                    if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0)) return false;
+                    value = (long)d;
+                    return true;
+                default: return false;
+            }
+        }
+
+        /// <summary>int 자리: 범위 안의 정수와 정수 문자열만.</summary>
+        internal static bool TryInt(JsonValue v, out int value)
+        {
+            value = 0;
+            if (v == null || (v.Kind != JsonValueKind.Number && v.Kind != JsonValueKind.String)) return false;
+            return int.TryParse(v._text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        /// <summary>불리언 자리: 불리언, 숫자(0이면 false), "true"/"false"(대소문자·앞뒤 공백 무시).</summary>
+        internal static bool TryBool(JsonValue v, out bool value)
+        {
+            value = false;
+            if (v == null) return false;
+            switch (v.Kind)
+            {
+                case JsonValueKind.Bool: value = v == JsonValue.True; return true;
+                case JsonValueKind.String: return bool.TryParse(v._text, out value);
+                case JsonValueKind.Number:
+                    if (!double.TryParse(v._text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) return false;
+                    value = d != 0;
+                    return true;
+                default: return false;
+            }
+        }
+
+        internal static bool TryDblN(JsonValue v, out double? value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (!TryDbl(v, out var x)) return false;
+            value = x;
+            return true;
+        }
+
+        internal static bool TryLongN(JsonValue v, out long? value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (!TryLong(v, out var x)) return false;
+            value = x;
+            return true;
+        }
+
+        internal static bool TryIntN(JsonValue v, out int? value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (!TryInt(v, out var x)) return false;
+            value = x;
+            return true;
+        }
+
+        internal static bool TryBoolN(JsonValue v, out bool? value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (!TryBool(v, out var x)) return false;
+            value = x;
+            return true;
+        }
+
+        internal static bool TryAny(JsonValue v, out object value)
+        {
+            value = Any(v);
+            return v != null;
+        }
+
+        internal static bool TryVal(JsonValue v, out JsonValue value)
+        {
+            value = v;
+            return v != null;
+        }
+
+        /// <summary>SDK 타입 자리: 객체, null·빈 문자열(null). 그 밖에는 실패.</summary>
+        internal static bool TryObj<T>(JsonValue v, Func<JsonValue, T> read, out T value) where T : class
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (v.Kind != JsonValueKind.Object) return false;
+            value = read(v);
+            return true;
+        }
+
+        /// <summary>byte[] 자리: base64 문자열, 0~255 정수 배열, null.</summary>
+        internal static bool TryBytes(JsonValue v, out byte[] value)
+        {
+            value = null;
+            if (v == null) return false;
+            if (v.Kind == JsonValueKind.Null) return true;
+            if (v.Kind == JsonValueKind.String)
+            {
+                if (v._text.Length == 0) { value = new byte[0]; return true; }
+                try { value = Convert.FromBase64String(v._text); return true; }
+                catch (FormatException) { return false; }
+            }
+            if (v.Kind != JsonValueKind.Array) return false;
+            var bytes = new byte[v._items.Count];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (!TryLong(v._items[i], out var b) || b < 0 || b > 255) return false;
+                bytes[i] = (byte)b;
+            }
+            value = bytes;
+            return true;
+        }
+
+        /// <summary>배열 자리: 배열, null·빈 문자열(null). 원소 하나라도 읽을 수 없으면 실패.</summary>
+        internal static bool TryArr<T>(JsonValue v, TryRead<T> read, out T[] value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (v.Kind != JsonValueKind.Array) return false;
+            var result = new T[v._items.Count];
+            for (int i = 0; i < result.Length; i++)
+                if (!read(v._items[i], out result[i])) return false;
+            value = result;
+            return true;
+        }
+
+        internal static bool TryLst<T>(JsonValue v, TryRead<T> read, out List<T> value)
+        {
+            value = null;
+            if (!TryArr(v, read, out var items)) return false;
+            if (items != null) value = new List<T>(items);
+            return true;
+        }
+
+        /// <summary>딕셔너리 자리: 객체, null·빈 문자열(null). 해석할 수 없는 키는 건너뛰고, 값 하나라도 읽을 수 없으면 실패.</summary>
+        internal static bool TryDict<TKey, TValue>(JsonValue v, KeyParser<TKey> key, TryRead<TValue> read, out Dictionary<TKey, TValue> value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) return v != null;
+            if (v.Kind != JsonValueKind.Object) return false;
+            var result = new Dictionary<TKey, TValue>();
+            foreach (var m in v._members)
+            {
+                TKey k;
+                if (key == null) k = (TKey)(object)m.Key;
+                else if (!key(m.Key, out k)) continue;
+                if (!read(m.Value, out var x)) return false;
+                result[k] = x;
+            }
+            value = result;
+            return true;
+        }
+
+        /// <summary>getter만 있는 bool 멤버의 키: 빈 문자열·null은 null, 불리언으로 읽히면 true/false, 아니면 실패.</summary>
+        internal static bool TryBoolToken(JsonValue v, out JsonValue value)
+        {
+            value = null;
+            if (IsNullOrEmpty(v)) { value = JsonValue.Null; return v != null; }
+            if (!TryBool(v, out var b)) return false;
+            value = JsonValue.FromBool(b);
+            return true;
+        }
 
         internal static void Ext(ref IDictionary<string, JsonValue> ext, string key, JsonValue value)
         {

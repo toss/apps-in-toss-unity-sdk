@@ -133,17 +133,18 @@ describe('코덱 생성', () => {
   const result = applyJsonCodec(new Map([['AIT.Types.Sample.cs', SAMPLE]]));
   const codec = result.codecFile;
 
-  test('읽기: 이름 표, 값 타입은 null·빈 문자열을 건너뛰고, 모르는 키는 _extensionData로', () => {
+  test('읽기: 이름 표, 읽을 수 없는 값은 대입하지 않고, 모르는 키는 _extensionData로', () => {
     expect(codec).toContain('private static readonly string[] N_Outer = { "count", "maybe", "mode", "level", "items", "meta", "amount", "IsBig" };');
-    expect(codec).toContain('case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Count = AITJson.Dbl(v); } break;');
-    expect(codec).toContain('case 1: o.Maybe = AITJson.DblN(v); break;');
-    expect(codec).toContain('case 2: o.Mode = AITJsonCodec.RE_Mode(v); break;');
-    expect(codec).toContain('case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Level = AITJsonCodec.RE_Level(v).GetValueOrDefault(); } break;');
-    expect(codec).toContain('case 4: o.Items = AITJson.Arr<Inner>(v, j1 => AITJsonCodec.R_Inner(j1)); break;');
-    expect(codec).toContain('case 5: o.Meta = AITJson.Dict<string, object>(v, null, j1 => AITJson.Any(j1)); break;');
-    expect(codec).toContain('case 6: if (!AITJson.IsNullOrEmpty(v)) { o.Amount = AITJson.Dbl(v); o.AmountSpecified = true; } break;');
+    expect(codec).toContain('case 0: if (AITJson.TryDbl(v, out double x0)) { o.Count = x0; } break;');
+    expect(codec).toContain('case 1: if (AITJson.TryDblN(v, out double? x1)) { o.Maybe = x1; } break;');
+    expect(codec).toContain('case 2: if (AITJsonCodec.TEN_Mode(v, out Mode? x2)) { o.Mode = x2; } break;');
+    expect(codec).toContain('case 3: if (AITJsonCodec.TE_Level(v, out Level x3)) { o.Level = x3; } break;');
+    expect(codec).toContain('case 4: if (AITJson.TryArr<Inner>(v, (JsonValue j1, out Inner y1) => AITJson.TryObj<Inner>(j1, AITJsonCodec.R_Inner, out y1), out Inner[] x4)) { o.Items = x4; } break;');
+    expect(codec).toContain('case 5: if (AITJson.TryDict<string, object>(v, null, AITJson.TryAny, out Dictionary<string, object> x5)) { o.Meta = x5; } break;');
+    // NullValueHandling.Ignore: JSON null은 읽지 않는다. Specified는 대입할 때만 true
+    expect(codec).toContain('case 6: if (!AITJson.IsNull(v) && AITJson.TryDbl(v, out double x6)) { o.Amount = x6; o.AmountSpecified = true; } break;');
     // getter만 있는 bool 멤버의 키는 bool로 바꿔 _extensionData에 담는다
-    expect(codec).toContain('case 7: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;');
+    expect(codec).toContain('case 7: if (AITJson.TryBoolToken(v, out var x7)) AITJson.Ext(ref o._extensionData, p.Key, x7); break;');
     expect(codec).toContain('default: AITJson.Ext(ref o._extensionData, p); break;');
   });
 

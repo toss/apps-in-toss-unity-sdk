@@ -45,6 +45,7 @@ jobs:
         run: echo "Bot PR (${{ github.event.pull_request.user.login }}) — scan skipped (secret 접근 불가)"
 
       - name: Guard
+        id: guard
         if: env.IS_BOT_PR != 'true'
         run: |
           if [ -z "$PATTERN" ]; then
@@ -63,8 +64,11 @@ jobs:
             exit 1
           fi
 
+      # 아래 스캔은 Guard 를 통과하면(봇 PR 아님 + 유효한 PATTERN) 앞선 스캔의 실패와 상관없이 각각 돈다.
+      # 한 스캔이 fail-closed 로 멈춰도 다른 표면 검사가 건너뛰어지지 않게 하려는 것이다. 특히 머지된 PR 의
+      # 제목/본문 수정(edited)에서 커밋 범위 조회가 실패하면 정작 바뀐 제목/본문 검사가 돌지 않았다.
       - name: Scan tree
-        if: env.IS_BOT_PR != 'true'
+        if: ${{ !cancelled() && steps.guard.outcome == 'success' }}
         env:
           LC_ALL: C   # 바이트 단위 매칭(로케일 의존 UTF-8 스킵으로 인한 fail-open 방지)
         run: |
@@ -90,7 +94,7 @@ jobs:
           echo "scan OK"
 
       - name: Scan lockfiles
-        if: env.IS_BOT_PR != 'true'
+        if: ${{ !cancelled() && steps.guard.outcome == 'success' }}
         env:
           LC_ALL: C   # 바이트 단위 매칭(로케일 의존 UTF-8 스킵으로 인한 fail-open 방지)
         run: |
@@ -122,7 +126,7 @@ jobs:
       #    로그는 비인증 열람 가능 — 경로/이름 자체가 토큰일 수 있음).
 
       - name: Scan ref name
-        if: env.IS_BOT_PR != 'true'
+        if: ${{ !cancelled() && steps.guard.outcome == 'success' }}
         env:
           LC_ALL: C
           # push 는 github.ref_name(브랜치/태그 short), PR 은 소스 브랜치 github.head_ref.
@@ -143,7 +147,7 @@ jobs:
           echo "ref-name scan OK"
 
       - name: Scan commit messages and file paths
-        if: env.IS_BOT_PR != 'true'
+        if: ${{ !cancelled() && steps.guard.outcome == 'success' }}
         env:
           LC_ALL: C
           EV_BEFORE: ${{ github.event.before }}
@@ -175,6 +179,12 @@ jobs:
           # 브랜치와 동일한 OTHERS 폴백으로 대체한다. push 새 브랜치/태그(before=40-zero)는 처음부터
           # 이 OTHERS 폴백을 사용한다.
           if [ -n "${PR_HEAD:-}" ]; then
+            # 머지되거나 닫힌 PR 의 제목/본문을 고치면(edited) head 브랜치가 이미 지워져(delete_branch_on_merge)
+            # PR 커밋이 checkout 에 없다(fetch-depth:0 은 브랜치·태그만 가져온다). GitHub 은 refs/pull/N/head 로
+            # 그 객체를 계속 붙잡고 있어 SHA 직접 fetch 가 된다. 그래도 없으면 아래 git log 가 fail-closed 한다.
+            for SHA in "$PR_BASE" "$PR_HEAD"; do
+              git cat-file -e "$SHA^{commit}" 2>/dev/null || git fetch --quiet --no-tags origin "$SHA" 2>/dev/null || true
+            done
             RANGE="$PR_BASE..$PR_HEAD"
           elif [ "${EV_BEFORE:-$Z40}" != "$Z40" ]; then
             if git cat-file -e "$EV_BEFORE^{commit}" 2>/dev/null; then
@@ -226,7 +236,7 @@ jobs:
           echo "commit-message + path scan OK"
 
       - name: Scan annotated tag message
-        if: env.IS_BOT_PR != 'true' && github.ref_type == 'tag'
+        if: ${{ !cancelled() && steps.guard.outcome == 'success' && github.ref_type == 'tag' }}
         env:
           LC_ALL: C
           TAG_REF: ${{ github.ref_name }}
@@ -249,7 +259,7 @@ jobs:
           echo "tag-message scan OK"
 
       - name: Scan PR title and body
-        if: env.IS_BOT_PR != 'true' && github.event_name == 'pull_request'
+        if: ${{ !cancelled() && steps.guard.outcome == 'success' && github.event_name == 'pull_request' }}
         env:
           LC_ALL: C
           # 인젝션 안전: 제목/본문을 셸에 직접 보간하지 않고 env 로만 전달한다.

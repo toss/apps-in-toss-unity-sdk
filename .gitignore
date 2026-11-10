@@ -70,6 +70,7 @@ Desktop.ini
 
 # Claude Code (로컬 설정은 커밋 제외)
 .claude/settings.local.json
+CLAUDE.local.md
 .claude/scheduled_tasks.lock
 # superpowers 플러그인이 로컬에 쌓는 기획/설계 메모.
 # 문서 루트는 Documentation~ 단일 루트이므로(#1015) 커밋 대상이 아니다.

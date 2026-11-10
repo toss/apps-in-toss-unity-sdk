@@ -34,19 +34,15 @@ echo "=== Unity-related Processes ==="
 ps aux | grep -i -E "unity|Unity.Licensing|UnityHelper|UnityShaderCompiler|UnityPackageManager" | grep -v grep || echo "No Unity processes found"
 echo ""
 
-# 이 머신은 self-hosted 러너 여러 개(macos-1-1..1-5 등)가 물리 머신 한 대를
-# 공유한다 — 러너 라벨/작업 디렉토리(actions-runner-N)만 다를 뿐 같은 호스트다.
-# 그래서 프로세스 "이름"만 보고 kill하면 같은 머신에서 동시에 도는 다른 잡의
-# Unity 에디터까지 함께 죽인다. 반드시 이 잡 자신의 작업 디렉토리를 커맨드라인에
-# 포함한 프로세스만 골라 죽인다.
+# 러너 호스트에는 다른 잡의 Unity 프로세스가 함께 떠 있을 수 있어서, 프로세스
+# "이름"만 보고 kill하면 다른 잡의 에디터까지 죽일 수 있다. 반드시 이 잡 자신의
+# 작업 디렉토리를 커맨드라인에 포함한 프로세스만 골라 죽인다.
 #
-# Unity.Licensing.Client는 여러 잡이 공유하는 라이선싱 IPC 채널의 유일한
-# 프로세스라서 워크스페이스 매칭 여부와 무관하게 절대 죽이지 않는다 — 죽이면
-# 그 채널에 붙어 있던 다른 잡의 라이선스 핸드셰이크가 깨지고, 다음 잡은 채널이
-# 없어 구버전 번들 클라이언트를 새로 띄우다 라이선스 인증에 실패한다
-# (fix-licensing-client.sh가 다루는 문제와 같은 뿌리).
+# Unity.Licensing.Client는 다른 잡이 쓰고 있을 수 있어 워크스페이스 매칭 여부와
+# 무관하게 절대 죽이지 않는다 — 죽이면 진행 중인 잡의 라이선스 핸드셰이크가
+# 깨질 수 있다(fix-licensing-client.sh가 다루는 문제와 같은 뿌리).
 echo "=== Killing Unity-related Processes (scoped to this job's workspace) ==="
-echo "Always skipped regardless of match: Unity.Licensing.Client (shared licensing IPC client)"
+echo "Always skipped regardless of match: Unity.Licensing.Client (never killed)"
 
 WORKSPACE_PATTERN="${GITHUB_WORKSPACE:-}"
 if [ -n "${RUNNER_WORKSPACE:-}" ]; then
@@ -91,7 +87,7 @@ else
     [ -n "$CMD" ] || continue
     case "$CMD" in
       *Unity.Licensing.Client*)
-        echo "Skipping PID $PID — Unity.Licensing.Client is never killed (shared licensing IPC client)"
+        echo "Skipping PID $PID — Unity.Licensing.Client is never killed (never killed)"
         continue
         ;;
     esac

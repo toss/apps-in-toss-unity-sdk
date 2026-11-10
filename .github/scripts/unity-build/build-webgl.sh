@@ -102,7 +102,7 @@ if [ $EXIT_CODE -ne 0 ]; then
   fi
 
   # 라이선스 관련 오류 감지 (retry 액션이 자동 재시도)
-  # signature/handshake/IPC 실패는 같은 self-hosted runner에서 다른 Unity 버전의
+  # signature/handshake/IPC 실패는 다른 Unity 버전의
   # LicensingClient가 살아있어 충돌하는 케이스 — retry로 회복 가능.
   LICENSE_ERROR=false
   if grep -qE "No valid Unity Editor license found|Unsupported protocol version|ResponseCode: 505|Access token is unavailable|Code 10 while verifying Licensing Client signature|LicensingClient has failed validation|Failed to handshake to channel|IPC channel to LicensingClient doesn't exist" "$LOG_FILE" 2>/dev/null; then

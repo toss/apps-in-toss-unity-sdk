@@ -518,18 +518,23 @@ function generateClassCodec(c: CsClass, types: CodecTypes): { reader: string; wr
 
   // 읽기
   const readable = members.filter(m => m.canRead);
-  const names = readable.map(m => csString(m.wire)).join(', ');
+  // getter만 있는 bool 멤버의 키는 _extensionData로 가되, 값은 bool로 바꿔 담는다(이전 Newtonsoft 동작).
+  const getterOnly = hasExt ? members.filter(m => !m.canRead && m.canWrite && m.type === 'bool') : [];
+  const names = [...readable, ...getterOnly].map(m => csString(m.wire)).join(', ');
   const cases = readable.map((m, i) => {
     const t = parseTypeExpr(m.type);
     const spec = specifiedOf(m, all);
     const assign = [`o.${m.name} = ${types.read(t, 'v')};`];
     if (spec) assign.push(`o.${spec.name} = true;`);
-    const guard = types.isValueType(t) || m.nullIgnore;
-    const body = guard
-      ? `if (!AITJson.IsNull(v)) { ${assign.join(' ')} }`
-      : assign.join(' ');
+    // 숫자·불리언·enum 자리의 빈 문자열은 null처럼 건너뛴다
+    const body = types.isValueType(t)
+      ? `if (!AITJson.IsNullOrEmpty(v)) { ${assign.join(' ')} }`
+      : m.nullIgnore
+        ? `if (!AITJson.IsNull(v)) { ${assign.join(' ')} }`
+        : assign.join(' ');
     return `                    case ${i}: ${body} break;`;
   });
+  getterOnly.forEach((_, k) => cases.push(`                    case ${readable.length + k}: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;`));
   const fallback = hasExt ? 'AITJson.Ext(ref o._extensionData, p); break;' : 'break;';
   const reader = [
     `        private static readonly string[] N_${id} = { ${names} };`,

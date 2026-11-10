@@ -422,7 +422,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_APIResponse))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.success = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.success = AITJson.Bool(v); } break;
                     case 1: o.data = AITJson.Str(v); break;
                     case 2: o.error = AITJson.Str(v); break;
                     case 3: o.errorName = AITJson.Str(v); break;
@@ -442,7 +442,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_AITCore_VisibilityStateData))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.isVisible = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.isVisible = AITJson.Bool(v); } break;
                     default: break;
                 }
             }
@@ -516,7 +516,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_AppLoginResult))
                 {
                     case 0: o.AuthorizationCode = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Referrer = AITJsonCodec.RE_AppLoginResultReferrer(v).GetValueOrDefault(); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Referrer = AITJsonCodec.RE_AppLoginResultReferrer(v).GetValueOrDefault(); } break;
                     case 2: o.error = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -524,7 +524,7 @@ namespace AppsInToss
             return o;
         }
 
-        private static readonly string[] N_GetAnonymousKeyResult = { "_type", "_successJson", "_errorCode" };
+        private static readonly string[] N_GetAnonymousKeyResult = { "_type", "_successJson", "_errorCode", "IsSuccess", "IsError" };
         internal static GetAnonymousKeyResult R_GetAnonymousKeyResult(JsonValue j)
         {
             if (j == null || j.Kind != JsonValueKind.Object) return null;
@@ -537,6 +537,8 @@ namespace AppsInToss
                     case 0: o._type = AITJson.Str(v); break;
                     case 1: o._successData = AITJsonCodec.R_GetAnonymousKeySuccessResponse(v); break;
                     case 2: o._errorCode = AITJson.Str(v); break;
+                    case 3: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;
+                    case 4: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -554,7 +556,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_UserCreateAnonymousKeyAuthCodeResult))
                 {
                     case 0: o.Code = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.ExpiresIn = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.ExpiresIn = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -726,7 +728,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_CheckoutPaymentResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Success = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Success = AITJson.Bool(v); } break;
                     case 1: o.Reason = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -744,7 +746,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_RequestTossPayPaysBillingResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Success = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Success = AITJson.Bool(v); } break;
                     case 1: o.Reason = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1043,7 +1045,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_GetCurrentLocationOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Accuracy = AITJsonCodec.RE_Accuracy(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Accuracy = AITJsonCodec.RE_Accuracy(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1077,9 +1079,9 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_StartUpdateLocationOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Accuracy = AITJsonCodec.RE_Accuracy(v).GetValueOrDefault(); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.TimeInterval = AITJson.Dbl(v); } break;
-                    case 2: if (!AITJson.IsNull(v)) { o.DistanceInterval = AITJson.Dbl(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Accuracy = AITJsonCodec.RE_Accuracy(v).GetValueOrDefault(); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.TimeInterval = AITJson.Dbl(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.DistanceInterval = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1096,8 +1098,8 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_GetPermissionPermission))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Name = AITJsonCodec.RE_PermissionName(v).GetValueOrDefault(); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Access = AITJsonCodec.RE_PermissionAccess(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Name = AITJsonCodec.RE_PermissionName(v).GetValueOrDefault(); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Access = AITJsonCodec.RE_PermissionAccess(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1114,8 +1116,8 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_OpenPermissionDialogPermission))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Name = AITJsonCodec.RE_PermissionName(v).GetValueOrDefault(); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Access = AITJsonCodec.RE_PermissionAccess(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Name = AITJsonCodec.RE_PermissionName(v).GetValueOrDefault(); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Access = AITJsonCodec.RE_PermissionAccess(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1132,15 +1134,15 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_RequestPermissionPermission))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Name = AITJsonCodec.RE_PermissionName(v).GetValueOrDefault(); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Access = AITJsonCodec.RE_PermissionAccess(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Name = AITJsonCodec.RE_PermissionName(v).GetValueOrDefault(); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Access = AITJsonCodec.RE_PermissionAccess(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
             return o;
         }
 
-        private static readonly string[] N_GetUserKeyForGameResult = { "_type", "_successJson", "_errorCode" };
+        private static readonly string[] N_GetUserKeyForGameResult = { "_type", "_successJson", "_errorCode", "IsSuccess", "IsError" };
         internal static GetUserKeyForGameResult R_GetUserKeyForGameResult(JsonValue j)
         {
             if (j == null || j.Kind != JsonValueKind.Object) return null;
@@ -1153,6 +1155,8 @@ namespace AppsInToss
                     case 0: o._type = AITJson.Str(v); break;
                     case 1: o._successData = AITJsonCodec.R_GetAnonymousKeySuccessResponse(v); break;
                     case 2: o._errorCode = AITJson.Str(v); break;
+                    case 3: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;
+                    case 4: AITJson.Ext(ref o._extensionData, p.Key, AITJson.BoolToken(v)); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1276,7 +1280,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_GrantPromotionRewardForGameParamsParams))
                 {
                     case 0: o.PromotionCode = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Amount = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Amount = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1400,10 +1404,10 @@ namespace AppsInToss
                     case 0: o.CampaignId = AITJson.Str(v); break;
                     case 1: o.BenefitName = AITJson.Str(v); break;
                     case 2: o.Display = AITJsonCodec.R_ViralGetCampaignResultDisplay(v); break;
-                    case 3: if (!AITJson.IsNull(v)) { o.Active = AITJson.Bool(v); } break;
-                    case 4: if (!AITJson.IsNull(v)) { o.CampaignStatus = AITJsonCodec.RE_ViralGetCampaignResultCampaignStatus(v).GetValueOrDefault(); } break;
-                    case 5: if (!AITJson.IsNull(v)) { o.ParticipationAvailable = AITJson.Bool(v); } break;
-                    case 6: if (!AITJson.IsNull(v)) { o.ParticipationUnavailableReason = AITJsonCodec.RE_ViralGetCampaignResultParticipationUnavailableReason(v).GetValueOrDefault(); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Active = AITJson.Bool(v); } break;
+                    case 4: if (!AITJson.IsNullOrEmpty(v)) { o.CampaignStatus = AITJsonCodec.RE_ViralGetCampaignResultCampaignStatus(v).GetValueOrDefault(); } break;
+                    case 5: if (!AITJson.IsNullOrEmpty(v)) { o.ParticipationAvailable = AITJson.Bool(v); } break;
+                    case 6: if (!AITJson.IsNullOrEmpty(v)) { o.ParticipationUnavailableReason = AITJsonCodec.RE_ViralGetCampaignResultParticipationUnavailableReason(v).GetValueOrDefault(); } break;
                     case 7: o.Rules = AITJson.Arr<ViralGetCampaignResultRule>(v, j1 => AITJsonCodec.R_ViralGetCampaignResultRule(j1)); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1443,11 +1447,11 @@ namespace AppsInToss
                 {
                     case 0: o.RuleId = AITJson.Str(v); break;
                     case 1: o.RuleKey = AITJson.Str(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.Revision = AITJson.Dbl(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.Revision = AITJson.Dbl(v); } break;
                     case 3: o.Title = AITJson.Str(v); break;
-                    case 4: if (!AITJson.IsNull(v)) { o.CurrentValue = AITJson.Dbl(v); } break;
-                    case 5: if (!AITJson.IsNull(v)) { o.TargetValue = AITJson.Dbl(v); } break;
-                    case 6: if (!AITJson.IsNull(v)) { o.Status = AITJsonCodec.RE_ViralGetCampaignResultRuleStatus(v).GetValueOrDefault(); } break;
+                    case 4: if (!AITJson.IsNullOrEmpty(v)) { o.CurrentValue = AITJson.Dbl(v); } break;
+                    case 5: if (!AITJson.IsNullOrEmpty(v)) { o.TargetValue = AITJson.Dbl(v); } break;
+                    case 6: if (!AITJson.IsNullOrEmpty(v)) { o.Status = AITJsonCodec.RE_ViralGetCampaignResultRuleStatus(v).GetValueOrDefault(); } break;
                     case 7: o.AchievedAt = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1518,7 +1522,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_ContactsViralEventData))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.RewardAmount = AITJson.Dbl(v); o.RewardAmountSpecified = true; } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.RewardAmount = AITJson.Dbl(v); o.RewardAmountSpecified = true; } break;
                     case 1: o.RewardUnit = AITJson.Str(v); break;
                     case 2: o.CloseReason = AITJsonCodec.RE_ContactsViralEventDataCloseReason(v); break;
                     case 3: o.SentRewardAmount = AITJson.DblN(v); break;
@@ -1558,10 +1562,10 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_ContactsViralSuccessEventData))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.CloseReason = AITJsonCodec.RE_ContactsViralSuccessEventDataCloseReason(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.CloseReason = AITJsonCodec.RE_ContactsViralSuccessEventDataCloseReason(v).GetValueOrDefault(); } break;
                     case 1: o.SentRewardAmount = AITJson.DblN(v); break;
                     case 2: o.SendableRewardsCount = AITJson.DblN(v); break;
-                    case 3: if (!AITJson.IsNull(v)) { o.SentRewardsCount = AITJson.Dbl(v); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.SentRewardsCount = AITJson.Dbl(v); } break;
                     case 4: o.RewardUnit = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1726,8 +1730,8 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_FetchContactsOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Size = AITJson.Dbl(v); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Offset = AITJson.Dbl(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Size = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Offset = AITJson.Dbl(v); } break;
                     case 2: o.Query = AITJsonCodec.R_FetchContactsOptionsQuery(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1764,7 +1768,7 @@ namespace AppsInToss
                 {
                     case 0: o.Result = AITJson.Arr<ContactEntity>(v, j1 => AITJsonCodec.R_ContactEntity(j1)); break;
                     case 1: o.NextOffset = AITJson.DblN(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.Done = AITJson.Bool(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.Done = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1819,7 +1823,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_ScreenSetAwakeModeResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Enabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Enabled = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1836,7 +1840,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_ScreenSetSecureResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Enabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Enabled = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1853,7 +1857,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SetScreenAwakeModeResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Enabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Enabled = AITJson.Bool(v); } break;
                     case 1: o.error = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1871,7 +1875,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SetSecureScreenResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Enabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Enabled = AITJson.Bool(v); } break;
                     case 1: o.error = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -1889,7 +1893,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SetDeviceOrientationOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Type = AITJsonCodec.RE_SetDeviceOrientationOptionsType(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Type = AITJsonCodec.RE_SetDeviceOrientationOptionsType(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1906,7 +1910,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SetIosSwipeGestureEnabledOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.IsEnabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.IsEnabled = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1923,7 +1927,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SetScreenAwakeModeOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Enabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Enabled = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -1940,7 +1944,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SetSecureScreenOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Enabled = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Enabled = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2258,7 +2262,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_BannerSlotErrorPayloadError))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Code = AITJson.Dbl(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Code = AITJson.Dbl(v); } break;
                     case 1: o.Message = AITJson.Str(v); break;
                     case 2: o.Domain = AITJson.Str(v); break;
                     case 3: o.MediationId = AITJson.Str(v); break;
@@ -2353,7 +2357,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_ShowFullScreenAdEventData))
                 {
                     case 0: o.UnitType = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.UnitAmount = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.UnitAmount = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2421,10 +2425,10 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_SafeAreaInsets))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Top = AITJson.Dbl(v); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Left = AITJson.Dbl(v); } break;
-                    case 2: if (!AITJson.IsNull(v)) { o.Right = AITJson.Dbl(v); } break;
-                    case 3: if (!AITJson.IsNull(v)) { o.Bottom = AITJson.Dbl(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Top = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Left = AITJson.Dbl(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.Right = AITJson.Dbl(v); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Bottom = AITJson.Dbl(v); } break;
                     case 4: o.error = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -2549,7 +2553,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_GrantPromotionRewardParamsParams))
                 {
                     case 0: o.PromotionCode = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Amount = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Amount = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2600,7 +2604,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_RequestNotificationAgreementOptionsOnEventParam))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Type = AITJsonCodec.RE_RequestNotificationAgreementOptionsOnEventParamType(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Type = AITJsonCodec.RE_RequestNotificationAgreementOptionsOnEventParamType(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2730,7 +2734,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_ShowAdMobEventData))
                 {
                     case 0: o.UnitType = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.UnitAmount = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.UnitAmount = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2829,7 +2833,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_AdUserEarnedRewardData))
                 {
                     case 0: o.UnitType = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.UnitAmount = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.UnitAmount = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2884,7 +2888,7 @@ namespace AppsInToss
                 {
                     case 0: o.Id = AITJson.Str(v); break;
                     case 1: o.DataUri = AITJson.Str(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.Type = AITJsonCodec.RE_AlbumItemType(v).GetValueOrDefault(); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.Type = AITJsonCodec.RE_AlbumItemType(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -2924,7 +2928,7 @@ namespace AppsInToss
                 {
                     case 0: o.OrderId = AITJson.Str(v); break;
                     case 1: o.Sku = AITJson.Str(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.Status = AITJsonCodec.RE_CompletedOrRefundedOrdersResultOrderStatus(v).GetValueOrDefault(); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.Status = AITJsonCodec.RE_CompletedOrRefundedOrdersResultOrderStatus(v).GetValueOrDefault(); } break;
                     case 3: o.Date = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -2942,7 +2946,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_CompletedOrRefundedOrdersResult))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.HasNext = AITJson.Bool(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.HasNext = AITJson.Bool(v); } break;
                     case 1: o.NextKey = AITJson.Str(v); break;
                     case 2: o.Orders = AITJson.Arr<CompletedOrRefundedOrdersResultOrder>(v, j1 => AITJsonCodec.R_CompletedOrRefundedOrdersResultOrder(j1)); break;
                     case 3: o.error = AITJson.Str(v); break;
@@ -2980,7 +2984,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_RewardFromContactsViralEventData))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.RewardAmount = AITJson.Dbl(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.RewardAmount = AITJson.Dbl(v); } break;
                     case 1: o.RewardUnit = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -3040,7 +3044,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_GrantRewardParams))
                 {
                     case 0: o.PromotionCode = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Amount = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Amount = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -3057,7 +3061,7 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_HapticFeedbackOptions))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Type = AITJsonCodec.RE_HapticFeedbackType(v).GetValueOrDefault(); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Type = AITJsonCodec.RE_HapticFeedbackType(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -3077,9 +3081,9 @@ namespace AppsInToss
                     case 0: o.OrderId = AITJson.Str(v); break;
                     case 1: o.DisplayName = AITJson.Str(v); break;
                     case 2: o.DisplayAmount = AITJson.Str(v); break;
-                    case 3: if (!AITJson.IsNull(v)) { o.Amount = AITJson.Dbl(v); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Amount = AITJson.Dbl(v); } break;
                     case 4: o.Currency = AITJson.Str(v); break;
-                    case 5: if (!AITJson.IsNull(v)) { o.Fraction = AITJson.Dbl(v); } break;
+                    case 5: if (!AITJson.IsNullOrEmpty(v)) { o.Fraction = AITJson.Dbl(v); } break;
                     case 6: o.MiniAppIconUrl = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -3116,11 +3120,11 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_IapSubscriptionInfoResult))
                 {
                     case 0: o.Status = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.CatalogId = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.CatalogId = AITJson.Dbl(v); } break;
                     case 2: o.ExpiresAt = AITJson.Str(v); break;
-                    case 3: if (!AITJson.IsNull(v)) { o.IsAutoRenew = AITJson.Bool(v); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.IsAutoRenew = AITJson.Bool(v); } break;
                     case 4: o.GracePeriodExpiresAt = AITJson.Str(v); break;
-                    case 5: if (!AITJson.IsNull(v)) { o.IsAccessible = AITJson.Bool(v); } break;
+                    case 5: if (!AITJson.IsNullOrEmpty(v)) { o.IsAccessible = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -3174,7 +3178,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_Location))
                 {
                     case 0: o.AccessLocation = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Timestamp = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Timestamp = AITJson.Dbl(v); } break;
                     case 2: o.Coords = AITJsonCodec.R_LocationCoords(v); break;
                     case 3: o.error = AITJson.Str(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
@@ -3193,12 +3197,12 @@ namespace AppsInToss
                 var v = p.Value;
                 switch (AITJson.Match(p.Key, N_LocationCoords))
                 {
-                    case 0: if (!AITJson.IsNull(v)) { o.Latitude = AITJson.Dbl(v); } break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Longitude = AITJson.Dbl(v); } break;
-                    case 2: if (!AITJson.IsNull(v)) { o.Altitude = AITJson.Dbl(v); } break;
-                    case 3: if (!AITJson.IsNull(v)) { o.Accuracy = AITJson.Dbl(v); } break;
-                    case 4: if (!AITJson.IsNull(v)) { o.AltitudeAccuracy = AITJson.Dbl(v); } break;
-                    case 5: if (!AITJson.IsNull(v)) { o.Heading = AITJson.Dbl(v); } break;
+                    case 0: if (!AITJson.IsNullOrEmpty(v)) { o.Latitude = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Longitude = AITJson.Dbl(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.Altitude = AITJson.Dbl(v); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Accuracy = AITJson.Dbl(v); } break;
+                    case 4: if (!AITJson.IsNullOrEmpty(v)) { o.AltitudeAccuracy = AITJson.Dbl(v); } break;
+                    case 5: if (!AITJson.IsNullOrEmpty(v)) { o.Heading = AITJson.Dbl(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -3238,8 +3242,8 @@ namespace AppsInToss
                 {
                     case 0: o.Name = AITJson.Str(v); break;
                     case 1: o.KeyPath = AITJson.Any(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.MultiEntry = AITJson.Bool(v); } break;
-                    case 3: if (!AITJson.IsNull(v)) { o.Unique = AITJson.Bool(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.MultiEntry = AITJson.Bool(v); } break;
+                    case 3: if (!AITJson.IsNullOrEmpty(v)) { o.Unique = AITJson.Bool(v); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -3277,7 +3281,7 @@ namespace AppsInToss
                 {
                     case 0: o.Name = AITJson.Str(v); break;
                     case 1: o.KeyPath = AITJson.Any(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.AutoIncrement = AITJson.Bool(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.AutoIncrement = AITJson.Bool(v); } break;
                     case 3: o.Indexes = AITJson.Arr<OriginStorageDumpIndexedDBObjectStoreIndex>(v, j1 => AITJsonCodec.R_OriginStorageDumpIndexedDBObjectStoreIndex(j1)); break;
                     case 4: o.Records = AITJson.Arr<OriginStorageDumpIndexedDBObjectStoreRecord>(v, j1 => AITJsonCodec.R_OriginStorageDumpIndexedDBObjectStoreRecord(j1)); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
@@ -3297,7 +3301,7 @@ namespace AppsInToss
                 switch (AITJson.Match(p.Key, N_OriginStorageDumpIndexedDB))
                 {
                     case 0: o.Name = AITJson.Str(v); break;
-                    case 1: if (!AITJson.IsNull(v)) { o.Version = AITJson.Dbl(v); } break;
+                    case 1: if (!AITJson.IsNullOrEmpty(v)) { o.Version = AITJson.Dbl(v); } break;
                     case 2: o.ObjectStores = AITJson.Arr<OriginStorageDumpIndexedDBObjectStore>(v, j1 => AITJsonCodec.R_OriginStorageDumpIndexedDBObjectStore(j1)); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -3317,7 +3321,7 @@ namespace AppsInToss
                 {
                     case 0: o.Path = AITJson.Str(v); break;
                     case 1: o.Type = AITJson.Str(v); break;
-                    case 2: if (!AITJson.IsNull(v)) { o.LastModified = AITJson.Dbl(v); } break;
+                    case 2: if (!AITJson.IsNullOrEmpty(v)) { o.LastModified = AITJson.Dbl(v); } break;
                     case 3: o.Data = AITJson.Bytes(v); break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
@@ -3376,7 +3380,7 @@ namespace AppsInToss
                     case 2: o.WithTitle = AITJson.BoolN(v); break;
                     case 3: o.TransparentBackground = AITJson.BoolN(v); break;
                     case 4: o.BackgroundColor = AITJson.Str(v); break;
-                    case 5: if (!AITJson.IsNull(v)) { o.Theme = AITJsonCodec.RE_NavigationBarTheme(v).GetValueOrDefault(); } break;
+                    case 5: if (!AITJson.IsNullOrEmpty(v)) { o.Theme = AITJsonCodec.RE_NavigationBarTheme(v).GetValueOrDefault(); } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }

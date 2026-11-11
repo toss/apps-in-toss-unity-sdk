@@ -328,7 +328,7 @@ namespace AppsInToss.Editor
         /// <summary>
         /// Sentry/에러 추적 SDK가 요구하는 WebGL 설정을 적용한다.
         /// 호출 위치: <see cref="Init"/> 내 IL2CPP 설정 직후 (Init이 이 메서드에 위임).
-        /// - WebGL exceptionSupport를 지정 값으로 설정 (기본 FullWithStacktrace — stack trace 캡처 가능)
+        /// - WebGL exceptionSupport를 지정 값으로 설정 (자동 기본값은 ExplicitlyThrownExceptionsOnly. FullWithStacktrace는 wasm 크기 증가·런타임 저하가 커서 사용자가 명시할 때만 적용)
         /// - Stack Trace Log Type은 WebGL에서 지원되는 ScriptOnly로 고정 (Full은 IL2CPP/WebGL 조합 미지원)
         ///
         /// 주의: PlayerSettings.SetStackTraceLogType은 플랫폼별이 아닌 프로젝트 전역 설정이다.

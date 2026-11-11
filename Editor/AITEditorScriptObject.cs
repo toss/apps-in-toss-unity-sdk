@@ -271,7 +271,7 @@ namespace AppsInToss
         public bool wasmStreaming = true;
 
         [Header("고급 설정 (주의: 변경 시 호환성 문제 발생 가능)")]
-        [Tooltip("-1 = 자동 (FullWithStacktrace, Sentry 경고 방지)")]
+        [Tooltip("-1 = 자동 (ExplicitlyThrownExceptionsOnly, Unity 기본값). FullWithStacktrace는 wasm 크기를 크게 늘리고 런타임을 느리게 하므로 디버깅이나 에러 추적용 stack trace가 필요할 때만 명시적으로 선택하세요.")]
         public int exceptionSupport = -1;
 
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
@@ -289,6 +289,11 @@ namespace AppsInToss
         [Header("빌드 전 검사 설정")]
         [Tooltip("빌드 전 에셋 최적화 검사를 활성화합니다")]
         public bool enableBuildOptimizationCheck = true;
+
+        [Tooltip("텍스처 포맷 가드: 0 = 자동 변환 (기본), 1 = 경고만, 2 = 끔. " +
+                 "자동 변환은 WebGL 텍스처 서브타깃을 ASTC로 강제하고 DXT/BC 오버라이드를 모바일 호환 포맷으로 바꿉니다. " +
+                 "환경 변수 AIT_TEXTURE_FORMAT_GUARD=auto|warn|off 가 우선합니다.")]
+        public int textureFormatGuardMode = 0; // AITTextureFormatGuardMode.AutoConvert. enum 은 AppsInToss.Editor 네임스페이스라 여기서 참조하지 않는다.
 
         [Header("계측 설정")]
         [Tooltip("first-interactive 계측: -1 = 자동 (활성), 0 = 비활성, 1 = 활성")]
@@ -530,9 +535,11 @@ namespace AppsInToss
         /// </summary>
         public static WebGLExceptionSupport GetDefaultExceptionSupport()
         {
-            // Sentry/에러 추적 SDK가 stack trace를 캡처하려면 FullWithStacktrace 필요.
-            // Unity 기본값(ExplicitlyThrownExceptionsOnly)을 올려서 Sentry의 런타임 경고 제거.
-            return WebGLExceptionSupport.FullWithStacktrace;
+            // Unity 기본값(ExplicitlyThrownExceptionsOnly)을 그대로 쓴다.
+            // FullWithStacktrace는 Unity 문서상 디버그용이다. wasm 크기가 크게 늘고(invoke_* JS 트램펄린 import 증가,
+            // 함수 본문 수 배 확대) 런타임도 느려지므로 기본값으로 쓰지 않는다.
+            // stack trace가 필요하면 고급 설정의 exceptionSupport를 명시적으로 FullWithStacktrace로 지정한다.
+            return WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         }
 
         /// <summary>

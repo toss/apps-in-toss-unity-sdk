@@ -91,6 +91,10 @@ namespace AppsInToss.Editor
 
             string[] guids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets" });
 
+            // 가드가 꺼져 있으면(Off) DXT/BC·아틀라스 검사는 건너뛴다. 감지 로직은 AITTextureFormatGuard 와 공유.
+            var guardMode = AITTextureFormatGuard.ResolveCurrentMode(UnityUtil.GetEditorConf(), out _);
+            bool checkIncompatible = guardMode != AITTextureFormatGuardMode.Off;
+
             foreach (string guid in guids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
@@ -111,12 +115,28 @@ namespace AppsInToss.Editor
                     // Automatic은 Unity가 플랫폼별 최적 포맷을 자동 선택하므로 제외
                     issue.assetPaths.Add(path);
                 }
+                else if (checkIncompatible && AITTextureFormatGuard.InspectIncompatible(path) != null)
+                {
+                    // DXT/BC 오버라이드 → 모바일 WebView 비호환 (옵트아웃 레이블 에셋 제외)
+                    issue.assetPaths.Add(path);
+                }
+            }
+
+            if (checkIncompatible)
+            {
+                // SpriteAtlas(v1/v2)의 DXT/BC 오버라이드
+                foreach (string guid in AssetDatabase.FindAssets("t:SpriteAtlas", new[] { "Assets" }))
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (AITTextureFormatGuard.InspectIncompatible(path) != null)
+                        issue.assetPaths.Add(path);
+                }
             }
 
             if (issue.assetPaths.Count > 0)
             {
                 issue.status = OptimizationStatus.Issue;
-                issue.description = $"{issue.assetPaths.Count}개 텍스처가 WebGL 압축 미적용";
+                issue.description = $"{issue.assetPaths.Count}개 텍스처/아틀라스가 WebGL 압축 미적용 또는 모바일 비호환(DXT/BC)";
             }
             else
             {
@@ -190,6 +210,13 @@ namespace AppsInToss.Editor
                 {
                     for (int i = 0; i < assetPaths.Count; i++)
                     {
+                        // 아틀라스·DXT/BC 오버라이드는 가드의 변환 매핑을 그대로 쓴다
+                        if (AITTextureFormatGuard.ConvertAsset(assetPaths[i]))
+                        {
+                            fixed_++;
+                            continue;
+                        }
+
                         var importer = AssetImporter.GetAtPath(assetPaths[i]) as TextureImporter;
                         if (importer == null) continue;
 
@@ -205,9 +232,13 @@ namespace AppsInToss.Editor
                     AssetDatabase.StopAssetEditing();
                 }
 
+                // SpriteAtlas(v1) 변경은 저장해야 reimport 로 되돌려지지 않는다
+                AssetDatabase.SaveAssets();
+
                 // 일괄 reimport
                 for (int i = 0; i < assetPaths.Count; i++)
                 {
+                    AssetDatabase.WriteImportSettingsIfDirty(assetPaths[i]);
                     EditorUtility.DisplayProgressBar(
                         "텍스처 reimport 중",
                         $"{assetPaths[i]} ({i + 1}/{assetPaths.Count})",
@@ -265,9 +296,13 @@ namespace AppsInToss.Editor
                     AssetDatabase.StopAssetEditing();
                 }
 
+                // SpriteAtlas(v1) 변경은 저장해야 reimport 로 되돌려지지 않는다
+                AssetDatabase.SaveAssets();
+
                 // 일괄 reimport
                 for (int i = 0; i < assetPaths.Count; i++)
                 {
+                    AssetDatabase.WriteImportSettingsIfDirty(assetPaths[i]);
                     EditorUtility.DisplayProgressBar(
                         "오디오 reimport 중",
                         $"{assetPaths[i]} ({i + 1}/{assetPaths.Count})",
@@ -308,20 +343,12 @@ namespace AppsInToss.Editor
 
         private static TextureImporterFormat GetRecommendedTextureFormat()
         {
-#if UNITY_6000_0_OR_NEWER
-            return TextureImporterFormat.ASTC_6x6;
-#else
-            return TextureImporterFormat.ETC2_RGBA8;
-#endif
+            return AITTextureFormatGuard.GetRecommendedTextureFormat();
         }
 
         private static string GetRecommendedTextureFormatName()
         {
-#if UNITY_6000_0_OR_NEWER
-            return "ASTC 6x6";
-#else
-            return "ETC2";
-#endif
+            return AITTextureFormatGuard.GetRecommendedTextureFormatName();
         }
     }
 }

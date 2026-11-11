@@ -455,6 +455,9 @@ namespace AppsInToss
                     return AITExportError.INVALID_APP_CONFIG;
                 }
 
+                // 텍스처 포맷 가드: 배치 모드·빠른 빌드 포함 모든 WebGL 빌드에서 실행 (예외를 던지지 않음)
+                if (buildWebGL) AITTextureFormatGuard.RunBuildGuard(editorConfig);
+
                 // 빌드 전 에셋 최적화 검사
                 if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig, fastBuild))
                 {
@@ -617,6 +620,9 @@ namespace AppsInToss
                     trackedOnComplete(AITExportError.INVALID_APP_CONFIG);
                     return;
                 }
+
+                // 텍스처 포맷 가드: 배치 모드·빠른 빌드 포함 모든 WebGL 빌드에서 실행 (예외를 던지지 않음)
+                if (buildWebGL) AITTextureFormatGuard.RunBuildGuard(editorConfig);
 
                 // 빌드 전 에셋 최적화 검사
                 if (buildWebGL && !RunPreBuildOptimizationCheck(editorConfig, fastBuild))

@@ -58,9 +58,12 @@ describe('공개 타입 이름 pin', () => {
     expect(leaked).toEqual([]);
   });
 
-  test('두 pin이 같은 이름으로 모이지 않는다', () => {
-    const values = Object.values(TYPE_NAME_PINS);
-    expect(new Set(values).size).toBe(values.length);
+  test('같은 공개 이름으로 모이는 pin은 같은 종류의 타입끼리다', () => {
+    // web-framework가 이름을 버전마다 다시 바꾸면 버전별 옛 이름이 같은 공개 이름으로 모인다.
+    // 이때 Icon 같은 하위 타입과 본 타입이 한 이름으로 섞이지 않는지만 본다.
+    for (const [from, to] of Object.entries(TYPE_NAME_PINS)) {
+      expect(from.endsWith('Icon'), `${from} -> ${to}`).toBe(to.endsWith('Icon'));
+    }
   });
 
   test('식별자 단위로만 바꾼다', () => {

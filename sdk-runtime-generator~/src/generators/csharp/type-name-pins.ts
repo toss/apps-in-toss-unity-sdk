@@ -8,6 +8,8 @@
  *
  * - 새 이름이 3.x에서 따로 선언된 구 이름 타입(예: AdMobLoadResult)과 겹치면, 두 타입의 필드가
  *   같다는 것을 확인한 뒤 하나로 합친다. 필드가 다르면 생성을 중단한다.
+ * - web-framework가 같은 타입 이름을 버전마다 다시 바꾸면, 버전별 이름을 모두 같은 공개 이름으로 pin한다.
+ *   한 번의 생성에 둘이 함께 나오면 위 규칙대로 필드가 같을 때만 합친다.
  * - 값 이름은 SDK에 공개된 적이 있는 이름이어야 한다. tests/fixtures/public-type-names.json 의
  *   목록과 `type-name-pins.test.ts` 가 모든 공개 타입 이름이 살아 있는지 확인한다.
  */
@@ -19,6 +21,9 @@ export const TYPE_NAME_PINS: Readonly<Record<string, string>> = {
   // 네비게이션 바 액세서리 버튼
   AddAccessoryButtonParams: 'AddAccessoryButtonOptions',
   AddAccessoryButtonParamsIcon: 'AddAccessoryButtonOptionsIcon',
+  // web-framework 3.10.0이 Partner 쪽 이름을 한 번 더 바꿨다
+  PartnerAddAccessoryButtonParams: 'AddAccessoryButtonOptions',
+  PartnerAddAccessoryButtonParamsIcon: 'AddAccessoryButtonOptionsIcon',
 
   // AdMob
   LoadAppsInTossAdmobParams: 'LoadAdMobOptions',

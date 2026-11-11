@@ -274,6 +274,12 @@ jobs:
             echo "::warning::SDK 코드 생성 실패 - 수동 수정 필요"
           fi
 
+          # golden은 생성 결과의 회귀 기준이라 web-framework 입력이 바뀌면 같이 바뀐다.
+          # 생성에 성공했을 때만 갱신하고, 바뀐 golden diff는 업데이트 PR에서 리뷰한다.
+          if grep -q "generate_status=success" "$GITHUB_OUTPUT"; then
+            pnpm test:update-golden
+          fi
+
       - name: 다중 버전 테스트 alias 추가
         if: steps.author-check.outputs.skip != 'true'
         working-directory: sdk-runtime-generator~

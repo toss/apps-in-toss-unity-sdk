@@ -13,6 +13,7 @@
     "dev": "tsx src/index.ts generate",
     "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "vitest run",
+    "check:drift": "bash scripts/check-generated-drift.sh",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
     "test:binding": "vitest run tests/unit/binding.test.ts",

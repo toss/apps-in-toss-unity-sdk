@@ -339,6 +339,12 @@ jobs:
             echo "::warning::SDK 코드 생성 실패 - PR 생성 후 수동 수정 필요"
           fi
 
+          # golden은 생성 결과의 회귀 기준이라 web-framework 입력이 바뀌면 같이 바뀐다.
+          # 생성에 성공했을 때만 갱신하고, 바뀐 golden diff는 업데이트 PR에서 리뷰한다.
+          if grep -q "generate_status=success" "$GITHUB_OUTPUT"; then
+            pnpm test:update-golden
+          fi
+
       # 다중 버전 호환성 테스트용 pnpm alias 추가
       # 이 alias는 SDK 생성에는 사용되지 않으며, 이후 CI에서 multi-version 테스트 시 사용됨.
       # 건너뛴 중간 버전도 호환성 커버리지와 API changelog를 잃지 않도록 alias는 함께 추가한다.

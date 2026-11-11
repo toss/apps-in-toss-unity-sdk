@@ -2,7 +2,18 @@
 // ait-patch-cli.mjs
 //
 // 빌드시점 CLI 패치 — @apps-in-toss/web-framework 3.x의 `ait build`가 .ait
-// 메타데이터에 runtimeVersion을 emit하지 않는 upstream gap을 브릿지한다.
+// 메타데이터에 runtimeVersion/isGame을 emit하지 않는 upstream gap을 브릿지한다.
+//
+// 패치 대상 (3.1.0 ~ 3.9.0 전 버전에서 실측):
+//   `ait` bin(web-framework/bin/ait.js)은 `import "@apps-in-toss/cli"`만 하고, 실제
+//   `writer.setMetadata({...})` 호출은 @apps-in-toss/cli의 dist/index.js(buildArtifact)에 있다.
+//   web-framework에는 dist/cli.js가 없다. 예전에는 web-framework/dist/cli.js만 패치 대상으로
+//   삼았기 때문에, 이 파일이 사라진 뒤 패치가 "읽지 못함 — 건너뜀"으로 조용히 no-op이 되어
+//   실제 번들의 isGame=false, runtimeVersion=""이 되었다.
+//   => 대상 파일은 하드코딩하지 않고 프로젝트의 web-framework에서 의존 체인을 따라 찾는다
+//      (resolvePatchCandidates). 대상이 없거나 앵커(setMetadata 객체 리터럴)가 없으면
+//      조용히 넘어가지 않고 큰 경고를 남긴다. 빌드 후 실제 결과는 ait-verify-metadata.mjs가
+//      .ait를 열어 확인한다(AIT_STRICT_METADATA=1이면 불일치 시 실패).
 //
 // 배경:
 //   - 3.x `ait deploy`는 .ait 메타데이터의 runtimeVersion(non-empty)을 요구한다.
@@ -41,18 +52,22 @@
 // 안전 규칙 — 어떤 상황에서도 빌드를 막지 않는다(항상 정상 종료):
 //   (a) 멱등        : setMetadata에 이미 runtimeVersion/isGame이 있으면 해당 키는 no-op.
 //   (b) 버전 게이팅 : setMetadata 객체 리터럴을 못 찾으면(2.x 등) no-op.
-//   (c) 구조 변화   : 패턴이 안 맞으면 경고만 남기고 no-op(빌드 진행).
+//   (c) 구조 변화   : 패턴이 안 맞으면 큰 경고를 남기고 no-op(빌드 진행).
 //   (d) upstream 수정: upstream이 네이티브로 emit하면 (a)에 의해 자동 no-op.
-//   (e) 스토어 보호 : pnpm 하드링크로 공유 store가 오염되지 않도록, 쓰기 전에
-//                     하드링크를 끊고(unlink) 새 inode로 기록한다(Linux CI 필수).
+//   (e) 스토어 보호 : pnpm 하드링크로 공유 store가 오염되지 않도록, 같은 디렉터리의 임시
+//                     파일에 쓰고 rename으로 교체해 새 inode로 기록한다(하드링크가 끊긴다).
+//                     쓰기가 실패해도 원본 파일은 남고, 파일 모드(실행 비트)는 보존한다.
 
-import { readFileSync, writeFileSync, unlinkSync, realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  readFileSync, writeFileSync, unlinkSync, realpathSync, renameSync, chmodSync, statSync, readdirSync,
+} from 'node:fs';
+import { basename, dirname, join, parse, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const RUNTIME_VERSION = '0.84.0';
 const TAG = '[ait-patch-cli]';
-const CLI_REL_PATH = 'node_modules/@apps-in-toss/web-framework/dist/cli.js';
+const WEB_FRAMEWORK = '@apps-in-toss/web-framework';
+const CLI_PACKAGE = '@apps-in-toss/cli';
 
 /**
  * web-framework cli.js 소스에서 setMetadata({...}) 객체 리터럴을 찾아
@@ -71,18 +86,23 @@ const CLI_REL_PATH = 'node_modules/@apps-in-toss/web-framework/dist/cli.js';
  * @returns {{ changed: boolean, source: string, reason: string }}
  */
 export function injectMetadataKey(src, key, exprSource, describe) {
-  const obj = findSetMetadataObject(src);
-  if (!obj) {
+  const objs = findSetMetadataObjects(src);
+  if (objs.length === 0) {
     return { changed: false, source: src, reason: 'setMetadata 객체 리터럴 없음 (2.x이거나 구조 변경)' };
   }
-  const objText = src.slice(obj.start, obj.end + 1);
-  if (new RegExp(`\\b${key}\\s*[:,}]`).test(objText)) {
+  // 뒤쪽 호출부부터 삽입해야 앞쪽 인덱스가 밀리지 않는다.
+  let out = src;
+  let count = 0;
+  for (const obj of [...objs].reverse()) {
+    if (hasTopLevelKey(src, obj, key)) continue;
+    // 여는 `{`(obj.start) 직후에 한 줄 삽입 (다른 필드 보존).
+    const insertAt = obj.start + 1;
+    out = out.slice(0, insertAt) + `\n    ${key}: ${exprSource},` + out.slice(insertAt);
+    count++;
+  }
+  if (count === 0) {
     return { changed: false, source: src, reason: `${key} 이미 존재 (멱등/upstream emit)` };
   }
-  // 여는 `{`(obj.start) 직후에 한 줄 삽입 (다른 필드 보존).
-  const insertAt = obj.start + 1;
-  const injected = `\n    ${key}: ${exprSource},`;
-  const out = src.slice(0, insertAt) + injected + src.slice(insertAt);
   return { changed: true, source: out, reason: describe };
 }
 
@@ -110,20 +130,30 @@ export function injectIsGame(src) {
 }
 
 /**
- * `setMetadata(` 다음의 첫 객체 리터럴 `{...}`의 시작/끝 인덱스를 brace-depth로 찾는다.
- * 문자열/템플릿/주석 내부의 괄호는 무시한다.
- * @returns {{ start: number, end: number } | null}
+ * 소스 안의 모든 `setMetadata({...})` 호출에서 첫 인자 객체 리터럴의 시작/끝 인덱스를
+ * brace-depth로 찾는다. 문자열/템플릿/주석 내부의 괄호는 무시한다.
+ * 인자가 객체 리터럴이 아닌 것(메서드 정의 `setMetadata(e){`, `setMetadata(meta)` 등)과
+ * 괄호가 맞지 않는 것은 건너뛴다(안전 no-op).
+ * @returns {Array<{ start: number, end: number }>}
  */
-function findSetMetadataObject(src) {
-  const call = /\bsetMetadata\s*\(/.exec(src);
-  if (!call) return null;
+function findSetMetadataObjects(src) {
+  const found = [];
+  const callRe = /\bsetMetadata\s*\(/g;
+  let call;
+  while ((call = callRe.exec(src)) !== null) {
+    // `(` 다음 첫 비공백(주석 제외)이 `{` 여야 객체 리터럴 인자다.
+    const start = skipTrivia(src, call.index + call[0].length);
+    if (src[start] !== '{') continue;
+    const end = findMatchingBrace(src, start);
+    if (end < 0) continue; // 괄호 불균형 — 안전 no-op
+    found.push({ start, end });
+    callRe.lastIndex = end + 1;
+  }
+  return found;
+}
 
-  // `(` 다음 첫 비공백(주석 제외)이 `{` 인지 확인 — 객체 리터럴 인자가 아니면
-  // (예: setMetadata(meta)) 안전하게 패치 불가로 처리한다.
-  let i = skipTrivia(src, call.index + call[0].length);
-  if (src[i] !== '{') return null;
-
-  const start = i;
+/** start의 `{`와 짝이 맞는 `}` 인덱스(없으면 -1). 문자열/주석은 건너뛴다. */
+function findMatchingBrace(src, start) {
   let depth = 0;
   for (let j = start; j < src.length; j++) {
     const skipped = skipStringOrComment(src, j);
@@ -132,10 +162,37 @@ function findSetMetadataObject(src) {
     if (ch === '{') depth++;
     else if (ch === '}') {
       depth--;
-      if (depth === 0) return { start, end: j };
+      if (depth === 0) return j;
     }
   }
-  return null; // 괄호 불균형 — 안전 no-op
+  return -1;
+}
+
+/**
+ * 객체 리터럴의 "최상위" 프로퍼티에 key가 있는지 본다(`key:`, 단축 `key,`/`key}`,
+ * 따옴표 키). 중첩 객체 안의 같은 이름 키는 무시한다.
+ */
+function hasTopLevelKey(src, obj, key) {
+  let flat = '';
+  let depth = 0;
+  for (let j = obj.start; j <= obj.end; j++) {
+    const skipped = skipStringOrComment(src, j);
+    if (skipped > j) {
+      // depth 1의 문자열은 `"key":` 형태의 따옴표 키일 때만 남긴다. 값 문자열은 버린다.
+      if (depth === 1 && /^[\s]*:/.test(src.slice(skipped, skipped + 8)) && /^["'`]/.test(src[j])) {
+        flat += src.slice(j, skipped);
+      } else {
+        flat += ' ';
+      }
+      j = skipped - 1;
+      continue;
+    }
+    const ch = src[j];
+    if (ch === '{' || ch === '[' || ch === '(') { depth++; flat += depth === 1 ? ch : ' '; continue; }
+    if (ch === '}' || ch === ']' || ch === ')') { flat += depth === 1 ? ch : ' '; depth--; continue; }
+    flat += depth === 1 ? ch : ' ';
+  }
+  return new RegExp(`(^|[^\\w$.])${key}["'\`]?\\s*[:,}]`).test(flat);
 }
 
 /** 공백 + 주석을 건너뛴 다음 인덱스를 반환. */
@@ -180,49 +237,200 @@ function skipComment(src, i) {
   return i;
 }
 
-function main() {
-  const cliPath = resolve(process.cwd(), CLI_REL_PATH);
-  let realPath = cliPath;
-  let src;
+/**
+ * 소스 하나에 runtimeVersion + isGame을 주입한다.
+ * @returns {{ found: boolean, changed: boolean, source: string, reason: string }}
+ *   found: setMetadata 객체 리터럴이 하나라도 있었는지(패치 앵커 존재 여부).
+ */
+export function patchSource(src, runtimeVersion = RUNTIME_VERSION) {
+  const found = findSetMetadataObjects(src).length > 0;
+  const rv = injectRuntimeVersion(src, runtimeVersion);
+  const ig = injectIsGame(rv.source);
+  const changed = rv.changed || ig.changed;
+  const reason = changed
+    ? [rv, ig].filter((r) => r.changed).map((r) => r.reason).join(', ')
+    : `${rv.reason}; ${ig.reason}`;
+  return { found, changed, source: ig.source, reason };
+}
+
+// ───────────────────────── 패치 대상 해석 ─────────────────────────
+
+function tryRealpath(p) {
+  try { return realpathSync(p); } catch { return null; }
+}
+
+function readJson(p) {
+  try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+}
+
+/**
+ * Node의 node_modules 탐색과 같은 순서로 fromFile 기준 패키지의 package.json 실제 경로를 찾는다
+ * (심볼릭 링크는 realpath로 해석). require.resolve를 쓰지 않는 이유: NODE_PATH(pnpm exec가 설정한다)와
+ * 전역 경로까지 뒤져 프로젝트와 무관한 다른 버전을 잡을 수 있고, exports에 ./package.json이 없는
+ * 패키지는 resolve 자체가 실패한다.
+ */
+function findPackageJson(fromFile, name) {
+  let dir = dirname(fromFile);
+  for (;;) {
+    const modules = basename(dir) === 'node_modules' ? dir : join(dir, 'node_modules');
+    const real = tryRealpath(join(modules, name, 'package.json'));
+    if (real) return real;
+    const up = dirname(dir);
+    if (up === dir || dir === parse(dir).root) return null;
+    dir = up;
+  }
+}
+
+/**
+ * 패키지(package.json 실제 경로)에서 `ait` bin 엔트리와 같은 디렉터리의 .js/.mjs/.cjs 파일들을 모은다.
+ * bin 필드가 없으면 dist/index.js로 가정한다. dist가 여러 chunk로 쪼개져도 setMetadata가
+ * 어느 파일에 있든 찾도록 형제 파일을 함께 본다(setMetadata 리터럴이 없는 파일은 건드리지 않는다).
+ */
+function collectCliFiles(pkgJsonPath) {
+  const pkg = readJson(pkgJsonPath) ?? {};
+  const bin = typeof pkg.bin === 'string' ? pkg.bin : (pkg.bin?.ait ?? Object.values(pkg.bin ?? {})[0]);
+  const entry = join(dirname(pkgJsonPath), bin ?? 'dist/index.js');
+  const files = [entry];
   try {
-    // pnpm은 node_modules/@apps-in-toss/web-framework를 .pnpm 가상 스토어로
-    // symlink하므로, 실제 파일 경로를 얻기 위해 realpath로 해석한다.
-    realPath = realpathSync(cliPath);
-    src = readFileSync(realPath, 'utf8');
-  } catch (e) {
-    // (b) cli.js 없음 — 2.x(granite) 경로이거나 미설치. no-op.
-    console.warn(`${TAG} cli.js를 읽지 못함 — 패치 건너뜀(2.x이거나 미설치): ${e?.message ?? e}`);
-    return;
+    for (const name of readdirSync(dirname(entry))) {
+      if (/\.(m|c)?js$/.test(name)) files.push(join(dirname(entry), name));
+    }
+  } catch { /* 디렉터리를 못 읽으면 entry만 */ }
+  return files;
+}
+
+/**
+ * 프로젝트 루트에서 setMetadata가 있을 수 있는 파일 후보를 순서대로 찾는다 (실제 경로, 중복 제거).
+ *
+ *   1. web-framework(프로젝트 직접 의존) → 그 실제 위치에서 resolve한 @apps-in-toss/cli.
+ *      `ait` bin이 실제로 import하는 경로이며 pnpm(.pnpm 가상 스토어 + 형제 symlink)과
+ *      npm/yarn 평탄 구조에서 모두 동작한다. pnpm은 cli를 프로젝트 node_modules에 hoist하지 않으므로
+ *      프로젝트 기준 resolve만으로는 못 찾는다.
+ *   2. 프로젝트 자체의 @apps-in-toss/cli (직접 의존이거나 hoist된 경우).
+ *   3. 레거시: web-framework/dist/cli.js (cli가 분리되기 전 레이아웃).
+ *
+ * @returns {{ candidates: string[], webFrameworkDir: string | null, notes: string[] }}
+ */
+export function resolvePatchCandidates(root) {
+  const notes = [];
+  const seen = new Set();
+  const candidates = [];
+  const add = (p) => {
+    const real = tryRealpath(p);
+    if (real && !seen.has(real)) { seen.add(real); candidates.push(real); }
+  };
+
+  const projPkg = join(root, 'package.json');
+
+  const wfPkgJson = findPackageJson(projPkg, WEB_FRAMEWORK);
+  const wfDir = wfPkgJson ? dirname(wfPkgJson) : null;
+  if (!wfPkgJson) notes.push(`${WEB_FRAMEWORK}를 프로젝트(${root})에서 찾지 못함`);
+
+  // 1. web-framework → cli
+  if (wfPkgJson) {
+    const cliPkg = findPackageJson(wfPkgJson, CLI_PACKAGE);
+    if (cliPkg) collectCliFiles(cliPkg).forEach(add);
+    else notes.push(`web-framework(${wfDir})에서 ${CLI_PACKAGE}를 resolve하지 못함`);
   }
 
+  // 2. 프로젝트 자체 cli
+  const projCliPkg = findPackageJson(projPkg, CLI_PACKAGE);
+  if (projCliPkg) collectCliFiles(projCliPkg).forEach(add);
+
+  // 3. 레거시 web-framework/dist/cli.js
+  if (wfDir) add(join(wfDir, 'dist', 'cli.js'));
+
+  return { candidates, webFrameworkDir: wfDir, notes };
+}
+
+/**
+ * 파일 하나를 패치한다. 새 inode로 교체하므로 pnpm 하드링크(공유 store)가 끊긴다.
+ * @returns {'patched' | 'unchanged' | 'no-anchor' | 'unreadable' | 'write-failed'}
+ */
+function patchFile(realPath, log) {
+  let src;
+  try {
+    src = readFileSync(realPath, 'utf8');
+  } catch (e) {
+    log.warn(`${TAG}   읽기 실패: ${realPath} (${e?.message ?? e})`);
+    return 'unreadable';
+  }
+  const r = patchSource(src);
+  if (!r.found) return 'no-anchor';
+  if (!r.changed) {
+    log.log(`${TAG}   패치 불필요: ${realPath} — ${r.reason}.`);
+    return 'unchanged';
+  }
+  let tmp;
+  try {
+    // (e) 같은 디렉터리의 임시 파일에 쓰고 rename으로 교체 → 새 inode(하드링크 끊김),
+    //     쓰기 도중 실패해도 원본은 그대로 남는다. 실행 비트 등 모드는 보존한다.
+    const mode = statSync(realPath).mode & 0o7777;
+    tmp = `${realPath}.ait-patch-${process.pid}.tmp`;
+    writeFileSync(tmp, r.source, 'utf8');
+    chmodSync(tmp, mode);
+    renameSync(tmp, realPath);
+    log.log(`${TAG}   ✓ 패치 완료: ${realPath} — ${r.reason}`);
+    return 'patched';
+  } catch (e) {
+    if (tmp) { try { unlinkSync(tmp); } catch { /* 이미 없음 */ } }
+    log.warn(`${TAG}   쓰기 실패: ${realPath} — 건너뜀(빌드는 계속): ${e?.message ?? e}`);
+    return 'write-failed';
+  }
+}
+
+/** GitHub Actions에서는 주석으로도 보이게 한다. */
+function loudWarning(log, lines) {
+  const banner = '!'.repeat(72);
+  log.warn(`${TAG} ${banner}`);
+  for (const l of lines) log.warn(`${TAG} WARNING: ${l}`);
+  log.warn(`${TAG} ${banner}`);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    log.log(`::warning title=ait-patch-cli::${lines[0]}`);
+  }
+}
+
+/**
+ * 프로젝트 루트의 패치 대상을 해석해 모두 패치한다. 예외를 던지지 않는다.
+ * @returns {{ patched: string[], unchanged: string[], noAnchor: string[], failed: string[], ok: boolean }}
+ *   ok: setMetadata 앵커를 가진 파일이 하나 이상 있어 isGame/runtimeVersion이 반영될 수 있는 상태.
+ */
+export function patchProject(root, log = console) {
+  const { candidates, notes } = resolvePatchCandidates(root);
+  const result = { patched: [], unchanged: [], noAnchor: [], failed: [], ok: false };
+
+  log.log(`${TAG} 패치 후보 ${candidates.length}개:${candidates.length ? '' : ' (없음)'}`);
+  for (const f of candidates) log.log(`${TAG}   - ${f}`);
+
+  for (const f of candidates) {
+    const status = patchFile(f, log);
+    if (status === 'patched') result.patched.push(f);
+    else if (status === 'unchanged') result.unchanged.push(f);
+    else if (status === 'no-anchor') result.noAnchor.push(f);
+    else result.failed.push(f);
+  }
+
+  result.ok = result.patched.length + result.unchanged.length > 0;
+  if (!result.ok) {
+    loudWarning(log, [
+      'setMetadata 호출을 가진 패치 대상을 찾지 못했다. 이대로 ait build하면 .ait의 isGame=false, runtimeVersion=""이 된다.',
+      ...notes,
+      ...(result.noAnchor.length ? [`setMetadata 객체 리터럴이 없는 후보: ${result.noAnchor.join(', ')}`] : []),
+      ...(result.failed.length ? [`읽기/쓰기에 실패한 후보: ${result.failed.join(', ')}`] : []),
+      'web-framework 버전의 CLI 구조가 바뀌었을 수 있다. 빌드 후 ait-verify-metadata.mjs가 결과를 확인한다(AIT_STRICT_METADATA=1이면 실패).',
+    ]);
+  }
+  return result;
+}
+
+function main() {
   const rawIsGame = process.env.AIT_IS_GAME;
   const known = typeof rawIsGame === 'string' && ['true', 'false'].includes(rawIsGame.trim().toLowerCase());
   console.log(
     `${TAG} AIT_IS_GAME=${rawIsGame === undefined ? '(미설정)' : JSON.stringify(rawIsGame)} → isGame=${resolveIsGame(rawIsGame)}` +
       (known ? '' : ' (미설정/유효하지 않은 값 — 기본값 true)'),
   );
-
-  const rv = injectRuntimeVersion(src, RUNTIME_VERSION);
-  const ig = injectIsGame(rv.source);
-  const source = ig.source;
-  const changed = rv.changed || ig.changed;
-  const reason = [rv, ig].filter((r) => r.changed).map((r) => r.reason).join(', ');
-  if (!changed) {
-    console.log(`${TAG} 패치 불필요 — ${rv.reason}; ${ig.reason}.`);
-    return;
-  }
-
-  try {
-    // (e) pnpm 하드링크로 연결된 공유 store 오염 방지: 하드링크를 끊고 새 inode로 기록.
-    //     Linux CI에서 store(content-addressable)와 node_modules가 하드링크로 묶이므로,
-    //     in-place 덮어쓰기는 다른 빌드가 공유하는 store 파일을 변조한다. unlink 후
-    //     writeFile은 새 inode를 만들어 store와의 연결을 끊는다(macOS APFS는 reflink라 무관).
-    try { unlinkSync(realPath); } catch { /* 링크가 없으면 그대로 덮어쓴다 */ }
-    writeFileSync(realPath, source, 'utf8');
-    console.log(`${TAG} ✓ cli.js setMetadata에 ${reason} 완료.`);
-  } catch (e) {
-    console.warn(`${TAG} cli.js 쓰기 실패 — 패치 건너뜀(빌드는 계속): ${e?.message ?? e}`);
-  }
+  patchProject(resolve(process.cwd()), console);
 }
 
 // 직접 실행될 때만 main()을 돌린다. import(단위 테스트) 시에는 실행하지 않는다.

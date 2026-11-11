@@ -122,18 +122,96 @@ namespace AppsInToss.Editor.Package
             var patchResult = RunRuntimeVersionPatchSync(ctx, label);
             if (patchResult == AITConvertCore.AITExportError.CANCELLED) return patchResult;
 
-            return AITNpmRunner.RunNpmCommandWithCache(
+            var aitResult = AITNpmRunner.RunNpmCommandWithCache(
                 ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
                 $"{label} (ait build)...", additionalEnvVars: ctx.UnityMetadataEnv);
+            if (aitResult != AITConvertCore.AITExportError.SUCCEED) return aitResult;
+
+            // ait build 직후: 만들어진 .ait의 isGame/runtimeVersion이 기대값과 맞는지 확인.
+            return RunMetadataVerifySync(ctx, label);
         }
 
         /// <summary>
-        /// ait build 직전에 web-framework cli.js를 패치해 setMetadata가 runtimeVersion을
+        /// 메타데이터 검증 스크립트 이름. ait-patch-cli.mjs가 조용히 no-op이 되어도(패치 대상 이동 등)
+        /// 결과물에 isGame/runtimeVersion이 실제로 들어갔는지 .ait를 열어 확인한다.
+        /// </summary>
+        internal const string VerifyMetadataScriptName = "ait-verify-metadata.mjs";
+
+        /// <summary>
+        /// 환경변수 AIT_STRICT_METADATA가 켜져 있으면(1/true) 검증 실패가 빌드 실패가 된다 (CI E2E).
+        /// 꺼져 있으면 스크립트가 경고만 남기고 exit 0이다.
+        /// </summary>
+        internal const string StrictMetadataEnvName = "AIT_STRICT_METADATA";
+
+        internal static bool IsStrictMetadata()
+        {
+            string v = Environment.GetEnvironmentVariable(StrictMetadataEnvName);
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            v = v.Trim();
+            return v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// ait build 직후 .ait 메타데이터를 검증한다 (동기). 스크립트는 strict가 아니면 항상 exit 0이므로,
+        /// strict일 때만 실패를 전파하고 CANCELLED는 항상 전파한다. 그 외 비정상 종료는 경고 후 성공으로 흘린다.
+        /// </summary>
+        internal static AITConvertCore.AITExportError RunMetadataVerifySync(AITPackageBuilder.PackageContext ctx, string label)
+        {
+            if (!File.Exists(Path.Combine(ctx.BuildProjectPath, VerifyMetadataScriptName)))
+            {
+                Debug.LogWarning($"[AIT] {VerifyMetadataScriptName}가 없어 .ait 메타데이터 검증을 건너뜁니다.");
+                return AITConvertCore.AITExportError.SUCCEED;
+            }
+            var result = AITNpmRunner.RunNpmCommandWithCache(
+                ctx.BuildProjectPath, ctx.PnpmPath, $"exec node {VerifyMetadataScriptName}", ctx.LocalCachePath,
+                $"{label} (.ait 메타데이터 검증)...", additionalEnvVars: ctx.UnityMetadataEnv);
+            return InterpretMetadataVerifyResult(result);
+        }
+
+        /// <summary>검증 스크립트 결과 해석: CANCELLED와 strict 실패만 전파한다.</summary>
+        internal static AITConvertCore.AITExportError InterpretMetadataVerifyResult(AITConvertCore.AITExportError result)
+        {
+            if (result == AITConvertCore.AITExportError.SUCCEED || result == AITConvertCore.AITExportError.CANCELLED) return result;
+            if (IsStrictMetadata())
+            {
+                AITLog.Error($"[AIT] .ait 메타데이터 검증 실패 (AIT_STRICT_METADATA=1, 결과: {result})", sentryCapture: false);
+                return result;
+            }
+            Debug.LogWarning($"[AIT] .ait 메타데이터 검증 스크립트 비정상 종료 (결과: {result}) — 무시합니다.");
+            return AITConvertCore.AITExportError.SUCCEED;
+        }
+
+        /// <summary><see cref="RunMetadataVerifySync"/>의 비동기 버전.</summary>
+        internal static void RunMetadataVerifyAsync(
+            AITPackageBuilder.PackageContext ctx,
+            Action<AITConvertCore.AITExportError> onComplete)
+        {
+            if (!File.Exists(Path.Combine(ctx.BuildProjectPath, VerifyMetadataScriptName)))
+            {
+                Debug.LogWarning($"[AIT] {VerifyMetadataScriptName}가 없어 .ait 메타데이터 검증을 건너뜁니다.");
+                onComplete?.Invoke(AITConvertCore.AITExportError.SUCCEED);
+                return;
+            }
+            Debug.Log("[AIT] .ait 메타데이터 검증: isGame/runtimeVersion 확인...");
+            AITNpmRunner.RunNpmCommandWithCacheAsync(
+                ctx.BuildProjectPath, ctx.PnpmPath, $"exec node {VerifyMetadataScriptName}", ctx.LocalCachePath,
+                onComplete: (result) => onComplete?.Invoke(InterpretMetadataVerifyResult(result)),
+                onOutputReceived: (line) =>
+                {
+                    Debug.Log($"[AIT] [verify] {line}");
+                },
+                additionalEnvVars: ctx.UnityMetadataEnv
+            );
+        }
+
+        /// <summary>
+        /// ait build 직전에 @apps-in-toss/cli(web-framework 의존)를 패치해 setMetadata가 runtimeVersion/isGame을
         /// 직접 emit하도록 만든다 (3.x deploy 게이트 "runtimeVersion이 없습니다" 통과용).
         /// 빌드된 .ait 자체는 손대지 않으므로 봉인이 깨지지 않는다.
         ///
         /// ait-patch-cli.mjs는 항상 exit 0이며 (setMetadata 없음/구조 변경/
-        /// 이미 설정됨 → graceful no-op), 패치 자체는 빌드를 막지 않는다. 따라서 사용자
+        /// 이미 설정됨 → 경고 후 no-op), 패치 자체는 빌드를 막지 않는다. 패치가 실제로 적용됐는지는
+        /// ait build 직후 ait-verify-metadata.mjs가 .ait를 열어 확인한다. 따라서 사용자
         /// 취소(CANCELLED)만 상위로 전파하고, 그 외 비정상 종료는 경고만 남기고 ait build를
         /// 계속 진행한다 (패치 실패가 빌드 실패로 번지지 않게).
         /// </summary>
@@ -243,9 +321,14 @@ namespace AppsInToss.Editor.Package
                             ctx.BuildProjectPath, ctx.PnpmPath, "exec ait build", ctx.LocalCachePath,
                             onComplete: (aitResult) =>
                             {
-                                if (aitResult == AITConvertCore.AITExportError.SUCCEED)
-                                    Debug.Log("[AIT] ✓ ait build 패키징 성공 (3.x)");
-                                onComplete?.Invoke(aitResult);
+                                if (aitResult != AITConvertCore.AITExportError.SUCCEED)
+                                {
+                                    onComplete?.Invoke(aitResult);
+                                    return;
+                                }
+                                Debug.Log("[AIT] ✓ ait build 패키징 성공 (3.x)");
+                                // ait build 직후: .ait의 isGame/runtimeVersion 검증 (strict일 때만 실패 전파).
+                                RunMetadataVerifyAsync(ctx, onComplete);
                             },
                             onOutputReceived: (line) =>
                             {

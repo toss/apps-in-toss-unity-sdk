@@ -840,6 +840,9 @@ jobs:
           UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
           BUILD_METHOD: ${{ inputs.build-method }}
+          # ait build 직후 ait-verify-metadata.mjs가 .ait의 isGame/runtimeVersion을 확인한다.
+          # CI에서는 불일치(패치 무음 no-op 회귀)를 경고가 아니라 빌드 실패로 만든다.
+          AIT_STRICT_METADATA: '1'
         with:
           timeout_minutes: 30
           max_attempts: 3
@@ -877,6 +880,9 @@ jobs:
           UNITY_VERSION_PATTERN: ${{ inputs.unity-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
           BUILD_METHOD: ${{ inputs.build-method }}
+          # ait build 직후 ait-verify-metadata.mjs가 .ait의 isGame/runtimeVersion을 확인한다.
+          # CI에서는 불일치(패치 무음 no-op 회귀)를 경고가 아니라 빌드 실패로 만든다.
+          AIT_STRICT_METADATA: '1'
         with:
           # Windows 러너의 release 프로필(fast-build=false) 6000.x 빌드는 Brotli 압축
           # 포함 ~28분(warm Library 캐시 실측, 2026-06 베타 릴리즈 run 27433833844)으로
@@ -1025,6 +1031,7 @@ jobs:
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-lock.yaml
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/pnpm-workspace.yaml
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/ait-patch-cli.mjs
+            Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/ait-verify-metadata.mjs
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/vite.config.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/unity-bridge.ts
             Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/ait-build/tsconfig.json

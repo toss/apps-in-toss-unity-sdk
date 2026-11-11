@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -16,30 +15,24 @@ namespace AppsInToss
 {
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderOptions
+    public partial class IapCreateOneTimePurchaseOrderOptions
     {
         [Preserve]
-        [JsonProperty("options")]
         public IapCreateOneTimePurchaseOrderOptionsOptions Options;
-        [JsonIgnore]
         public System.Action<SuccessEvent> OnEvent;
-        [JsonIgnore]
         public System.Action<object> OnError;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderOptionsOptions
+    public partial class IapCreateOneTimePurchaseOrderOptionsOptions
     {
         [Preserve]
-        [JsonProperty("productId")]
         public string ProductId;
         [Preserve]
-        [JsonProperty("sku")]
         public string Sku; // optional
         /// <summary>
         /// 결제 완료 시 상품 지급 여부를 <c>bool</c>로 즉시 반환하는 콜백. 결제 오버레이가
@@ -72,69 +65,56 @@ namespace AppsInToss
         /// "인앱결제: 지급 승인과 서버 검증" 절 참고.
         /// </para>
         /// </remarks>
-        [JsonIgnore]
         public System.Func<IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam, bool> ProcessProductGrant;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam
+    public partial class IapCreateOneTimePurchaseOrderOptionsOptionsProcessProductGrantParam
     {
         [Preserve]
-        [JsonProperty("orderId")]
         public string OrderId;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class SuccessEvent
+    public partial class SuccessEvent
     {
         [Preserve]
-        [JsonProperty("type")]
         public string Type;
         [Preserve]
-        [JsonProperty("data")]
         public IapCreateOneTimePurchaseOrderResult Data;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class CreateSubscriptionPurchaseOrderOptions
+    public partial class CreateSubscriptionPurchaseOrderOptions
     {
         [Preserve]
-        [JsonProperty("options")]
         public CreateSubscriptionPurchaseOrderOptionsOptions Options;
-        [JsonIgnore]
         public System.Action<SubscriptionSuccessEvent> OnEvent;
-        [JsonIgnore]
         public System.Action<object> OnError;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class CreateSubscriptionPurchaseOrderOptionsOptions
+    public partial class CreateSubscriptionPurchaseOrderOptionsOptions
     {
         [Preserve]
-        [JsonProperty("sku")]
         public string Sku;
         [Preserve]
-        [JsonProperty("offerId")]
         public string OfferId; // optional
         /// <summary>
         /// 결제 완료 시 상품 지급 여부를 <c>bool</c>로 즉시 반환하는 콜백. 결제 오버레이가
@@ -167,117 +147,98 @@ namespace AppsInToss
         /// "인앱결제: 지급 승인과 서버 검증" 절 참고.
         /// </para>
         /// </remarks>
-        [JsonIgnore]
         public System.Func<CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam, bool> ProcessProductGrant;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam
+    public partial class CreateSubscriptionPurchaseOrderOptionsOptionsProcessProductGrantParam
     {
         [Preserve]
-        [JsonProperty("orderId")]
         public string OrderId;
         [Preserve]
-        [JsonProperty("subscriptionId")]
         public string SubscriptionId; // optional
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class SubscriptionSuccessEvent
+    public partial class SubscriptionSuccessEvent
     {
         [Preserve]
-        [JsonProperty("type")]
         public string Type;
         [Preserve]
-        [JsonProperty("data")]
         public IapCreateOneTimePurchaseOrderResult Data;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPGetCompletedOrRefundedOrdersParams
+    public partial class IAPGetCompletedOrRefundedOrdersParams
     {
         [Preserve]
-        [JsonProperty("key")]
         public string Key; // optional
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPCompleteProductGrantArgs_0
+    public partial class IAPCompleteProductGrantArgs_0
     {
         [Preserve]
-        [JsonProperty("params")]
         public IAPCompleteProductGrantArgs_0Params Params;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPCompleteProductGrantArgs_0Params
+    public partial class IAPCompleteProductGrantArgs_0Params
     {
         [Preserve]
-        [JsonProperty("orderId")]
         public string OrderId;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPGetSubscriptionInfoArgs_0
+    public partial class IAPGetSubscriptionInfoArgs_0
     {
         [Preserve]
-        [JsonProperty("params")]
         public IAPGetSubscriptionInfoArgs_0Params Params;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPGetSubscriptionInfoArgs_0Params
+    public partial class IAPGetSubscriptionInfoArgs_0Params
     {
         [Preserve]
-        [JsonProperty("orderId")]
         public string OrderId;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPGetPendingOrdersResult
+    public partial class IAPGetPendingOrdersResult
     {
         [Preserve]
-        [JsonProperty("orders")]
         public IAPGetPendingOrdersResultOrder[] Orders;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
@@ -285,16 +246,14 @@ namespace AppsInToss
 
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPGetProductItemListResult
+    public partial class IAPGetProductItemListResult
     {
         [Preserve]
-        [JsonProperty("products")]
         public IapProductListItem[] Products;
         /// <summary>에러 발생 시 에러 메시지 (플랫폼 미지원 등)</summary>
         [Obsolete("오류는 AITException으로 전달돼요. 이 필드는 더 이상 채워지지 않아요.")]
@@ -302,26 +261,21 @@ namespace AppsInToss
 
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class IAPGetPendingOrdersResultOrder
+    public partial class IAPGetPendingOrdersResultOrder
     {
         [Preserve]
-        [JsonProperty("orderId")]
         public string OrderId;
         [Preserve]
-        [JsonProperty("sku")]
         public string Sku;
         [Preserve]
-        [JsonProperty("paymentCompletedDate")]
         public string PaymentCompletedDate;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

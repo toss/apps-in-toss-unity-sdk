@@ -10,8 +10,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -19,94 +17,6 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
-    /// <summary>
-    /// Custom enum converter that handles both string and numeric enums:
-    /// - Enums with [EnumMember] attributes: serialize as string (using EnumMember value)
-    /// - Enums without [EnumMember] attributes: serialize as number (for numeric enums like Accuracy)
-    /// </summary>
-    public partial class SmartEnumConverter : JsonConverter
-    {
-        private readonly StringEnumConverter _stringConverter = new StringEnumConverter();
-
-        public override bool CanConvert(Type objectType)
-        {
-            Type type = Nullable.GetUnderlyingType(objectType) ?? objectType;
-            return type.IsEnum;
-        }
-
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
-        {
-            if (value == null)
-            {
-                writer.WriteNull();
-                return;
-            }
-
-            Type enumType = value.GetType();
-
-            // Check if any member has EnumMember attribute
-            bool hasEnumMember = false;
-            foreach (var field in enumType.GetFields(BindingFlags.Public | BindingFlags.Static))
-            {
-                if (field.GetCustomAttribute<EnumMemberAttribute>() != null)
-                {
-                    hasEnumMember = true;
-                    break;
-                }
-            }
-
-            if (hasEnumMember)
-            {
-                // String enum: use StringEnumConverter
-                _stringConverter.WriteJson(writer, value, serializer);
-            }
-            else
-            {
-                // Numeric enum: serialize as integer
-                writer.WriteValue(Convert.ToInt32(value));
-            }
-        }
-
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
-        {
-            // Delegate to StringEnumConverter for reading (handles both cases)
-            return _stringConverter.ReadJson(reader, objectType, existingValue, serializer);
-        }
-    }
-
-    /// <summary>
-    /// Shared JSON serialization settings for SDK.
-    /// Uses SmartEnumConverter to serialize:
-    /// - String enums (with EnumMember): as strings matching JavaScript API expectations
-    /// - Numeric enums (without EnumMember): as integers matching JavaScript API expectations
-    /// Note: [JsonConverter] attribute on enums causes IL2CPP infinite loop, so we configure it globally here.
-    /// </summary>
-    public static class AITJsonSettings
-    {
-        private static JsonSerializerSettings _settings;
-
-        public static JsonSerializerSettings Default
-        {
-            get
-            {
-                if (_settings == null)
-                {
-                    _settings = new JsonSerializerSettings();
-                    _settings.Converters.Add(new SmartEnumConverter());
-                }
-                return _settings;
-            }
-        }
-
-        /// <summary>
-        /// Serialize object to JSON with smart enum support.
-        /// </summary>
-        public static string Serialize(object obj)
-        {
-            return JsonConvert.SerializeObject(obj, Default);
-        }
-    }
-
     /// <summary>
     /// 하위 호환 멤버(`[Obsolete]` 필드의 `Typed` 쌍, 옛 반환 타입 래퍼)가 쓰는 변환 도우미.
     /// </summary>
@@ -244,7 +154,7 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class AITCallbackBagEvent
+    public partial class AITCallbackBagEvent
     {
         [Preserve]
         [JsonProperty("event")]
@@ -252,7 +162,7 @@ namespace AppsInToss
 
         [Preserve]
         [JsonProperty("payload")]
-        public Newtonsoft.Json.Linq.JToken Payload;
+        public JsonValue Payload;
     }
 
     /// <summary>
@@ -508,14 +418,14 @@ namespace AppsInToss
         /// <summary>
         /// options.callbacks 묶음의 콜백을 호출한다. 인자 타입은 콜백 델리게이트에서 추론한다.
         /// </summary>
-        internal static void InvokeCallbackBag<T>(Action<T> callback, Newtonsoft.Json.Linq.JToken payload)
+        internal static void InvokeCallbackBag<T>(Action<T> callback, JsonValue payload)
         {
             if (callback == null) return;
             try
             {
-                var value = payload == null || payload.Type == Newtonsoft.Json.Linq.JTokenType.Null
+                var value = AITJson.IsNull(payload)
                     ? default(T)
-                    : payload.ToObject<T>();
+                    : (T)AITJsonCodec.ReadCallbackArg(typeof(T), payload);
                 callback(value);
             }
             catch (Exception ex)
@@ -550,7 +460,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnAITEventCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                var callbackData = AITJsonCodec.Deserialize<CallbackData>(jsonPayload);
                 if (VerboseLogging) Debug.Log($"[AITCore] Routing event callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteSubscriptionCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -573,7 +483,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
             try
             {
-                var data = JsonConvert.DeserializeObject<VisibilityStateData>(jsonPayload);
+                var data = AITJsonCodec.Deserialize<VisibilityStateData>(jsonPayload);
                 OnVisibilityStateChangedInternal?.Invoke(data.isVisible);
             }
             catch (Exception ex)
@@ -589,7 +499,7 @@ namespace AppsInToss
 
         [Serializable]
         [Preserve]
-        private class VisibilityStateData
+        internal partial class VisibilityStateData
         {
             [Preserve]
             public bool isVisible { get; set; }
@@ -609,7 +519,7 @@ namespace AppsInToss
                 return;
             }
 
-            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+            var apiResponse = AITJsonCodec.Deserialize<APIResponse>(resultJson);
 
             if (apiResponse.success)
             {
@@ -617,7 +527,7 @@ namespace AppsInToss
                 {
 {{#each eventDataTypes}}
                     case "{{{this}}}":
-                        var data_{{@index}} = JsonConvert.DeserializeObject<{{{this}}}>(apiResponse.data);
+                        var data_{{@index}} = AITJsonCodec.Deserialize<{{{this}}}>(apiResponse.data);
                         (rawCallback as Action<{{{this}}}>)?.Invoke(data_{{@index}});
                         break;
 {{/each}}
@@ -648,7 +558,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                var callbackData = AITJsonCodec.Deserialize<CallbackData>(jsonPayload);
                 if (VerboseLogging) Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -666,7 +576,7 @@ namespace AppsInToss
         private void RouteCallback(string callbackId, string typeName, string resultJson)
         {
             // Parse APIResponse first (success/data/error format)
-            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+            var apiResponse = AITJsonCodec.Deserialize<APIResponse>(resultJson);
 
             switch (typeName)
             {
@@ -676,7 +586,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<{{{this}}}>(callbackId, out var callback{{@index}}) && callback{{@index}} != null)
                         {
-                            var data{{@index}} = JsonConvert.DeserializeObject<{{{this}}}>(apiResponse.data);
+                            var data{{@index}} = AITJsonCodec.Deserialize<{{{this}}}>(apiResponse.data);
                             callback{{@index}}(data{{@index}});
                         }
                     }
@@ -697,13 +607,15 @@ namespace AppsInToss
                         {
                             try
                             {
-                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                // enum 파싱: EnumMember 와이어 값 인식 (숫자로 시작하는 값 포함). 따옴표 없이 와도 받는다.
                                 var enumStr_{{this}} = apiResponse.data.Trim();
                                 if (!enumStr_{{this}}.StartsWith("\""))
                                 {
                                     enumStr_{{this}} = "\"" + enumStr_{{this}} + "\"";
                                 }
-                                var enumVal_{{this}} = JsonConvert.DeserializeObject<{{this}}>(enumStr_{{this}}, AITJsonSettings.Default);
+                                var parsed_{{this}} = AITJsonCodec.Deserialize<{{this}}?>(enumStr_{{this}});
+                                if (!parsed_{{this}}.HasValue) throw new FormatException("unknown value");
+                                var enumVal_{{this}} = parsed_{{this}}.Value;
                                 enumCb_{{this}}(enumVal_{{this}});
                             }
                             catch (Exception ex_{{this}})
@@ -735,7 +647,7 @@ namespace AppsInToss
                             var stringData = apiResponse.data;
                             if (stringData.StartsWith("\"") && stringData.EndsWith("\"") && stringData.Length >= 2)
                             {
-                                stringData = JsonConvert.DeserializeObject<string>(stringData);
+                                stringData = AITJson.Str(AITJson.Parse(stringData));
                             }
                             stringCallback(stringData);
                         }
@@ -864,7 +776,10 @@ namespace AppsInToss
             Func<string, bool> wrapper = (string jsonData) => {
                 try
                 {
-                    var param = JsonConvert.DeserializeObject<TParam>(jsonData);
+                    var parsed = AITJson.Parse(jsonData);
+                    var param = AITJson.IsNull(parsed)
+                        ? default(TParam)
+                        : (TParam)AITJsonCodec.ReadCallbackArg(typeof(TParam), parsed);
                     var result = callback(param);
                     // Convert result to bool (handles bool, object, etc.)
                     if (result is bool boolResult) return boolResult;
@@ -913,7 +828,7 @@ namespace AppsInToss
             NestedCallbackRequest request;
             try
             {
-                request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
+                request = AITJsonCodec.Deserialize<NestedCallbackRequest>(jsonPayload);
             }
             catch (Exception ex)
             {

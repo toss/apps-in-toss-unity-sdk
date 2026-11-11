@@ -10,8 +10,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -19,94 +17,6 @@ using UnityEngine.Scripting;
 
 namespace AppsInToss
 {
-    /// <summary>
-    /// Custom enum converter that handles both string and numeric enums:
-    /// - Enums with [EnumMember] attributes: serialize as string (using EnumMember value)
-    /// - Enums without [EnumMember] attributes: serialize as number (for numeric enums like Accuracy)
-    /// </summary>
-    public partial class SmartEnumConverter : JsonConverter
-    {
-        private readonly StringEnumConverter _stringConverter = new StringEnumConverter();
-
-        public override bool CanConvert(Type objectType)
-        {
-            Type type = Nullable.GetUnderlyingType(objectType) ?? objectType;
-            return type.IsEnum;
-        }
-
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
-        {
-            if (value == null)
-            {
-                writer.WriteNull();
-                return;
-            }
-
-            Type enumType = value.GetType();
-
-            // Check if any member has EnumMember attribute
-            bool hasEnumMember = false;
-            foreach (var field in enumType.GetFields(BindingFlags.Public | BindingFlags.Static))
-            {
-                if (field.GetCustomAttribute<EnumMemberAttribute>() != null)
-                {
-                    hasEnumMember = true;
-                    break;
-                }
-            }
-
-            if (hasEnumMember)
-            {
-                // String enum: use StringEnumConverter
-                _stringConverter.WriteJson(writer, value, serializer);
-            }
-            else
-            {
-                // Numeric enum: serialize as integer
-                writer.WriteValue(Convert.ToInt32(value));
-            }
-        }
-
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
-        {
-            // Delegate to StringEnumConverter for reading (handles both cases)
-            return _stringConverter.ReadJson(reader, objectType, existingValue, serializer);
-        }
-    }
-
-    /// <summary>
-    /// Shared JSON serialization settings for SDK.
-    /// Uses SmartEnumConverter to serialize:
-    /// - String enums (with EnumMember): as strings matching JavaScript API expectations
-    /// - Numeric enums (without EnumMember): as integers matching JavaScript API expectations
-    /// Note: [JsonConverter] attribute on enums causes IL2CPP infinite loop, so we configure it globally here.
-    /// </summary>
-    public static class AITJsonSettings
-    {
-        private static JsonSerializerSettings _settings;
-
-        public static JsonSerializerSettings Default
-        {
-            get
-            {
-                if (_settings == null)
-                {
-                    _settings = new JsonSerializerSettings();
-                    _settings.Converters.Add(new SmartEnumConverter());
-                }
-                return _settings;
-            }
-        }
-
-        /// <summary>
-        /// Serialize object to JSON with smart enum support.
-        /// </summary>
-        public static string Serialize(object obj)
-        {
-            return JsonConvert.SerializeObject(obj, Default);
-        }
-    }
-
     /// <summary>
     /// 하위 호환 멤버(`[Obsolete]` 필드의 `Typed` 쌍, 옛 반환 타입 래퍼)가 쓰는 변환 도우미.
     /// </summary>
@@ -244,15 +154,13 @@ namespace AppsInToss
     /// </summary>
     [Serializable]
     [Preserve]
-    public class AITCallbackBagEvent
+    public partial class AITCallbackBagEvent
     {
         [Preserve]
-        [JsonProperty("event")]
         public string Event;
 
         [Preserve]
-        [JsonProperty("payload")]
-        public Newtonsoft.Json.Linq.JToken Payload;
+        public JsonValue Payload;
     }
 
     /// <summary>
@@ -508,14 +416,14 @@ namespace AppsInToss
         /// <summary>
         /// options.callbacks 묶음의 콜백을 호출한다. 인자 타입은 콜백 델리게이트에서 추론한다.
         /// </summary>
-        internal static void InvokeCallbackBag<T>(Action<T> callback, Newtonsoft.Json.Linq.JToken payload)
+        internal static void InvokeCallbackBag<T>(Action<T> callback, JsonValue payload)
         {
             if (callback == null) return;
             try
             {
-                var value = payload == null || payload.Type == Newtonsoft.Json.Linq.JTokenType.Null
+                var value = AITJson.IsNull(payload)
                     ? default(T)
-                    : payload.ToObject<T>();
+                    : (T)AITJsonCodec.ReadCallbackArg(typeof(T), payload);
                 callback(value);
             }
             catch (Exception ex)
@@ -550,7 +458,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnAITEventCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                var callbackData = AITJsonCodec.R_AITCore_CallbackData(AITJson.Parse(jsonPayload));
                 if (VerboseLogging) Debug.Log($"[AITCore] Routing event callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteSubscriptionCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -573,7 +481,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnVisibilityStateChanged received: {jsonPayload}");
             try
             {
-                var data = JsonConvert.DeserializeObject<VisibilityStateData>(jsonPayload);
+                var data = AITJsonCodec.R_AITCore_VisibilityStateData(AITJson.Parse(jsonPayload));
                 OnVisibilityStateChangedInternal?.Invoke(data.isVisible);
             }
             catch (Exception ex)
@@ -589,7 +497,7 @@ namespace AppsInToss
 
         [Serializable]
         [Preserve]
-        private class VisibilityStateData
+        internal partial class VisibilityStateData
         {
             [Preserve]
             public bool isVisible { get; set; }
@@ -609,62 +517,62 @@ namespace AppsInToss
                 return;
             }
 
-            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+            var apiResponse = AITJsonCodec.R_APIResponse(AITJson.Parse(resultJson));
 
             if (apiResponse.success)
             {
                 switch (typeName)
                 {
                     case "AITCallbackBagEvent":
-                        var data_0 = JsonConvert.DeserializeObject<AITCallbackBagEvent>(apiResponse.data);
+                        var data_0 = AITJsonCodec.R_AITCallbackBagEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<AITCallbackBagEvent>)?.Invoke(data_0);
                         break;
                     case "ContactsViralEvent":
-                        var data_1 = JsonConvert.DeserializeObject<ContactsViralEvent>(apiResponse.data);
+                        var data_1 = AITJsonCodec.R_ContactsViralEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<ContactsViralEvent>)?.Invoke(data_1);
                         break;
                     case "SubscriptionSuccessEvent":
-                        var data_2 = JsonConvert.DeserializeObject<SubscriptionSuccessEvent>(apiResponse.data);
+                        var data_2 = AITJsonCodec.R_SubscriptionSuccessEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<SubscriptionSuccessEvent>)?.Invoke(data_2);
                         break;
                     case "SuccessEvent":
-                        var data_3 = JsonConvert.DeserializeObject<SuccessEvent>(apiResponse.data);
+                        var data_3 = AITJsonCodec.R_SuccessEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<SuccessEvent>)?.Invoke(data_3);
                         break;
                     case "LoadAdMobEvent":
-                        var data_4 = JsonConvert.DeserializeObject<LoadAdMobEvent>(apiResponse.data);
+                        var data_4 = AITJsonCodec.R_LoadAdMobEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<LoadAdMobEvent>)?.Invoke(data_4);
                         break;
                     case "LoadFullScreenAdEvent":
-                        var data_5 = JsonConvert.DeserializeObject<LoadFullScreenAdEvent>(apiResponse.data);
+                        var data_5 = AITJsonCodec.R_LoadFullScreenAdEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<LoadFullScreenAdEvent>)?.Invoke(data_5);
                         break;
                     case "Location":
-                        var data_6 = JsonConvert.DeserializeObject<Location>(apiResponse.data);
+                        var data_6 = AITJsonCodec.R_Location(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<Location>)?.Invoke(data_6);
                         break;
                     case "RequestNotificationAgreementOptionsOnEventParam":
-                        var data_7 = JsonConvert.DeserializeObject<RequestNotificationAgreementOptionsOnEventParam>(apiResponse.data);
+                        var data_7 = AITJsonCodec.R_RequestNotificationAgreementOptionsOnEventParam(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<RequestNotificationAgreementOptionsOnEventParam>)?.Invoke(data_7);
                         break;
                     case "SafeAreaInsets":
-                        var data_8 = JsonConvert.DeserializeObject<SafeAreaInsets>(apiResponse.data);
+                        var data_8 = AITJsonCodec.R_SafeAreaInsets(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<SafeAreaInsets>)?.Invoke(data_8);
                         break;
                     case "ShowAdMobEvent":
-                        var data_9 = JsonConvert.DeserializeObject<ShowAdMobEvent>(apiResponse.data);
+                        var data_9 = AITJsonCodec.R_ShowAdMobEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_9);
                         break;
                     case "ShowFullScreenAdEvent":
-                        var data_10 = JsonConvert.DeserializeObject<ShowFullScreenAdEvent>(apiResponse.data);
+                        var data_10 = AITJsonCodec.R_ShowFullScreenAdEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<ShowFullScreenAdEvent>)?.Invoke(data_10);
                         break;
                     case "TdsNavigationAccessoryEventData":
-                        var data_11 = JsonConvert.DeserializeObject<TdsNavigationAccessoryEventData>(apiResponse.data);
+                        var data_11 = AITJsonCodec.R_TdsNavigationAccessoryEventData(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_11);
                         break;
                     case "bool":
-                        var data_12 = JsonConvert.DeserializeObject<bool>(apiResponse.data);
+                        var data_12 = AITJson.Bool(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<bool>)?.Invoke(data_12);
                         break;
                     case "void":
@@ -694,7 +602,7 @@ namespace AppsInToss
             if (VerboseLogging) Debug.Log($"[AITCore] OnAITCallback received: {jsonPayload}");
             try
             {
-                var callbackData = JsonConvert.DeserializeObject<CallbackData>(jsonPayload);
+                var callbackData = AITJsonCodec.R_AITCore_CallbackData(AITJson.Parse(jsonPayload));
                 if (VerboseLogging) Debug.Log($"[AITCore] Routing callback: id={callbackData.CallbackId}, type={callbackData.TypeName}");
                 RouteCallback(callbackData.CallbackId, callbackData.TypeName, callbackData.Result);
             }
@@ -712,7 +620,7 @@ namespace AppsInToss
         private void RouteCallback(string callbackId, string typeName, string resultJson)
         {
             // Parse APIResponse first (success/data/error format)
-            var apiResponse = JsonConvert.DeserializeObject<APIResponse>(resultJson);
+            var apiResponse = AITJsonCodec.R_APIResponse(AITJson.Parse(resultJson));
 
             switch (typeName)
             {
@@ -721,7 +629,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<AlbumItemResponse[]>(callbackId, out var callback0) && callback0 != null)
                         {
-                            var data0 = JsonConvert.DeserializeObject<AlbumItemResponse[]>(apiResponse.data);
+                            var data0 = AITJson.Arr<AlbumItemResponse>(AITJson.Parse(apiResponse.data), j1 => AITJsonCodec.R_AlbumItemResponse(j1));
                             callback0(data0);
                         }
                     }
@@ -738,7 +646,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<AppLoginResult>(callbackId, out var callback1) && callback1 != null)
                         {
-                            var data1 = JsonConvert.DeserializeObject<AppLoginResult>(apiResponse.data);
+                            var data1 = AITJsonCodec.R_AppLoginResult(AITJson.Parse(apiResponse.data));
                             callback1(data1);
                         }
                     }
@@ -755,7 +663,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<AppsInTossGlobals>(callbackId, out var callback2) && callback2 != null)
                         {
-                            var data2 = JsonConvert.DeserializeObject<AppsInTossGlobals>(apiResponse.data);
+                            var data2 = AITJsonCodec.R_AppsInTossGlobals(AITJson.Parse(apiResponse.data));
                             callback2(data2);
                         }
                     }
@@ -772,7 +680,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<AttachBannerResult>(callbackId, out var callback3) && callback3 != null)
                         {
-                            var data3 = JsonConvert.DeserializeObject<AttachBannerResult>(apiResponse.data);
+                            var data3 = AITJsonCodec.R_AttachBannerResult(AITJson.Parse(apiResponse.data));
                             callback3(data3);
                         }
                     }
@@ -789,7 +697,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<CheckoutPaymentResult>(callbackId, out var callback4) && callback4 != null)
                         {
-                            var data4 = JsonConvert.DeserializeObject<CheckoutPaymentResult>(apiResponse.data);
+                            var data4 = AITJsonCodec.R_CheckoutPaymentResult(AITJson.Parse(apiResponse.data));
                             callback4(data4);
                         }
                     }
@@ -806,7 +714,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<CompletedOrRefundedOrdersResult>(callbackId, out var callback5) && callback5 != null)
                         {
-                            var data5 = JsonConvert.DeserializeObject<CompletedOrRefundedOrdersResult>(apiResponse.data);
+                            var data5 = AITJsonCodec.R_CompletedOrRefundedOrdersResult(AITJson.Parse(apiResponse.data));
                             callback5(data5);
                         }
                     }
@@ -823,7 +731,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<DeclaredAgeRange>(callbackId, out var callback6) && callback6 != null)
                         {
-                            var data6 = JsonConvert.DeserializeObject<DeclaredAgeRange>(apiResponse.data);
+                            var data6 = AITJsonCodec.R_DeclaredAgeRange(AITJson.Parse(apiResponse.data));
                             callback6(data6);
                         }
                     }
@@ -840,7 +748,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<Dictionary<ConsentedUserDataKey, string>>(callbackId, out var callback7) && callback7 != null)
                         {
-                            var data7 = JsonConvert.DeserializeObject<Dictionary<ConsentedUserDataKey, string>>(apiResponse.data);
+                            var data7 = AITJson.Dict<ConsentedUserDataKey, string>(AITJson.Parse(apiResponse.data), AITJsonCodec.KE_ConsentedUserDataKey, j1 => AITJson.Str(j1));
                             callback7(data7);
                         }
                     }
@@ -857,7 +765,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<Dictionary<string, string>>(callbackId, out var callback8) && callback8 != null)
                         {
-                            var data8 = JsonConvert.DeserializeObject<Dictionary<string, string>>(apiResponse.data);
+                            var data8 = AITJson.Dict<string, string>(AITJson.Parse(apiResponse.data), null, j1 => AITJson.Str(j1));
                             callback8(data8);
                         }
                     }
@@ -874,7 +782,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ContactResult>(callbackId, out var callback9) && callback9 != null)
                         {
-                            var data9 = JsonConvert.DeserializeObject<ContactResult>(apiResponse.data);
+                            var data9 = AITJsonCodec.R_ContactResult(AITJson.Parse(apiResponse.data));
                             callback9(data9);
                         }
                     }
@@ -891,7 +799,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GameCenterGameProfileResponse>(callbackId, out var callback10) && callback10 != null)
                         {
-                            var data10 = JsonConvert.DeserializeObject<GameCenterGameProfileResponse>(apiResponse.data);
+                            var data10 = AITJsonCodec.R_GameCenterGameProfileResponse(AITJson.Parse(apiResponse.data));
                             callback10(data10);
                         }
                     }
@@ -908,7 +816,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GetAnonymousKeySuccessResponse>(callbackId, out var callback11) && callback11 != null)
                         {
-                            var data11 = JsonConvert.DeserializeObject<GetAnonymousKeySuccessResponse>(apiResponse.data);
+                            var data11 = AITJsonCodec.R_GetAnonymousKeySuccessResponse(AITJson.Parse(apiResponse.data));
                             callback11(data11);
                         }
                     }
@@ -925,7 +833,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GetAnonymousKeyResult>(callbackId, out var callback12) && callback12 != null)
                         {
-                            var data12 = JsonConvert.DeserializeObject<GetAnonymousKeyResult>(apiResponse.data);
+                            var data12 = AITJsonCodec.R_GetAnonymousKeyResult(AITJson.Parse(apiResponse.data));
                             callback12(data12);
                         }
                     }
@@ -942,7 +850,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<IAPGetPendingOrdersResult>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = JsonConvert.DeserializeObject<IAPGetPendingOrdersResult>(apiResponse.data);
+                            var data13 = AITJsonCodec.R_IAPGetPendingOrdersResult(AITJson.Parse(apiResponse.data));
                             callback13(data13);
                         }
                     }
@@ -959,7 +867,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback14) && callback14 != null)
                         {
-                            var data14 = JsonConvert.DeserializeObject<GetUserKeyForGameResult>(apiResponse.data);
+                            var data14 = AITJsonCodec.R_GetUserKeyForGameResult(AITJson.Parse(apiResponse.data));
                             callback14(data14);
                         }
                     }
@@ -976,7 +884,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GrantPromotionRewardResponse>(callbackId, out var callback15) && callback15 != null)
                         {
-                            var data15 = JsonConvert.DeserializeObject<GrantPromotionRewardResponse>(apiResponse.data);
+                            var data15 = AITJsonCodec.R_GrantPromotionRewardResponse(AITJson.Parse(apiResponse.data));
                             callback15(data15);
                         }
                     }
@@ -993,7 +901,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<GrantPromotionRewardResult>(callbackId, out var callback16) && callback16 != null)
                         {
-                            var data16 = JsonConvert.DeserializeObject<GrantPromotionRewardResult>(apiResponse.data);
+                            var data16 = AITJsonCodec.R_GrantPromotionRewardResult(AITJson.Parse(apiResponse.data));
                             callback16(data16);
                         }
                     }
@@ -1010,7 +918,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<IAPGetProductItemListResult>(callbackId, out var callback17) && callback17 != null)
                         {
-                            var data17 = JsonConvert.DeserializeObject<IAPGetProductItemListResult>(apiResponse.data);
+                            var data17 = AITJsonCodec.R_IAPGetProductItemListResult(AITJson.Parse(apiResponse.data));
                             callback17(data17);
                         }
                     }
@@ -1027,7 +935,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<IapSubscriptionInfoResponse>(callbackId, out var callback18) && callback18 != null)
                         {
-                            var data18 = JsonConvert.DeserializeObject<IapSubscriptionInfoResponse>(apiResponse.data);
+                            var data18 = AITJsonCodec.R_IapSubscriptionInfoResponse(AITJson.Parse(apiResponse.data));
                             callback18(data18);
                         }
                     }
@@ -1044,7 +952,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ImageResponse>(callbackId, out var callback19) && callback19 != null)
                         {
-                            var data19 = JsonConvert.DeserializeObject<ImageResponse>(apiResponse.data);
+                            var data19 = AITJsonCodec.R_ImageResponse(AITJson.Parse(apiResponse.data));
                             callback19(data19);
                         }
                     }
@@ -1061,7 +969,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ImageResponse[]>(callbackId, out var callback20) && callback20 != null)
                         {
-                            var data20 = JsonConvert.DeserializeObject<ImageResponse[]>(apiResponse.data);
+                            var data20 = AITJson.Arr<ImageResponse>(AITJson.Parse(apiResponse.data), j1 => AITJsonCodec.R_ImageResponse(j1));
                             callback20(data20);
                         }
                     }
@@ -1078,7 +986,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<Location>(callbackId, out var callback21) && callback21 != null)
                         {
-                            var data21 = JsonConvert.DeserializeObject<Location>(apiResponse.data);
+                            var data21 = AITJsonCodec.R_Location(AITJson.Parse(apiResponse.data));
                             callback21(data21);
                         }
                     }
@@ -1095,7 +1003,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<MigrationGetOriginStorageResult>(callbackId, out var callback22) && callback22 != null)
                         {
-                            var data22 = JsonConvert.DeserializeObject<MigrationGetOriginStorageResult>(apiResponse.data);
+                            var data22 = AITJsonCodec.R_MigrationGetOriginStorageResult(AITJson.Parse(apiResponse.data));
                             callback22(data22);
                         }
                     }
@@ -1112,7 +1020,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<RequestTossPayPaysBillingResult>(callbackId, out var callback23) && callback23 != null)
                         {
-                            var data23 = JsonConvert.DeserializeObject<RequestTossPayPaysBillingResult>(apiResponse.data);
+                            var data23 = AITJsonCodec.R_RequestTossPayPaysBillingResult(AITJson.Parse(apiResponse.data));
                             callback23(data23);
                         }
                     }
@@ -1129,7 +1037,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback24) && callback24 != null)
                         {
-                            var data24 = JsonConvert.DeserializeObject<SafeAreaInsets>(apiResponse.data);
+                            var data24 = AITJsonCodec.R_SafeAreaInsets(AITJson.Parse(apiResponse.data));
                             callback24(data24);
                         }
                     }
@@ -1146,7 +1054,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ScreenSetAwakeModeResult>(callbackId, out var callback25) && callback25 != null)
                         {
-                            var data25 = JsonConvert.DeserializeObject<ScreenSetAwakeModeResult>(apiResponse.data);
+                            var data25 = AITJsonCodec.R_ScreenSetAwakeModeResult(AITJson.Parse(apiResponse.data));
                             callback25(data25);
                         }
                     }
@@ -1163,7 +1071,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ScreenSetSecureResult>(callbackId, out var callback26) && callback26 != null)
                         {
-                            var data26 = JsonConvert.DeserializeObject<ScreenSetSecureResult>(apiResponse.data);
+                            var data26 = AITJsonCodec.R_ScreenSetSecureResult(AITJson.Parse(apiResponse.data));
                             callback26(data26);
                         }
                     }
@@ -1180,7 +1088,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SetScreenAwakeModeResult>(callbackId, out var callback27) && callback27 != null)
                         {
-                            var data27 = JsonConvert.DeserializeObject<SetScreenAwakeModeResult>(apiResponse.data);
+                            var data27 = AITJsonCodec.R_SetScreenAwakeModeResult(AITJson.Parse(apiResponse.data));
                             callback27(data27);
                         }
                     }
@@ -1197,7 +1105,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SetSecureScreenResult>(callbackId, out var callback28) && callback28 != null)
                         {
-                            var data28 = JsonConvert.DeserializeObject<SetSecureScreenResult>(apiResponse.data);
+                            var data28 = AITJsonCodec.R_SetSecureScreenResult(AITJson.Parse(apiResponse.data));
                             callback28(data28);
                         }
                     }
@@ -1214,7 +1122,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback29) && callback29 != null)
                         {
-                            var data29 = JsonConvert.DeserializeObject<SubmitGameCenterLeaderBoardScoreResponse>(apiResponse.data);
+                            var data29 = AITJsonCodec.R_SubmitGameCenterLeaderBoardScoreResponse(AITJson.Parse(apiResponse.data));
                             callback29(data29);
                         }
                     }
@@ -1231,7 +1139,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<UserCreateAnonymousKeyAuthCodeResult>(callbackId, out var callback30) && callback30 != null)
                         {
-                            var data30 = JsonConvert.DeserializeObject<UserCreateAnonymousKeyAuthCodeResult>(apiResponse.data);
+                            var data30 = AITJsonCodec.R_UserCreateAnonymousKeyAuthCodeResult(AITJson.Parse(apiResponse.data));
                             callback30(data30);
                         }
                     }
@@ -1248,7 +1156,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<ViralGetCampaignResult>(callbackId, out var callback31) && callback31 != null)
                         {
-                            var data31 = JsonConvert.DeserializeObject<ViralGetCampaignResult>(apiResponse.data);
+                            var data31 = AITJsonCodec.R_ViralGetCampaignResult(AITJson.Parse(apiResponse.data));
                             callback31(data31);
                         }
                     }
@@ -1265,7 +1173,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<bool?>(callbackId, out var callback32) && callback32 != null)
                         {
-                            var data32 = JsonConvert.DeserializeObject<bool?>(apiResponse.data);
+                            var data32 = AITJson.BoolN(AITJson.Parse(apiResponse.data));
                             callback32(data32);
                         }
                     }
@@ -1282,7 +1190,7 @@ namespace AppsInToss
                     {
                         if (TryGetCallback<double?>(callbackId, out var callback33) && callback33 != null)
                         {
-                            var data33 = JsonConvert.DeserializeObject<double?>(apiResponse.data);
+                            var data33 = AITJson.DblN(AITJson.Parse(apiResponse.data));
                             callback33(data33);
                         }
                     }
@@ -1301,13 +1209,15 @@ namespace AppsInToss
                         {
                             try
                             {
-                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                // enum 파싱: EnumMember 와이어 값 인식 (숫자로 시작하는 값 포함). 따옴표 없이 와도 받는다.
                                 var enumStr_NetworkStatus = apiResponse.data.Trim();
                                 if (!enumStr_NetworkStatus.StartsWith("\""))
                                 {
                                     enumStr_NetworkStatus = "\"" + enumStr_NetworkStatus + "\"";
                                 }
-                                var enumVal_NetworkStatus = JsonConvert.DeserializeObject<NetworkStatus>(enumStr_NetworkStatus, AITJsonSettings.Default);
+                                var parsed_NetworkStatus = AITJsonCodec.RE_NetworkStatus(AITJson.Parse(enumStr_NetworkStatus));
+                                if (!parsed_NetworkStatus.HasValue) throw new FormatException("unknown value");
+                                var enumVal_NetworkStatus = parsed_NetworkStatus.Value;
                                 enumCb_NetworkStatus(enumVal_NetworkStatus);
                             }
                             catch (Exception ex_NetworkStatus)
@@ -1336,13 +1246,15 @@ namespace AppsInToss
                         {
                             try
                             {
-                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                // enum 파싱: EnumMember 와이어 값 인식 (숫자로 시작하는 값 포함). 따옴표 없이 와도 받는다.
                                 var enumStr_PermissionDialogResult = apiResponse.data.Trim();
                                 if (!enumStr_PermissionDialogResult.StartsWith("\""))
                                 {
                                     enumStr_PermissionDialogResult = "\"" + enumStr_PermissionDialogResult + "\"";
                                 }
-                                var enumVal_PermissionDialogResult = JsonConvert.DeserializeObject<PermissionDialogResult>(enumStr_PermissionDialogResult, AITJsonSettings.Default);
+                                var parsed_PermissionDialogResult = AITJsonCodec.RE_PermissionDialogResult(AITJson.Parse(enumStr_PermissionDialogResult));
+                                if (!parsed_PermissionDialogResult.HasValue) throw new FormatException("unknown value");
+                                var enumVal_PermissionDialogResult = parsed_PermissionDialogResult.Value;
                                 enumCb_PermissionDialogResult(enumVal_PermissionDialogResult);
                             }
                             catch (Exception ex_PermissionDialogResult)
@@ -1371,13 +1283,15 @@ namespace AppsInToss
                         {
                             try
                             {
-                                // enum 파싱: JsonConvert로 EnumMember 어트리뷰트 인식 (숫자 시작 enum 지원)
+                                // enum 파싱: EnumMember 와이어 값 인식 (숫자로 시작하는 값 포함). 따옴표 없이 와도 받는다.
                                 var enumStr_PermissionStatus = apiResponse.data.Trim();
                                 if (!enumStr_PermissionStatus.StartsWith("\""))
                                 {
                                     enumStr_PermissionStatus = "\"" + enumStr_PermissionStatus + "\"";
                                 }
-                                var enumVal_PermissionStatus = JsonConvert.DeserializeObject<PermissionStatus>(enumStr_PermissionStatus, AITJsonSettings.Default);
+                                var parsed_PermissionStatus = AITJsonCodec.RE_PermissionStatus(AITJson.Parse(enumStr_PermissionStatus));
+                                if (!parsed_PermissionStatus.HasValue) throw new FormatException("unknown value");
+                                var enumVal_PermissionStatus = parsed_PermissionStatus.Value;
                                 enumCb_PermissionStatus(enumVal_PermissionStatus);
                             }
                             catch (Exception ex_PermissionStatus)
@@ -1408,7 +1322,7 @@ namespace AppsInToss
                             var stringData = apiResponse.data;
                             if (stringData.StartsWith("\"") && stringData.EndsWith("\"") && stringData.Length >= 2)
                             {
-                                stringData = JsonConvert.DeserializeObject<string>(stringData);
+                                stringData = AITJson.Str(AITJson.Parse(stringData));
                             }
                             stringCallback(stringData);
                         }
@@ -1537,7 +1451,10 @@ namespace AppsInToss
             Func<string, bool> wrapper = (string jsonData) => {
                 try
                 {
-                    var param = JsonConvert.DeserializeObject<TParam>(jsonData);
+                    var parsed = AITJson.Parse(jsonData);
+                    var param = AITJson.IsNull(parsed)
+                        ? default(TParam)
+                        : (TParam)AITJsonCodec.ReadCallbackArg(typeof(TParam), parsed);
                     var result = callback(param);
                     // Convert result to bool (handles bool, object, etc.)
                     if (result is bool boolResult) return boolResult;
@@ -1586,7 +1503,7 @@ namespace AppsInToss
             NestedCallbackRequest request;
             try
             {
-                request = JsonConvert.DeserializeObject<NestedCallbackRequest>(jsonPayload);
+                request = AITJsonCodec.R_AITCore_NestedCallbackRequest(AITJson.Parse(jsonPayload));
             }
             catch (Exception ex)
             {
@@ -1653,16 +1570,12 @@ namespace AppsInToss
         public partial class NestedCallbackRequest
         {
             [Preserve]
-            [JsonProperty("requestId")]
             public string RequestId = "";
             [Preserve]
-            [JsonProperty("callbackId")]
             public string CallbackId = "";
             [Preserve]
-            [JsonProperty("callbackName")]
             public string CallbackName = "";
             [Preserve]
-            [JsonProperty("data")]
             public string Data = "";
         }
 
@@ -1680,7 +1593,6 @@ namespace AppsInToss
     public partial class TdsNavigationAccessoryEventData
     {
         [Preserve]
-        [JsonProperty("id")]
         public string Id;
     }
 }

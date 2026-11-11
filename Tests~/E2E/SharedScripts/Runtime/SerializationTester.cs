@@ -8,7 +8,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Newtonsoft.Json;
 using AppsInToss;
 
 /// <summary>
@@ -98,27 +97,23 @@ public class SerializationTester : MonoBehaviour
         // HapticFeedbackType 테스트 (숫자 enum이 있다면)
         TestEnumValue("HapticFeedbackType.Tap", HapticFeedbackType.Tap, "tap");
 
-        // Accuracy 테스트 (숫자 enum - SmartEnumConverter 적용 여부 확인)
-        TestEnumValue("Accuracy.Balanced", Accuracy.Balanced, "balanced");
+        // Accuracy 테스트 (숫자 enum: [EnumMember]가 없으므로 숫자로 직렬화)
+        TestEnumValue("Accuracy.Balanced", Accuracy.Balanced, null, "3");
     }
 
-    void TestEnumValue<T>(string testName, T enumValue, string expectedJsonValue) where T : Enum
+    void TestEnumValue<T>(string testName, T enumValue, string expectedJsonValue, string expectedRawJson = null) where T : Enum
     {
         try
         {
-            // 1. C# enum → JSON 직렬화
-            var settings = new JsonSerializerSettings
-            {
-                Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() }
-            };
-            string json = JsonConvert.SerializeObject(enumValue, settings);
+            // 1. C# enum → JSON 직렬화 (SDK 직렬화 경로)
+            string json = AITJsonSettings.Serialize(enumValue);
 
-            // 2. 기대값과 비교 (문자열 enum의 경우 "value" 형식)
-            string expectedJson = $"\"{expectedJsonValue}\"";
+            // 2. 기대값과 비교 (문자열 enum은 "value", 숫자 enum은 숫자)
+            string expectedJson = expectedRawJson ?? $"\"{expectedJsonValue}\"";
             bool jsonMatches = json.Equals(expectedJson, StringComparison.OrdinalIgnoreCase);
 
             // 3. JSON → C# enum 역직렬화
-            T deserialized = JsonConvert.DeserializeObject<T>(json, settings);
+            T deserialized = AITJsonSettings.Deserialize<T>(json);
             bool roundTripSuccess = enumValue.Equals(deserialized);
 
             var result = new SerializationTestResult
@@ -172,7 +167,7 @@ public class SerializationTester : MonoBehaviour
         TestClassSerialization("GetCurrentLocationOptions", new GetCurrentLocationOptions
         {
             Accuracy = Accuracy.Balanced
-        }, json => json.ToLower().Contains("balanced"));
+        }, json => json.Contains("\"accuracy\":3")); // 숫자 enum은 숫자로 나간다(SDK 와이어 형식)
 
         // HapticFeedbackOptions 테스트
         TestClassSerialization("HapticFeedbackOptions", new HapticFeedbackOptions
@@ -198,24 +193,18 @@ public class SerializationTester : MonoBehaviour
     {
         try
         {
-            var settings = new JsonSerializerSettings
-            {
-                Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() },
-                NullValueHandling = NullValueHandling.Ignore
-            };
-
-            // 1. C# → JSON 직렬화
-            string json = JsonConvert.SerializeObject(instance, settings);
+            // 1. C# → JSON 직렬화 (SDK 직렬화 경로)
+            string json = AITJsonSettings.Serialize(instance);
 
             // 2. JSON 유효성 검증
             bool jsonValid = validateJson(json);
 
             // 3. JSON → C# 역직렬화
-            T deserialized = JsonConvert.DeserializeObject<T>(json, settings);
+            T deserialized = AITJsonSettings.Deserialize<T>(json);
             bool roundTripSuccess = deserialized != null;
 
             // 4. 재직렬화하여 비교
-            string reserializedJson = JsonConvert.SerializeObject(deserialized, settings);
+            string reserializedJson = AITJsonSettings.Serialize(deserialized);
             bool jsonConsistent = json == reserializedJson;
 
             var result = new SerializationTestResult
@@ -259,31 +248,26 @@ public class SerializationTester : MonoBehaviour
         Debug.Log("[SerializationTester] Testing Result type (discriminated union) serialization...");
 
         var successJson = @"{""_type"":""success"",""_successJson"":{""hash"":""test-hash-123"",""type"":""test-type""},""_errorCode"":null}";
-        TestResultDeserialization<MockDiscriminatedUnionResult>("DiscriminatedUnion.Success", successJson, result =>
+        TestResultDeserialization<GetAnonymousKeyResult>("DiscriminatedUnion.Success", successJson, result =>
             result.IsSuccess && result.GetSuccess()?.Hash == "test-hash-123");
 
-        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""INVALID_CATEGORY""}";
-        TestResultDeserialization<MockDiscriminatedUnionResult>("DiscriminatedUnion.Error", errorJson, result =>
-            result.IsError && result.GetErrorCode() == "INVALID_CATEGORY");
+        var errorJson = @"{""_type"":""error"",""_successJson"":null,""_errorCode"":""ERROR""}";
+        TestResultDeserialization<GetAnonymousKeyResult>("DiscriminatedUnion.Error", errorJson, result =>
+            result.IsError && result.GetErrorCode() == "ERROR");
     }
 
     void TestResultDeserialization<T>(string testName, string inputJson, Func<T, bool> validate) where T : class
     {
         try
         {
-            var settings = new JsonSerializerSettings
-            {
-                Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() }
-            };
-
             // 1. JSON → C# 역직렬화
-            T deserialized = JsonConvert.DeserializeObject<T>(inputJson, settings);
+            T deserialized = AITJsonSettings.Deserialize<T>(inputJson);
 
             // 2. 유효성 검증
             bool isValid = deserialized != null && validate(deserialized);
 
             // 3. 재직렬화
-            string reserializedJson = JsonConvert.SerializeObject(deserialized, settings);
+            string reserializedJson = AITJsonSettings.Serialize(deserialized);
 
             var result = new SerializationTestResult
             {
@@ -484,33 +468,5 @@ public class SerializationTester : MonoBehaviour
         public int successCount;
         public int failCount;
         public List<SerializationTestResult> results;
-    }
-
-    [Serializable]
-    public class MockDiscriminatedUnionResult
-    {
-        [JsonProperty("_type")]
-        public string _type;
-
-        [JsonProperty("_successJson")]
-        public MockSuccessData _successData;
-
-        [JsonProperty("_errorCode")]
-        public string _errorCode;
-
-        public bool IsSuccess => _type == "success";
-        public bool IsError => _type == "error";
-        public MockSuccessData GetSuccess() => IsSuccess ? _successData : null;
-        public string GetErrorCode() => IsError ? _errorCode : null;
-    }
-
-    [Serializable]
-    public class MockSuccessData
-    {
-        [JsonProperty("hash")]
-        public string Hash;
-
-        [JsonProperty("type")]
-        public string Type;
     }
 }

@@ -25,9 +25,6 @@
   "engines": {
     "unity": ">=2021.3"
   },
-  "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.0.2"
-  },
   "category": "Platform SDK",
   "packageManager": "pnpm@11.6.0"
 }

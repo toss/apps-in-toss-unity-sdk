@@ -22,6 +22,7 @@ import { PUBLIC_TYPE_NAMES } from './generators/csharp/public-type-names.js';
 import { pruneUnreferencedSyntheticTypes } from './generators/csharp/prune-synthetic-types.js';
 import { applyTypeCompat, assertApiCompatTargets } from './generators/csharp/compat.js';
 import { TYPE_NAME_PINS, applyTypeNamePins, applyTypeNamePinsToUnits, buildDeprecatedShimUnits } from './generators/csharp/type-name-pins.js';
+import { applyJsonCodec } from './generators/csharp/json-codec.js';
 
 const program = new Command();
 
@@ -333,7 +334,7 @@ async function generate(options: {
 
     // AITCore 생성 (인프라 코드) - enum 타입 목록 전달
     const enumTypeNames = new Set(enums.map(e => e.name));
-    const coreFile = applyTypeNamePins(await csharpGenerator.generateCoreFile(apis, enumTypeNames));
+    let coreFile = applyTypeNamePins(await csharpGenerator.generateCoreFile(apis, enumTypeNames));
     console.log(picocolors.green(`✓ AITCore.cs (Infrastructure)`));
 
     // C# 타입 정의 생성 (파싱된 enum/interface) - 타입별 유닛
@@ -430,7 +431,6 @@ async function generate(options: {
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -462,6 +462,20 @@ namespace AppsInToss
       typeFiles.set(fileName, buildTypeFileHeader(fileName) + body + '\n' + typeFileFooter);
     }
     console.log(picocolors.green(`✓ ${typeFiles.size}개 타입 파일 (AIT.Types.{Category}.cs, ${typeDefinitions.length}개 타입 정의)`));
+
+    // JSON 코덱: 타입별 읽기·쓰기 코드(AITJsonCodec.cs)를 만들고 출력에서 Newtonsoft 표시를 지운다 (json-codec.ts)
+    const codecInput = new Map<string, string>([
+      ['AITCore.cs', coreFile],
+      ...typeFiles,
+      ...categoryFiles,
+    ]);
+    const codec = applyJsonCodec(codecInput);
+    coreFile = codec.files.get('AITCore.cs')!;
+    for (const name of typeFiles.keys()) typeFiles.set(name, codec.files.get(name)!);
+    for (const name of categoryFiles.keys()) categoryFiles.set(name, codec.files.get(name)!);
+    const jsonCodecFile = codec.codecFile;
+    const jsonRuntimeFile = await csharpGenerator.generateJsonRuntimeFile();
+    console.log(picocolors.green(`✓ AITJsonCodec.cs (${codec.model.classes.filter(c => c.serializable).length}개 타입, ${codec.model.enums.length}개 enum)`));
 
     // jslib 파일들 생성 (TypeScript 포함)
     const jslibResult = await jslibGenerator.generateWithTypescript(apis, options.tag);
@@ -506,6 +520,8 @@ namespace AppsInToss
     const newCsFiles = new Set<string>([
       path.join(outputDir, 'AIT.cs'),
       path.join(outputDir, 'AITCore.cs'),
+      path.join(outputDir, 'AITJson.cs'),
+      path.join(outputDir, 'AITJsonCodec.cs'),
       path.join(outputDir, 'AIT.Screen.cs'), // Screen 수동 API
       ...Array.from(categoryFiles.keys()).map(f => path.join(outputDir, f)),
       ...Array.from(typeFiles.keys()).map(f => path.join(outputDir, f)), // AIT.Types.{Category}.cs
@@ -580,6 +596,13 @@ namespace AppsInToss
     await fs.writeFile(corePath, coreFile);
     await ensureMetaFile(corePath, existingMetas, 'cs');
     console.log(picocolors.green(`  ✓ AITCore.cs`));
+
+    for (const [fileName, content] of [['AITJson.cs', jsonRuntimeFile], ['AITJsonCodec.cs', jsonCodecFile]] as const) {
+      const filePath = path.join(outputDir, fileName);
+      await fs.writeFile(filePath, content);
+      await ensureMetaFile(filePath, existingMetas, 'cs');
+      console.log(picocolors.green(`  ✓ ${fileName}`));
+    }
 
     // 6. AIT.Types.{Category}.cs 쓰기 (카테고리별 타입 정의)
     for (const [fileName, content] of typeFiles.entries()) {

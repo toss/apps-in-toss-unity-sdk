@@ -514,10 +514,10 @@ namespace AppsInToss.Editor
 
             // 6.5. ait-patch-cli.mjs - 프로젝트 우선, 없으면 SDK
             // 3.x 빌드 시 GraniteBuildRunner가 ait build 직전에 `pnpm exec node ait-patch-cli.mjs`로
-            // 이 스크립트를 실행한다. web-framework cli.js의 setMetadata 호출을 패치해 .ait
-            // 메타데이터에 runtimeVersion("0.84.0")을 직접 emit하게 만든다 (3.x deploy 게이트
+            // 이 스크립트를 실행한다. @apps-in-toss/cli(web-framework의 의존)의 setMetadata 호출을 패치해 .ait
+            // 메타데이터에 runtimeVersion("0.84.0")과 isGame을 직접 emit하게 만든다 (3.x deploy 게이트
             // "runtimeVersion이 없습니다" 통과용). 빌드된 .ait는 손대지 않아 봉인이 깨지지 않는다.
-            // 스크립트는 항상 exit 0(setMetadata 없음/구조 변경/이미 설정됨 → graceful no-op)이며
+            // 스크립트는 항상 exit 0(setMetadata 없음/구조 변경/이미 설정됨 → 큰 경고 후 no-op)이며
             // 항상 복사된다(unity-build.yml 업로드 allowlist의 error-gate 충족).
             string aitPatchName = "ait-patch-cli.mjs";
             string aitPatchProject = Path.Combine(projectBuildConfigPath, aitPatchName);
@@ -532,6 +532,26 @@ namespace AppsInToss.Editor
             {
                 File.Copy(aitPatchSdk, aitPatchDst, true);
                 Debug.Log("[AIT]   ✓ ait-patch-cli.mjs (SDK에서 복사)");
+            }
+
+            // 6.6. ait-verify-metadata.mjs - 프로젝트 우선, 없으면 SDK
+            // GraniteBuildRunner가 ait build 직후 `pnpm exec node ait-verify-metadata.mjs`로 실행해
+            // 만들어진 .ait의 isGame/runtimeVersion이 기대값(AIT_IS_GAME)과 맞는지 확인한다.
+            // 기본은 경고만 남기고 exit 0이며, AIT_STRICT_METADATA=1(CI)이면 불일치 시 실패한다.
+            // ait-patch-cli.mjs와 같은 이유로 항상 복사된다.
+            string aitVerifyName = "ait-verify-metadata.mjs";
+            string aitVerifyProject = Path.Combine(projectBuildConfigPath, aitVerifyName);
+            string aitVerifySdk = Path.Combine(sdkBuildConfigPath, aitVerifyName);
+            string aitVerifyDst = Path.Combine(buildProjectPath, aitVerifyName);
+            if (File.Exists(aitVerifyProject))
+            {
+                File.Copy(aitVerifyProject, aitVerifyDst, true);
+                Debug.Log("[AIT]   ✓ ait-verify-metadata.mjs (프로젝트에서 복사)");
+            }
+            else if (File.Exists(aitVerifySdk))
+            {
+                File.Copy(aitVerifySdk, aitVerifyDst, true);
+                Debug.Log("[AIT]   ✓ ait-verify-metadata.mjs (SDK에서 복사)");
             }
 
             // 7. 사용자 추가 파일 복사

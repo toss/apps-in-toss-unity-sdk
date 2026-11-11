@@ -30,17 +30,17 @@ public class AITBuildInitializerSettingsTests
     }
 
     // =====================================================
-    // 기본값 검증 (SDK-8A 회귀 방지)
+    // 기본값 검증 (wasm 크기 회귀 방지)
     // =====================================================
 
     [Test]
-    public void GetDefaultExceptionSupport_Returns_FullWithStacktrace()
+    public void GetDefaultExceptionSupport_Returns_ExplicitlyThrownExceptionsOnly()
     {
-        // Sentry가 stack trace를 캡처하려면 FullWithStacktrace 필요
-        // 이 값이 낮아지면 Sentry에서 SDK-8A 경고가 재발생함
+        // FullWithStacktrace는 디버그용이라 wasm이 크게 커지고 느려진다. 자동 기본값은 Unity 기본값이어야 한다.
+        // stack trace가 필요한 사용자는 exceptionSupport를 명시적으로 지정한다.
         var result = AITDefaultSettings.GetDefaultExceptionSupport();
-        Assert.AreEqual(WebGLExceptionSupport.FullWithStacktrace, result,
-            "Default exception support must be FullWithStacktrace to avoid Sentry SDK-8A warning");
+        Assert.AreEqual(WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly, result,
+            "Auto exception support must be ExplicitlyThrownExceptionsOnly (FullWithStacktrace greatly increases wasm size)");
     }
 
     // =====================================================

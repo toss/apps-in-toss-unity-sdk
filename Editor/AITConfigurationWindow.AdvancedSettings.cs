@@ -68,6 +68,17 @@ namespace AppsInToss.Editor
                 "빌드 전 에셋 최적화 검사",
                 config.enableBuildOptimizationCheck);
 
+            // 텍스처 포맷 가드 (빌드마다 실행, 위 검사 창과 독립)
+            config.textureFormatGuardMode = (int)(AITTextureFormatGuardMode)EditorGUILayout.EnumPopup(
+                new GUIContent("텍스처 포맷 가드",
+                    "모바일 WebView는 DXT/BC를 지원하지 않아 RGBA32로 풀립니다.\n" +
+                    "자동 변환: WebGL 텍스처 서브타깃을 ASTC로 강제하고 DXT/BC 오버라이드를 ASTC/ETC2로 바꿉니다. " +
+                    "에셋 레이블 AIT-KeepTextureFormat(명시적 WebGL 오버라이드 필요)이 있으면 변환하지 않습니다.\n" +
+                    "경고만: 서브타깃과 에셋을 바꾸지 않고 경고만 냅니다.\n" +
+                    "끔: 아무것도 하지 않습니다.\n" +
+                    "환경 변수 AIT_TEXTURE_FORMAT_GUARD=auto|warn|off 가 설정을 덮어씁니다."),
+                (AITTextureFormatGuardMode)Mathf.Clamp(config.textureFormatGuardMode, 0, 2));
+
             GUILayout.Space(10);
 
             // 고급 설정 초기화
@@ -174,7 +185,8 @@ namespace AppsInToss.Editor
                 ? $"예외 처리 모드 (자동: {defaultValue})"
                 : "예외 처리 모드";
 
-            string[] options = { $"자동 ({defaultValue})", "None", "ExplicitlyThrownOnly", "FullWithStacktrace", "FullWithoutStacktrace" };
+            // FullWithStacktrace/FullWithoutStacktrace는 wasm 크기를 크게 늘리고 런타임을 느리게 한다 (디버깅·에러 추적 stack trace 용도로만 선택)
+            string[] options = { $"자동 ({defaultValue}, Unity 기본값)", "None", "ExplicitlyThrownOnly", "FullWithStacktrace (wasm 크기 증가·느림, 디버깅용)", "FullWithoutStacktrace (wasm 크기 증가·느림)" };
             int currentIndex = config.exceptionSupport < 0 ? 0 : config.exceptionSupport + 1;
             int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
             config.exceptionSupport = newIndex == 0 ? -1 : newIndex - 1;
@@ -289,6 +301,7 @@ namespace AppsInToss.Editor
             config.decompressionFallback = -1;
             config.runInBackground = -1;
             config.enableBuildOptimizationCheck = true;
+            config.textureFormatGuardMode = (int)AITTextureFormatGuardMode.AutoConvert;
         }
 
     }

@@ -20,6 +20,7 @@ namespace AppsInToss.Editor.Package
         {
             Debug.Log("[AIT] granite build 실행 중...");
             Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
+            LogResolvedIsGame(ctx);
 
             var result = Run3xBuildSync(ctx, "ait build");
             if (result == AITConvertCore.AITExportError.SUCCEED) return result;
@@ -93,6 +94,13 @@ namespace AppsInToss.Editor.Package
             }
         }
 
+        private static void LogResolvedIsGame(AITPackageBuilder.PackageContext ctx)
+        {
+            string v;
+            if (ctx.UnityMetadataEnv != null && ctx.UnityMetadataEnv.TryGetValue(AITUnityMetadata.IsGameEnvName, out v))
+                Debug.Log($"[AIT] {AITUnityMetadata.IsGameEnvName}={v} (.ait 메타데이터 isGame, webViewType 기준)");
+        }
+
         /// <summary>
         /// web-framework 3.x 빌드 (동기): vite build(→dist/web) 후 ait build 패키징.
         /// 3.x ait build는 webBundleDir(=dist/web)만 패키징하고 vite를 실행하지 않으므로
@@ -153,6 +161,7 @@ namespace AppsInToss.Editor.Package
             onProgress?.Invoke(AITConvertCore.BuildPhase.GraniteBuild, 0.5f, "granite build 실행 중...");
             Debug.Log("[AIT] granite build 실행 중...");
             Debug.Log($"[AIT] UNITY_METADATA: {ctx.UnityMetadataEnv["UNITY_METADATA"]}");
+            LogResolvedIsGame(ctx);
 
             Run3xBuildAsync(ctx, onProgress,
                 onComplete: (buildResult) =>

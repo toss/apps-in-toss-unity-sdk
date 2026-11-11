@@ -26,8 +26,20 @@
 //   응답에서 서버가 기대하는 값을 확인해 이 상수만 갱신하면 된다(beta-release.yml의
 //   deployment GET 진단 참조).
 //
+// isGame:
+//   - 3.x `ait build`의 setMetadata 호출에는 isGame 키도 없어, @apps-in-toss/ait-format이
+//     기본값 false를 기록한다. 따라서 Unity 게임의 .ait도 전부 isGame:false가 된다.
+//   - runtimeVersion과 같은 setMetadata 객체에 isGame 키를 주입하되, 값은 패치 시점에
+//     고정하지 않는다. 주입되는 코드는 `ait build` 실행 시점에 process.env.AIT_IS_GAME을
+//     읽는다. 이유: (1) Unity가 빌드마다 환경변수로 webViewType(game/partner)을 넘기므로
+//     설정이 바뀌어도 cli.js에 stale 값이 남지 않는다(패치는 멱등이라 재주입되지 않음).
+//     (2) GraniteBuildRunner의 `exec node ait-patch-cli.mjs`와 package.json의
+//     `build` 스크립트 두 경로 모두 같은 env를 상속하므로 별도 인자 전달이 필요 없다.
+//   - 값 규칙: "false"(대소문자·공백 무시)만 false, 미설정/그 외 값은 true(이 SDK는
+//     Unity 게임용이고 webViewType 기본값이 game이다). 패치 시점에 env 값을 로그로 남긴다.
+//
 // 안전 규칙 — 어떤 상황에서도 빌드를 막지 않는다(항상 정상 종료):
-//   (a) 멱등        : setMetadata에 이미 runtimeVersion이 있으면 no-op.
+//   (a) 멱등        : setMetadata에 이미 runtimeVersion/isGame이 있으면 해당 키는 no-op.
 //   (b) 버전 게이팅 : setMetadata 객체 리터럴을 못 찾으면(2.x 등) no-op.
 //   (c) 구조 변화   : 패턴이 안 맞으면 경고만 남기고 no-op(빌드 진행).
 //   (d) upstream 수정: upstream이 네이티브로 emit하면 (a)에 의해 자동 no-op.
@@ -44,7 +56,8 @@ const CLI_REL_PATH = 'node_modules/@apps-in-toss/web-framework/dist/cli.js';
 
 /**
  * web-framework cli.js 소스에서 setMetadata({...}) 객체 리터럴을 찾아
- * runtimeVersion 한 줄을 여는 `{` 직후에 주입한 새 소스를 반환한다.
+ * `key: <exprSource>,` 한 줄을 여는 `{` 직후에 주입한 새 소스를 반환한다.
+ * 객체에 key가 이미 있으면(키: 값, 단축 프로퍼티) no-op.
  *
  * 삽입 지점은 항상 "여는 `{` 직후"이므로, 객체 본문의 brace 카운팅이 다소
  * 어긋나더라도 구문상 안전하다. brace 파서는 문자열/템플릿/주석 내부의 괄호를
@@ -52,23 +65,48 @@ const CLI_REL_PATH = 'node_modules/@apps-in-toss/web-framework/dist/cli.js';
  * 않는다.
  *
  * @param {string} src
- * @param {string} runtimeVersion
+ * @param {string} key
+ * @param {string} exprSource  주입할 JS 표현식 소스
+ * @param {string} describe    성공 reason에 쓸 설명
  * @returns {{ changed: boolean, source: string, reason: string }}
  */
-export function injectRuntimeVersion(src, runtimeVersion = RUNTIME_VERSION) {
+export function injectMetadataKey(src, key, exprSource, describe) {
   const obj = findSetMetadataObject(src);
   if (!obj) {
     return { changed: false, source: src, reason: 'setMetadata 객체 리터럴 없음 (2.x이거나 구조 변경)' };
   }
   const objText = src.slice(obj.start, obj.end + 1);
-  if (/\bruntimeVersion\s*:/.test(objText)) {
-    return { changed: false, source: src, reason: 'runtimeVersion 이미 존재 (멱등/upstream emit)' };
+  if (new RegExp(`\\b${key}\\s*[:,}]`).test(objText)) {
+    return { changed: false, source: src, reason: `${key} 이미 존재 (멱등/upstream emit)` };
   }
-  // 여는 `{`(obj.start) 직후에 runtimeVersion 한 줄 삽입 (다른 필드 보존).
+  // 여는 `{`(obj.start) 직후에 한 줄 삽입 (다른 필드 보존).
   const insertAt = obj.start + 1;
-  const injected = `\n    runtimeVersion: ${JSON.stringify(runtimeVersion)},`;
+  const injected = `\n    ${key}: ${exprSource},`;
   const out = src.slice(0, insertAt) + injected + src.slice(insertAt);
-  return { changed: true, source: out, reason: `runtimeVersion=${JSON.stringify(runtimeVersion)} 삽입` };
+  return { changed: true, source: out, reason: describe };
+}
+
+/** setMetadata에 runtimeVersion 상수를 주입한다. */
+export function injectRuntimeVersion(src, runtimeVersion = RUNTIME_VERSION) {
+  return injectMetadataKey(
+    src,
+    'runtimeVersion',
+    JSON.stringify(runtimeVersion),
+    `runtimeVersion=${JSON.stringify(runtimeVersion)} 삽입`,
+  );
+}
+
+/** ait build 실행 시점에 평가되는 isGame 표현식. "false"만 false, 나머지는 true. */
+export const IS_GAME_EXPR = 'String(process.env.AIT_IS_GAME ?? "").trim().toLowerCase() !== "false"';
+
+/** 패치 시점 env 값을 같은 규칙으로 해석한다(로그용). */
+export function resolveIsGame(raw) {
+  return String(raw ?? '').trim().toLowerCase() !== 'false';
+}
+
+/** setMetadata에 isGame(런타임 env 평가)을 주입한다. */
+export function injectIsGame(src) {
+  return injectMetadataKey(src, 'isGame', IS_GAME_EXPR, 'isGame=<AIT_IS_GAME 런타임 평가> 삽입');
 }
 
 /**
@@ -157,9 +195,20 @@ function main() {
     return;
   }
 
-  const { changed, source, reason } = injectRuntimeVersion(src, RUNTIME_VERSION);
+  const rawIsGame = process.env.AIT_IS_GAME;
+  const known = typeof rawIsGame === 'string' && ['true', 'false'].includes(rawIsGame.trim().toLowerCase());
+  console.log(
+    `${TAG} AIT_IS_GAME=${rawIsGame === undefined ? '(미설정)' : JSON.stringify(rawIsGame)} → isGame=${resolveIsGame(rawIsGame)}` +
+      (known ? '' : ' (미설정/유효하지 않은 값 — 기본값 true)'),
+  );
+
+  const rv = injectRuntimeVersion(src, RUNTIME_VERSION);
+  const ig = injectIsGame(rv.source);
+  const source = ig.source;
+  const changed = rv.changed || ig.changed;
+  const reason = [rv, ig].filter((r) => r.changed).map((r) => r.reason).join(', ');
   if (!changed) {
-    console.log(`${TAG} 패치 불필요 — ${reason}.`);
+    console.log(`${TAG} 패치 불필요 — ${rv.reason}; ${ig.reason}.`);
     return;
   }
 

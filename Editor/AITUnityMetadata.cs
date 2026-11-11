@@ -79,8 +79,30 @@ namespace AppsInToss.Editor
         {
             return new Dictionary<string, string>
             {
-                { "UNITY_METADATA", BuildMetadataJson() }
+                { "UNITY_METADATA", BuildMetadataJson() },
+                // ait-patch-cli.mjs가 cli.js에 주입한 코드가 ait build 시점에 읽는다.
+                { IsGameEnvName, ResolveIsGame() ? "true" : "false" }
             };
+        }
+
+        internal const string IsGameEnvName = "AIT_IS_GAME";
+
+        /// <summary>
+        /// .ait 메타데이터 isGame 값. AITEditorScriptObject.webViewType이 game(0)이면 true,
+        /// partner(1)면 false. 설정을 읽지 못하거나 알 수 없는 값이면 게임 SDK 기본값 true.
+        /// </summary>
+        internal static bool ResolveIsGame()
+        {
+            try
+            {
+                var conf = UnityUtil.GetEditorConf();
+                if (conf == null) return true;
+                return conf.GetWebViewTypeString() != "partner";
+            }
+            catch (Exception)
+            {
+                return true;
+            }
         }
     }
 }

@@ -393,7 +393,9 @@ namespace AppsInToss.Editor.Package
         /// </summary>
         internal static string ComputeMetadataHash()
         {
-            return ComputeStringHash(AITUnityMetadata.BuildContentMetadataJson());
+            // isGame(webViewType)은 .ait 헤더에 반영되므로 바뀌면 스킵되지 않도록 해시에 포함한다.
+            return ComputeStringHash(AITUnityMetadata.BuildContentMetadataJson()
+                + "|isGame=" + (AITUnityMetadata.ResolveIsGame() ? "1" : "0"));
         }
 
         /// <summary>

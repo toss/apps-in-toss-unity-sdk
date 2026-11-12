@@ -145,7 +145,7 @@ namespace AppsInToss.Editor
                 target = BuildTarget.WebGL,
                 // subtarget을 비워 두면 0(Generic)이라 Unity가 EditorUserBuildSettings.webGLBuildSubtarget을
                 // 무시하고 Player Settings의 텍스처 압축(DXT 등)으로 Automatic 텍스처를 굽는다.
-                subtarget = AITTextureFormatGuard.GetBuildSubtarget(),
+                subtarget = 0, // TEMP-BEFORE
                 options = buildOptions,
 #if UNITY_2023_3_OR_NEWER
                 // Unity 2023.3+ (Unity 6): 최신 기능 활성화 (문서 권장)

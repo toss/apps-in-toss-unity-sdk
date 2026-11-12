@@ -186,6 +186,16 @@ namespace AppsInToss.Editor
             return subtarget == WebGLTextureSubtarget.ASTC || subtarget == WebGLTextureSubtarget.ETC2;
         }
 
+        /// <summary>
+        /// BuildPlayerOptions.subtarget 에 넣을 값. 가드가 AutoConvert 에서 서브타깃을 ASTC로 바꿔 두므로
+        /// 현재 EditorUserBuildSettings 값을 그대로 쓰면 되고, WarnOnly/Off 에서는 Build Settings UI 와 같은 값이 된다.
+        /// 0(Generic)을 넘기면 Unity 가 Player Settings 의 텍스처 압축(DXT 등)으로 대체한다.
+        /// </summary>
+        internal static int GetBuildSubtarget()
+        {
+            return (int)EditorUserBuildSettings.webGLBuildSubtarget;
+        }
+
         /// <summary>모드와 옵트아웃 레이블 유무로 에셋별 조치를 결정한다.</summary>
         internal static AITTextureGuardAction DecideAction(AITTextureFormatGuardMode mode, bool hasKeepLabel)
         {
@@ -512,7 +522,7 @@ namespace AppsInToss.Editor
                 {
                     AITLog.Warning($"[AIT] WebGL 텍스처 서브타깃이 {before} 입니다. iOS Safari와 대부분의 Android GPU는 DXT/BC를 지원하지 않아 " +
                                    "Automatic 포맷 텍스처가 런타임에 RGBA32로 풀립니다 (메모리 가로x세로x4바이트). " +
-                                   "Build Settings > WebGL > Texture Compression 을 ASTC로 바꾸거나 텍스처 포맷 가드를 '자동 변환'으로 두세요.",
+                                   "Build Settings > WebGL > Texture Compression (Generic이면 Player Settings의 DXT 설정을 따릅니다)을 ASTC로 바꾸거나 텍스처 포맷 가드를 '자동 변환'으로 두세요.",
                         sentryCapture: false);
                 }
                 return;

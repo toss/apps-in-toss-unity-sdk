@@ -1,0 +1,20 @@
+{
+  "name": "unity-miniapp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --outDir dist/web && node ait-patch-cli.mjs && ait build && node ait-verify-metadata.mjs",
+    "start": "vite",
+    "deploy": "ait deploy"
+  },
+  "dependencies": {
+    "@apps-in-toss/web-framework": "3.1.0"
+  },
+  "devDependencies": {
+    "@apps-in-toss/devtools": "3.1.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "packageManager": "pnpm@11.6.0"
+}

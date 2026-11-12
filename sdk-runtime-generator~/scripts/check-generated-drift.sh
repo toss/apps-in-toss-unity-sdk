@@ -11,8 +11,11 @@ REPO_ROOT="$(git -C "$GEN_DIR" rev-parse --show-toplevel)"
 # generate(src/index.ts)가 쓰는 출력 경로 (저장소 루트 기준).
 #  - Runtime/SDK/                       C# 코드, .meta, Plugins/*.jslib
 #  - WebGLTemplates/.../unity-bridge.ts unity-bridge.ts
+#  - Tests~/E2E/SharedScripts/Runtime/  E2E 하네스 API 카탈로그(AITApiCatalog.g.cs)와 .meta
 GENERATED_PATHS=(
   "Runtime/SDK"
+  "Tests~/E2E/SharedScripts/Runtime/AITApiCatalog.g.cs"
+  "Tests~/E2E/SharedScripts/Runtime/AITApiCatalog.g.cs.meta"
   "WebGLTemplates/AITTemplate/BuildConfig~/unity-bridge.ts"
 )
 

@@ -14,22 +14,11 @@ using AppsInToss;
 public static class APIParameterInspector
 {
     /// <summary>
-    /// SDK에서 사용하는 모든 enum 타입 레지스트리 (IL2CPP 호환)
-    /// </summary>
-    private static readonly Dictionary<Type, string[]> EnumRegistry = new Dictionary<Type, string[]>
-    {
-        { typeof(HapticFeedbackType), new[] { "TickWeak", "Tap", "TickMedium", "SoftMedium", "BasicWeak", "BasicMedium", "Success", "Error", "Wiggle", "Confetti" } },
-        { typeof(Accuracy), new[] { "Lowest", "Low", "Balanced", "High", "Highest", "BestForNavigation" } },
-        { typeof(NetworkStatus), new[] { "OFFLINE", "WIFI", "_2G", "_3G", "_4G", "_5G", "WWAN", "UNKNOWN" } },
-        { typeof(PermissionAccess), new[] { "Read", "Write", "Access" } }
-    };
-
-    /// <summary>
-    /// Enum 이름 목록 반환 (레지스트리 우선, 폴백으로 리플렉션)
+    /// Enum 이름 목록 반환 (생성기가 내보낸 카탈로그 우선, 폴백으로 리플렉션)
     /// </summary>
     public static string[] GetEnumNames(Type enumType)
     {
-        if (EnumRegistry.TryGetValue(enumType, out var names))
+        if (AITApiCatalog.EnumNames.TryGetValue(enumType, out var names))
             return names;
 
         // 폴백: 런타임 리플렉션 (Editor에서만 동작 보장)
@@ -169,340 +158,16 @@ public static class APIParameterInspector
     }
 
     /// <summary>
-    /// 카테고리 표시 순서
+    /// 카테고리 표시 순서 (생성기가 내보낸 카탈로그 기준)
     /// </summary>
-    public static readonly string[] CategoryOrder = {
-        "Authentication",
-        "Payment",
-        "IAP",
-        "Ads: AdMob",
-        "Ads: TossAds",
-        "SystemInfo",
-        "Location",
-        "Permission",
-        "GameCenter",
-        "Share",
-        "Media",
-        "Clipboard",
-        "Device",
-        "Navigation",
-        "Storage",
-        "SafeArea",
-        "Analytics",
-        "AppEvents",
-        "Partner",
-        "User",
-        "Other"
-    };
+    public static readonly string[] CategoryOrder = AITApiCatalog.CategoryOrder;
 
     /// <summary>
-    /// API 이름 -> 카테고리 매핑 (IL2CPP에서 리플렉션 대신 사용)
-    /// </summary>
-    private static readonly Dictionary<string, string> APICategoryMap = new Dictionary<string, string>
-    {
-        // Authentication (Certificate 카테고리 흡수: 인증서 서명도 넓은 의미의 인증 도메인)
-        { "AppLogin", "Authentication" },
-        { "GetIsTossLoginIntegratedService", "Authentication" },
-        { "AppsInTossSignTossCert", "Authentication" },
-
-        // Payment
-        { "CheckoutPayment", "Payment" },
-        { "RequestTossPayPaysBilling", "Payment" },
-
-        // IAP (In-App Purchase) - 구독 API 2종(IAPCreateSubscriptionPurchaseOrder/IAPGetSubscriptionInfo) 편입
-        { "IAPCreateOneTimePurchaseOrder", "IAP" },
-        { "IAPGetProductItemList", "IAP" },
-        { "IAPGetPendingOrders", "IAP" },
-        { "IAPGetCompletedOrRefundedOrders", "IAP" },
-        { "IAPCompleteProductGrant", "IAP" },
-        { "IAPCreateSubscriptionPurchaseOrder", "IAP" },
-        { "IAPGetSubscriptionInfo", "IAP" },
-
-        // Ads: AdMob (Runtime/SDK에 없는 GoogleAdMobLoadAdMobInterstitialAd 등 죽은 항목 4종은 제외)
-        { "GoogleAdMobLoadAppsInTossAdMob", "Ads: AdMob" },
-        { "GoogleAdMobShowAppsInTossAdMob", "Ads: AdMob" },
-        { "GoogleAdMobIsAppsInTossAdMobLoaded", "Ads: AdMob" },
-
-        // Ads: TossAds
-        { "TossAdsInitialize", "Ads: TossAds" },
-        { "TossAdsAttach", "Ads: TossAds" },
-        { "TossAdsAttachBanner", "Ads: TossAds" },
-        { "TossAdsDestroy", "Ads: TossAds" },
-        { "TossAdsDestroyAll", "Ads: TossAds" },
-        { "LoadFullScreenAd", "Ads: TossAds" },
-        { "ShowFullScreenAd", "Ads: TossAds" },
-
-        // SystemInfo (Environment 카테고리 통합 + GetServerTime 신규 편입)
-        { "GetDeviceId", "SystemInfo" },
-        { "GetLocale", "SystemInfo" },
-        { "GetNetworkStatus", "SystemInfo" },
-        { "GetOperationalEnvironment", "SystemInfo" },
-        { "GetPlatformOS", "SystemInfo" },
-        { "GetSchemeUri", "SystemInfo" },
-        { "GetTossAppVersion", "SystemInfo" },
-        { "GetServerTime", "SystemInfo" },
-        { "GetAppsInTossGlobals", "SystemInfo" },
-        { "IsMinVersionSupported", "SystemInfo" },
-        { "EnvGetDeploymentId", "SystemInfo" }, // 대소문자 수정: envGetDeploymentId -> EnvGetDeploymentId (AIT.Environment.cs 실제 메서드명)
-
-        // Location
-        { "GetCurrentLocation", "Location" },
-        { "StartUpdateLocation", "Location" },
-
-        // Permission
-        { "GetPermission", "Permission" },
-        { "OpenPermissionDialog", "Permission" },
-        { "OpenPermissionDialogTyped", "Permission" },
-        { "RequestPermission", "Permission" },
-
-        // GameCenter (GrantPromotionReward 편입: GrantPromotionRewardForGame과 같은 도메인)
-        { "GetGameCenterGameProfile", "GameCenter" },
-        { "GetUserKeyForGame", "GameCenter" },
-        { "GetUserKeyForGameTyped", "GameCenter" },
-        { "GrantPromotionRewardForGame", "GameCenter" },
-        { "OpenGameCenterLeaderboard", "GameCenter" },
-        { "SubmitGameCenterLeaderBoardScore", "GameCenter" },
-        { "GrantPromotionReward", "GameCenter" },
-
-        // Share
-        { "ContactsViral", "Share" },
-        { "FetchContacts", "Share" },
-        { "GetTossShareLink", "Share" },
-        { "Share", "Share" },
-
-        // Media (FetchAlbumItems, OpenPDFViewer 신규 편입)
-        { "FetchAlbumPhotos", "Media" },
-        { "OpenCamera", "Media" },
-        { "SaveBase64Data", "Media" },
-        { "FetchAlbumItems", "Media" },
-        { "OpenPDFViewer", "Media" },
-
-        // Clipboard
-        { "GetClipboardText", "Clipboard" },
-        { "SetClipboardText", "Clipboard" },
-
-        // Device
-        { "GenerateHapticFeedback", "Device" },
-        { "SetDeviceOrientation", "Device" },
-        { "SetIosSwipeGestureEnabled", "Device" },
-        { "SetScreenAwakeMode", "Device" },
-        { "SetSecureScreen", "Device" },
-
-        // Navigation
-        { "CloseView", "Navigation" },
-        { "OpenURL", "Navigation" },
-
-        // Storage
-        { "StorageGetItem", "Storage" },
-        { "StorageSetItem", "Storage" },
-        { "StorageRemoveItem", "Storage" },
-        { "StorageClearItems", "Storage" },
-        { "StorageGetItems", "Storage" },
-        { "StorageSetItems", "Storage" },
-
-        // SafeArea
-        { "SafeAreaInsetsGet", "SafeArea" },
-        { "SafeAreaInsetsSubscribe", "SafeArea" },
-
-        // Analytics (기존 Events 카테고리를 개명하고 AnalyticsScreen/Impression/Click 3종 편입)
-        { "EventLog", "Analytics" },
-        { "AnalyticsScreen", "Analytics" },
-        { "AnalyticsImpression", "Analytics" },
-        { "AnalyticsClick", "Analytics" },
-
-        // AppEvents (Visibility 카테고리 흡수 + GraniteEventSubscribeHomeEvent/RequestNotificationAgreement/RequestReview 편입)
-        { "GraniteEventSubscribeBackEvent", "AppEvents" },
-        { "GraniteEventSubscribeHomeEvent", "AppEvents" },
-        { "TdsEventSubscribeNavigationAccessoryEvent", "AppEvents" },
-        { "OnVisibilityChangedByTransparentServiceWeb", "AppEvents" },
-        { "RequestNotificationAgreement", "AppEvents" },
-        { "RequestReview", "AppEvents" },
-
-        // Partner (대소문자 수정: partnerAddAccessoryButton/partnerRemoveAccessoryButton -> 실제 PascalCase 메서드명)
-        { "PartnerAddAccessoryButton", "Partner" },
-        { "PartnerRemoveAccessoryButton", "Partner" },
-
-        // User (신설 - AIT.Other.cs의 사용자 정보 조회 API)
-        { "GetAnonymousKey", "User" },
-        { "GetConsentedUserData", "User" },
-        { "GetDeclaredAgeRange", "User" },
-
-        // Other (도메인 분류가 어려운 나머지 API. GetAllAPIMethods() 기준 미매핑 API는 없어야 하며,
-        // 신규 API 추가 시 이 폴백으로 새지 않는지는 APICategoryMapGuardTests가 검증한다)
-        { "GetGroupId", "Other" },
-
-        // 3.x 번들의 네임스페이스 멤버(Storage.getItem -> StorageGetItem 등), IsSupported/권한 보조 API.
-        // 번들이 노출하는 모든 호출 가능 export가 C#에 생성되므로 생성된 표면 전체가 여기에 매핑돼야 한다.
-        // Authentication
-        { "AppsInTossSignTossCertIsSupported", "Authentication" },
-        { "GetIsTossLoginIntegratedServiceIsSupported", "Authentication" },
-        { "TossAuthIsIntegrated", "Authentication" },
-        { "TossAuthIsIntegratedIsSupported", "Authentication" },
-        { "TossAuthLogin", "Authentication" },
-        { "TossAuthSign", "Authentication" },
-        { "TossAuthSignIsSupported", "Authentication" },
-        // Payment
-        { "RequestTossPayPaysBillingIsSupported", "Payment" },
-        { "TossPayAuthorize", "Payment" },
-        { "TossPayAuthorizeSubscription", "Payment" },
-        { "TossPayAuthorizeSubscriptionIsSupported", "Payment" },
-        { "TossPayCheckoutPayment", "Payment" },
-        { "TossPayRequestTossPayPaysBilling", "Payment" },
-        { "TossPayRequestTossPayPaysBillingIsSupported", "Payment" },
-        // IAP
-        { "IAPCompleteProductGrantIsSupported", "IAP" },
-        { "IAPCreateOneTimePurchaseOrderIsSupported", "IAP" },
-        { "IAPCreateSubscriptionPurchaseOrderIsSupported", "IAP" },
-        { "IAPGetCompletedOrRefundedOrdersIsSupported", "IAP" },
-        { "IAPGetPendingOrdersIsSupported", "IAP" },
-        { "IAPGetProductItemListIsSupported", "IAP" },
-        { "IAPGetSubscriptionInfoIsSupported", "IAP" },
-        // Ads: AdMob
-        { "GoogleAdMobIsAppsInTossAdMobLoadedIsSupported", "Ads: AdMob" },
-        { "GoogleAdMobLoadAppsInTossAdMobIsSupported", "Ads: AdMob" },
-        { "GoogleAdMobShowAppsInTossAdMobIsSupported", "Ads: AdMob" },
-        // Ads: TossAds
-        { "LoadFullScreenAdIsSupported", "Ads: TossAds" },
-        { "ShowFullScreenAdIsSupported", "Ads: TossAds" },
-        { "TossAdsAttachBannerIsSupported", "Ads: TossAds" },
-        { "TossAdsAttachIsSupported", "Ads: TossAds" },
-        { "TossAdsDestroyAllIsSupported", "Ads: TossAds" },
-        { "TossAdsDestroyIsSupported", "Ads: TossAds" },
-        { "TossAdsInitializeIsSupported", "Ads: TossAds" },
-        // SystemInfo
-        { "EnvironmentDeploymentId", "SystemInfo" },
-        { "EnvironmentDeviceId", "SystemInfo" },
-        { "EnvironmentEnvironment", "SystemInfo" },
-        { "EnvironmentGetNetworkStatus", "SystemInfo" },
-        { "EnvironmentGetServerTime", "SystemInfo" },
-        { "EnvironmentGetServerTimeIsSupported", "SystemInfo" },
-        { "EnvironmentGroupId", "SystemInfo" },
-        { "EnvironmentInitialURL", "SystemInfo" },
-        { "EnvironmentTossAppVersion", "SystemInfo" },
-        { "GetServerTimeIsSupported", "SystemInfo" },
-        // Location
-        { "GetCurrentLocationGetPermission", "Location" },
-        { "GetCurrentLocationOpenPermissionDialog", "Location" },
-        { "StartUpdateLocationGetPermission", "Location" },
-        { "StartUpdateLocationOpenPermissionDialog", "Location" },
-        // GameCenter
-        { "GameGetUserProfile", "GameCenter" },
-        { "GameGetUserProfileIsSupported", "GameCenter" },
-        { "GameOpenLeaderboard", "GameCenter" },
-        { "GameOpenLeaderboardIsSupported", "GameCenter" },
-        { "GameSetLeaderboardScore", "GameCenter" },
-        { "GameSetLeaderboardScoreIsSupported", "GameCenter" },
-        { "GameSubscribeInfoOverlayHidden", "GameCenter" },
-        { "GetGameCenterGameProfileIsSupported", "GameCenter" },
-        { "GetUserKeyForGameIsSupported", "GameCenter" },
-        { "GrantPromotionRewardForGameIsSupported", "GameCenter" },
-        { "GrantPromotionRewardIsSupported", "GameCenter" },
-        { "OpenGameCenterLeaderboardIsSupported", "GameCenter" },
-        { "PromotionGrantReward", "GameCenter" },
-        { "PromotionGrantRewardIsSupported", "GameCenter" },
-        { "SubmitGameCenterLeaderBoardScoreIsSupported", "GameCenter" },
-        // Share
-        { "ContactsViralIsSupported", "Share" },
-        { "FetchContactsGetPermission", "Share" },
-        { "FetchContactsOpenPermissionDialog", "Share" },
-        { "PromotionOpenContactsInvite", "Share" },
-        { "PromotionOpenContactsInviteIsSupported", "Share" },
-        { "ShareCreateLink", "Share" },
-        { "ShareSendMessage", "Share" },
-        { "ViralGetCampaign", "Share" },
-        { "ViralShare", "Share" },
-        { "ViralTrack", "Share" },
-        // Media
-        { "FetchAlbumItemsIsSupported", "Media" },
-        { "FetchAlbumPhotosGetPermission", "Media" },
-        { "FetchAlbumPhotosOpenPermissionDialog", "Media" },
-        { "FileOpenPDFViewer", "Media" },
-        { "FileOpenPDFViewerIsSupported", "Media" },
-        { "FileSaveBase64", "Media" },
-        { "FileSaveBase64IsSupported", "Media" },
-        { "OpenCameraGetPermission", "Media" },
-        { "OpenCameraOpenPermissionDialog", "Media" },
-        { "OpenPDFViewerIsSupported", "Media" },
-        { "SaveBase64DataIsSupported", "Media" },
-        // Clipboard
-        { "ClipboardGetText", "Clipboard" },
-        { "ClipboardGetTextGetPermission", "Clipboard" },
-        { "ClipboardGetTextOpenPermissionDialog", "Clipboard" },
-        { "ClipboardSetText", "Clipboard" },
-        { "ClipboardSetTextGetPermission", "Clipboard" },
-        { "ClipboardSetTextOpenPermissionDialog", "Clipboard" },
-        { "GetClipboardTextGetPermission", "Clipboard" },
-        { "GetClipboardTextOpenPermissionDialog", "Clipboard" },
-        { "SetClipboardTextGetPermission", "Clipboard" },
-        { "SetClipboardTextOpenPermissionDialog", "Clipboard" },
-        // Device
-        { "DeviceGetAlbumItems", "Device" },
-        { "DeviceGetAlbumItemsIsSupported", "Device" },
-        { "DeviceGetContacts", "Device" },
-        { "DeviceGetContactsGetPermission", "Device" },
-        { "DeviceGetContactsOpenPermissionDialog", "Device" },
-        { "DeviceGetLocation", "Device" },
-        { "DeviceGetLocationGetPermission", "Device" },
-        { "DeviceGetLocationOpenPermissionDialog", "Device" },
-        { "DeviceGetPhotos", "Device" },
-        { "DeviceGetPhotosGetPermission", "Device" },
-        { "DeviceGetPhotosOpenPermissionDialog", "Device" },
-        { "DeviceLocale", "Device" },
-        { "DeviceOpenCamera", "Device" },
-        { "DeviceOpenCameraGetPermission", "Device" },
-        { "DeviceOpenCameraOpenPermissionDialog", "Device" },
-        { "DeviceOpenURL", "Device" },
-        { "DeviceOs", "Device" },
-        { "DeviceSubscribeLocation", "Device" },
-        { "DeviceSubscribeLocationGetPermission", "Device" },
-        { "DeviceSubscribeLocationOpenPermissionDialog", "Device" },
-        { "DeviceTriggerHaptic", "Device" },
-        { "ScreenClose", "Device" },
-        { "ScreenSetAwakeMode", "Device" },
-        { "ScreenSetIosSwipeBack", "Device" },
-        { "ScreenSetOrientation", "Device" },
-        { "ScreenSetOrientationIsSupported", "Device" },
-        { "ScreenSetSecure", "Device" },
-        { "SetDeviceOrientationIsSupported", "Device" },
-        // Navigation
-        { "NavigationBarSetOptions", "Navigation" },
-        // Storage
-        { "StorageGetItemsIsSupported", "Storage" },
-        { "StorageSetItemsIsSupported", "Storage" },
-        // SafeArea
-        { "GetSafeAreaInsets", "SafeArea" },
-        { "SafeAreaGet", "SafeArea" },
-        { "SafeAreaSubscribe", "SafeArea" },
-        // Analytics
-        { "AnalyticsLog", "Analytics" },
-        // AppEvents
-        { "NotificationRequestAgreement", "AppEvents" },
-        { "NotificationRequestAgreementIsSupported", "AppEvents" },
-        { "RequestNotificationAgreementIsSupported", "AppEvents" },
-        { "RequestReviewIsSupported", "AppEvents" },
-        { "ReviewRequest", "AppEvents" },
-        { "ReviewRequestIsSupported", "AppEvents" },
-        // User
-        { "GetAnonymousKeyIsSupported", "User" },
-        { "GetConsentedUserDataIsSupported", "User" },
-        { "GetDeclaredAgeRangeIsSupported", "User" },
-        { "UserCreateAnonymousKeyAuthCode", "User" },
-        { "UserGetAnonymousKey", "User" },
-        { "UserGetAnonymousKeyIsSupported", "User" },
-        { "UserGetConsentedData", "User" },
-        { "UserGetConsentedDataIsSupported", "User" },
-        { "UserGetDeclaredAgeRange", "User" },
-        { "UserGetDeclaredAgeRangeIsSupported", "User" },
-        // Other
-        { "MigrationGetOriginStorage", "Other" },
-    };
-
-    /// <summary>
-    /// API 이름으로 카테고리 가져오기
+    /// API 이름으로 카테고리 가져오기 (생성기가 내보낸 카탈로그 기준, 없으면 Other)
     /// </summary>
     private static string GetCategoryByName(string apiName)
     {
-        if (APICategoryMap.TryGetValue(apiName, out string category))
+        if (AITApiCatalog.ApiCategories.TryGetValue(apiName, out string category))
         {
             return category;
         }
@@ -546,7 +211,7 @@ public static class APIParameterInspector
 
         // APICategoryAttribute 타입 찾기 (AIT와 같은 어셈블리에서)
         // 참고: IL2CPP/WebGL에서는 reflection으로 attribute를 읽을 수 없으므로
-        // 실제 카테고리는 GetCategoryByName() 하드코딩 매핑을 사용함
+        // 실제 카테고리는 GetCategoryByName()이 읽는 생성 카탈로그(AITApiCatalog)를 사용함
         Type categoryAttrType = aitType.Assembly.GetType("AppsInToss.APICategoryAttribute");
 
         if (categoryAttrType == null)
@@ -612,7 +277,7 @@ public static class APIParameterInspector
             }
 
             // IL2CPP/WebGL에서는 reflection으로 attribute를 읽을 수 없으므로
-            // 항상 hardcoded 매핑 사용
+            // 항상 생성 카탈로그 사용
             string finalCategory = GetCategoryByName(method.Name);
 
             var methodInfo = new APIMethodInfo

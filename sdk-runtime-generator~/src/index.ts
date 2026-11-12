@@ -12,11 +12,12 @@ import { CSharpGenerator, CSharpTypeGenerator } from './generators/csharp/index.
 import { JSLibGenerator } from './generators/jslib.js';
 import { typeCheckBridgeCode, printTypeCheckResult, cleanupCache } from './generators/jslib-compiler.js';
 import { generateUnityBridge } from './generators/unity-bridge.js';
+import { generateApiCatalog, API_CATALOG_RELATIVE_PATH } from './generators/api-catalog.js';
 import { generateScreenManualCs, generateScreenManualJslib, generateCoreManualJslib } from './generators/webgl-manual.js';
 import { formatCommand } from './commands/format.js';
 import { applyDocFallbacks, applyTypeMemberDocFallbacks } from './doc-fallbacks.js';
 import { escapeCSharpKeyword } from './generators/csharp/utils.js';
-import { DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY } from './categories.js';
+import { DEPRECATED_API_OVERRIDES, CATEGORY_ORDER, DEFAULT_CATEGORY, NAMESPACE_CATEGORIES } from './categories.js';
 import type { GeneratedTypeUnit } from './types.js';
 import { PUBLIC_TYPE_NAMES } from './generators/csharp/public-type-names.js';
 import { pruneUnreferencedSyntheticTypes } from './generators/csharp/prune-synthetic-types.js';
@@ -600,7 +601,8 @@ namespace AppsInToss
     // 8. Screen 수동 API 파일 쓰기 (브라우저 API - web-framework 외부)
     console.log(picocolors.cyan('\n🖥️  Screen 수동 API 생성 중...'));
     const screenCsPath = path.join(outputDir, 'AIT.Screen.cs');
-    await fs.writeFile(screenCsPath, generateScreenManualCs());
+    const screenCsContent = generateScreenManualCs();
+    await fs.writeFile(screenCsPath, screenCsContent);
     await ensureMetaFile(screenCsPath, existingMetas, 'cs');
     console.log(picocolors.green(`  ✓ AIT.Screen.cs`));
 
@@ -614,6 +616,22 @@ namespace AppsInToss
     await fs.writeFile(coreJslibPath, generateCoreManualJslib());
     await ensureMetaFile(coreJslibPath, existingMetas, 'jslib');
     console.log(picocolors.green(`  ✓ Plugins/AppsInToss-Core.jslib`));
+
+    // 9-1. 테스트 하네스 카탈로그 생성 (Tests~/E2E/SharedScripts/Runtime/)
+    // 위에서 쓴 C# 본문에서 API 카테고리와 enum 멤버를 그대로 옮긴다. 하네스는 손으로 같은 표를 두지 않는다.
+    console.log(picocolors.cyan('\n📚 하네스 API 카탈로그 생성 중...'));
+    const catalogContent = generateApiCatalog({
+      categoryFiles,
+      manualFiles: new Map([
+        ['AIT.Screen.cs', { category: NAMESPACE_CATEGORIES.Screen, content: screenCsContent }],
+      ]),
+      typeFiles,
+    });
+    const catalogPath = path.resolve(outputDir, '../..', API_CATALOG_RELATIVE_PATH);
+    const existingCatalogMetas = await collectMetaFiles(path.dirname(catalogPath));
+    await fs.writeFile(catalogPath, catalogContent);
+    await ensureMetaFile(catalogPath, existingCatalogMetas, 'cs');
+    console.log(picocolors.green(`  ✓ ${path.basename(catalogPath)}`));
 
     // 9. unity-bridge.ts 생성 (WebGLTemplates/AITTemplate/BuildConfig~/)
     console.log(picocolors.cyan('\n🌉 Unity Bridge 생성 중...'));

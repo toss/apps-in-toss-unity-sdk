@@ -1,6 +1,21 @@
-Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.9.0)이 최상단에 오도록 정렬되어 있습니다.
+Apps in Toss Unity SDK가 노출하는 C# API 표면이 `@apps-in-toss/web-framework` 버전에 따라 어떻게 달라지는지 정리한 자동 생성 리포트입니다. 최신 버전(v3.10.0)이 최상단에 오도록 정렬되어 있습니다.
 
 ## v3.x
+
+### v3.9.0 → v3.10.0
+
+API 총 232개 · 추가 3 · 변경 2 · 제거 0
+
+**추가된 API**
+
+- `AIT.NavigationBarAddAccessoryButton`
+- `AIT.NavigationBarRemoveAccessoryButton`
+- `AIT.NavigationBarSubscribeAccessoryButton`
+
+**변경된 API**
+
+- `AIT.PartnerAddAccessoryButton`: `params: AddAccessoryButtonParams → object; isDeprecated: false → true`
+- `AIT.PartnerRemoveAccessoryButton`: `isDeprecated: false → true`
 
 ### v3.8.0 → v3.9.0
 
@@ -74,7 +89,7 @@ API 총 219개 · 추가 1 · 변경 0 · 제거 0
 
 변경 없음: v3.7.0 → v3.8.0 · v3.6.0 → v3.7.0 · v3.1.0 → v3.1.1 · v3.0.4 → v3.0.5 · v3.0.3 → v3.0.4 · v3.0.2 → v3.0.3 · v3.0.1 → v3.0.2
 
-## v3.9.0 API 카탈로그
+## v3.10.0 API 카탈로그
 
 ### Authentication
 
@@ -267,7 +282,10 @@ API 총 219개 · 추가 1 · 변경 0 · 제거 0
 
 ### Navigation
 
+- `AIT.NavigationBarAddAccessoryButton`
+- `AIT.NavigationBarRemoveAccessoryButton`
 - `AIT.NavigationBarSetOptions`
+- `AIT.NavigationBarSubscribeAccessoryButton`
 - `AIT.CloseView`
 - `AIT.OpenURL`
 

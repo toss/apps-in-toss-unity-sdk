@@ -95,6 +95,14 @@ namespace AppsInToss.Editor
             var guardMode = AITTextureFormatGuard.ResolveCurrentMode(UnityUtil.GetEditorConf(), out _);
             bool checkIncompatible = guardMode != AITTextureFormatGuardMode.Off;
 
+            // 경고만 모드에서는 서브타깃을 바꾸지 않는다. Generic이면 Automatic 포맷 텍스처가 Player Settings의
+            // 텍스처 압축(DXT 등)으로 구워지므로 권장 문구에 알려 준다. 자동 변환은 빌드 직전에 ASTC로 바꾼다.
+            var webglSubtarget = EditorUserBuildSettings.webGLBuildSubtarget;
+            if (guardMode == AITTextureFormatGuardMode.WarnOnly && !AITTextureFormatGuard.IsMobileCompatibleSubtarget(webglSubtarget))
+            {
+                issue.recommendation += $" (WebGL 텍스처 서브타깃이 {webglSubtarget}라 Automatic 포맷 텍스처는 Player Settings의 DXT 등 비호환 압축을 따를 수 있습니다)";
+            }
+
             foreach (string guid in guids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);

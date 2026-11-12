@@ -46,6 +46,10 @@ namespace AppsInToss.Editor
             return false;
         }
 
+        /// <summary>마지막 BuildPlayer 에 넘긴 서브타깃과 리포트 (E2E 하네스가 텍스처 포맷을 검증하는 데 쓴다).</summary>
+        internal static int LastBuildSubtarget = -1;
+        internal static UnityEditor.Build.Reporting.BuildReport LastBuildReport;
+
         internal static AITConvertCore.AITExportError BuildWebGL(bool cleanBuild = false, AITBuildProfile profile = null)
         {
             // WebGL Build Support 모듈 설치 여부 사전 체크
@@ -139,6 +143,9 @@ namespace AppsInToss.Editor
                 scenes = scenes,
                 locationPathName = outputPath,
                 target = BuildTarget.WebGL,
+                // subtarget을 비워 두면 0(Generic)이라 Unity가 EditorUserBuildSettings.webGLBuildSubtarget을
+                // 무시하고 Player Settings의 텍스처 압축(DXT 등)으로 Automatic 텍스처를 굽는다.
+                subtarget = AITTextureFormatGuard.GetBuildSubtarget(),
                 options = buildOptions,
 #if UNITY_2023_3_OR_NEWER
                 // Unity 2023.3+ (Unity 6): 최신 기능 활성화 (문서 권장)
@@ -162,7 +169,10 @@ namespace AppsInToss.Editor
             // .cs 파일 수정과 달리 .json은 스크립트 컴파일을 유발하지 않으므로 도메인 리로드 없음
             WriteVersionInfoJson();
 
+            Debug.Log($"[AIT] BuildPlayer 텍스처 서브타깃: {(WebGLTextureSubtarget)buildPlayerOptions.subtarget}");
             var result = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            LastBuildSubtarget = buildPlayerOptions.subtarget;
+            LastBuildReport = result;
 
             // 빌드 리포트를 에러 리포터에 저장 (Issue 신고 시 사용)
             AITErrorReporter.SetBuildReport(result);

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Build.Reporting;
 using System.IO;
 using AppsInToss;
 using AppsInToss.Editor;
@@ -31,6 +32,10 @@ public class E2EBuildRunner
         // webGLExceptionSupport가 커밋값 1에서 3으로 고착돼 ProjectSettings.asset이 계속 dirty였다).
         // E2E 하네스는 픽스처를 더럽히면 안 되므로 러너가 직접 원본을 들고 있다가 빌드 후 되돌린다.
         var preBuildPlayerSettings = PlayerSettingsSnapshot.Capture();
+
+        // 텍스처 포맷 가드 회귀 검증용 프로브: Automatic 포맷 텍스처 + 서브타깃 Generic(버그 조건).
+        CreateTextureProbe();
+        EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.Generic;
 
         // 1. 씬 생성 및 설정
         Debug.Log("[1/5] Creating and setting up benchmark scene...");
@@ -137,12 +142,21 @@ public class E2EBuildRunner
             profileName: "E2E Build"
         );
 
+        string textureProbeError = result == AITConvertCore.AITExportError.SUCCEED ? VerifyTextureProbe() : null;
+
         // 빌드 산출물은 이미 디스크에 기록됐으므로, 여기서 PlayerSettings를 원본으로 되돌려도
         // 결과에 영향이 없다. EditorApplication.Exit 이후에는 finally가 보장되지 않으므로
         // 분기 이전에 처리한다.
         preBuildPlayerSettings.Restore();
         AssetDatabase.SaveAssets();
         Debug.Log("✓ PlayerSettings restored to pre-build state");
+
+        if (textureProbeError != null)
+        {
+            AITLog.Error($"[TextureProbe] FAILED: {textureProbeError}", sentryCapture: false);
+            EditorApplication.Exit(3);
+            return;
+        }
 
         if (result == AITConvertCore.AITExportError.SUCCEED)
         {
@@ -364,7 +378,84 @@ public class E2EBuildRunner
             Debug.Log("Added E2EBootstrapperHelper to BenchmarkManager");
         }
 
+        AddTextureProbeToScene();
+
         Debug.Log("Benchmark scene setup complete (scripts will be added at runtime by E2EBootstrapper)");
+    }
+
+    private const string TextureProbePath = "Assets/E2ETextureProbe/probe.png";
+    private const int TextureProbeSize = 512;
+
+    /// <summary>
+    /// 512x512 RGBA, WebGL 오버라이드 없음(Automatic), mipmap 없음. DXT5/ETC2 RGBA8이면 262144바이트,
+    /// ASTC 6x6이면 약 118000바이트라 패킹 크기로 구분된다.
+    /// </summary>
+    private static void CreateTextureProbe()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(TextureProbePath));
+        var tex = new Texture2D(TextureProbeSize, TextureProbeSize, TextureFormat.RGBA32, false);
+        var pixels = new Color32[TextureProbeSize * TextureProbeSize];
+        var rng = new System.Random(1234);
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = new Color32((byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256), (byte)(128 + rng.Next(128)));
+        tex.SetPixels32(pixels);
+        File.WriteAllBytes(TextureProbePath, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.ImportAsset(TextureProbePath, ImportAssetOptions.ForceUpdate);
+
+        var importer = (TextureImporter)AssetImporter.GetAtPath(TextureProbePath);
+        importer.textureType = TextureImporterType.Default;
+        importer.mipmapEnabled = false;
+        importer.isReadable = false;
+        importer.npotScale = TextureImporterNPOTScale.None;
+        importer.textureCompression = TextureImporterCompression.Compressed;
+        importer.crunchedCompression = false;
+        var ps = importer.GetPlatformTextureSettings("WebGL");
+        ps.overridden = false;
+        importer.SetPlatformTextureSettings(ps);
+        importer.SaveAndReimport();
+        Debug.Log("✓ Texture probe created (Automatic format)");
+    }
+
+    private static void AddTextureProbeToScene()
+    {
+        var shader = Shader.Find("Unlit/Texture");
+        if (shader == null) throw new System.Exception("[TextureProbe] Unlit/Texture shader not found");
+        var mat = new Material(shader) { mainTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(TextureProbePath) };
+        Directory.CreateDirectory("Assets/E2ETextureProbe");
+        AssetDatabase.CreateAsset(mat, "Assets/E2ETextureProbe/probe.mat");
+        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quad.name = "TextureProbe";
+        quad.GetComponent<MeshRenderer>().sharedMaterial = mat;
+    }
+
+    /// <summary>
+    /// 빌드 후 검증. 서브타깃이 ASTC로 BuildPlayer에 전달됐는지, 프로브 텍스처의 패킹 크기가 ASTC 수준인지 본다.
+    /// 문제가 있으면 메시지를, 정상이면 null을 돌려준다. origin/main 동작(Generic 전달)에서는 실패해야 한다.
+    /// </summary>
+    private static string VerifyTextureProbe()
+    {
+        int sub = AITWebGLBuilder.LastBuildSubtarget;
+        Debug.Log($"[TextureProbe] BuildPlayer subtarget = {(WebGLTextureSubtarget)sub}");
+        if (sub != (int)WebGLTextureSubtarget.ASTC)
+            return $"BuildPlayerOptions.subtarget is {(WebGLTextureSubtarget)sub}, expected ASTC";
+
+        var report = AITWebGLBuilder.LastBuildReport;
+        if (report == null) return "build report is null";
+
+        string guid = AssetDatabase.AssetPathToGUID(TextureProbePath);
+        long size = -1;
+#pragma warning disable CS0618
+        foreach (var pa in report.packedAssets)
+            foreach (var c in pa.contents)
+                if (c.sourceAssetGUID.ToString() == guid && c.type == typeof(Texture2D))
+                    size = System.Math.Max(size, (long)c.packedSize);
+#pragma warning restore CS0618
+        Debug.Log($"[TextureProbe] probe texture packed size = {size} bytes (RGBA8-class 4bpp-or-more formats: 262144, ASTC 6x6: ~118000)");
+        if (size < 0) return "probe texture not found in BuildReport.packedAssets";
+        if (size > 200000) return $"probe texture packed size {size} is not ASTC-sized (DXT/ETC2 RGBA would be 262144)";
+        Debug.Log("[TextureProbe] OK: texture is ASTC-compressed");
+        return null;
     }
 
     private static Light FindLight()

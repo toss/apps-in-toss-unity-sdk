@@ -151,6 +151,32 @@ public class AITTextureFormatGuardTests
     }
 
     [Test]
+    public void BuildSubtarget_AutoConvert_IsAstc_EvenFromGeneric()
+    {
+        var original = EditorUserBuildSettings.webGLBuildSubtarget;
+        try
+        {
+            EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.Generic;
+            AITTextureFormatGuard.ApplyWebGLTextureSubtarget(AITTextureFormatGuardMode.AutoConvert);
+            Assert.AreEqual((int)WebGLTextureSubtarget.ASTC, AITTextureFormatGuard.GetBuildSubtarget());
+        }
+        finally { EditorUserBuildSettings.webGLBuildSubtarget = original; }
+    }
+
+    [Test]
+    public void BuildSubtarget_WarnOnly_FollowsBuildSettings()
+    {
+        var original = EditorUserBuildSettings.webGLBuildSubtarget;
+        try
+        {
+            EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.ETC2;
+            AITTextureFormatGuard.ApplyWebGLTextureSubtarget(AITTextureFormatGuardMode.WarnOnly);
+            Assert.AreEqual((int)WebGLTextureSubtarget.ETC2, AITTextureFormatGuard.GetBuildSubtarget());
+        }
+        finally { EditorUserBuildSettings.webGLBuildSubtarget = original; }
+    }
+
+    [Test]
     public void Rgba32Bytes_IsWidthTimesHeightTimesFour()
     {
         Assert.AreEqual(64L * 1024 * 1024, AITTextureFormatGuard.Rgba32Bytes(4096, 4096));

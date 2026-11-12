@@ -230,3 +230,5 @@ yarn.lock.meta
 
 # CI 스크립트 전용 두 번째 체크아웃 (workflow YAML과 같은 커밋에서 스크립트를 읽기 위함)
 /.ci/
+Tests~/E2E/*UnityProject-*/Assets/E2ETextureProbe/
+Tests~/E2E/*UnityProject-*/Assets/E2ETextureProbe.meta

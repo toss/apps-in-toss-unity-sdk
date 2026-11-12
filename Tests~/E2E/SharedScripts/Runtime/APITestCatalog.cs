@@ -112,7 +112,25 @@ namespace AppsInToss
             "DeviceOs",
             "SafeAreaGet",
             "GetSafeAreaInsets",
+
+            // 최소 지원 버전(3.1.0)보다 나중에 생긴 API는 AIT_SDK_*_OR_NEWER 로 감싼다.
+            // define 은 AppsInTossTestScripts.asmdef 의 versionDefines 가 SDK 패키지 버전으로 정한다.
+            // 새로 감쌀 때는 아래 VersionGatedOutAPINames 의 #if !... 에도 같은 이름을 넣는다.
+#if AIT_SDK_3_2_0_OR_NEWER
             "StorageGetItemsIsSupported",
+#endif
+        };
+
+        /// <summary>
+        /// 이 SDK 버전에서는 아직 없어서 AllAPINames 에서 빠진 API 이름.
+        /// SDKAPIReflectionTests 가 이 이름들이 정말 AIT 에 없는지 확인해, 버전 경계가 너무 높게
+        /// 잡혀 테스트가 조용히 빠지는 일을 막는다.
+        /// </summary>
+        public static readonly string[] VersionGatedOutAPINames = new string[]
+        {
+#if !AIT_SDK_3_2_0_OR_NEWER
+            "StorageGetItemsIsSupported",
+#endif
         };
     }
 }

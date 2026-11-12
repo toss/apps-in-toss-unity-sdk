@@ -27,6 +27,7 @@ namespace AppsInToss
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Obsolete("Use NavigationBarAddAccessoryButton")]
         [Preserve]
         [APICategory("Partner")]
 #if UNITY_6000_0_OR_NEWER
@@ -81,6 +82,7 @@ namespace AppsInToss
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
         /// <exception cref="AITException">Thrown when the API call fails</exception>
         /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Obsolete("Use NavigationBarRemoveAccessoryButton")]
         [Preserve]
         [APICategory("Partner")]
 #if UNITY_6000_0_OR_NEWER

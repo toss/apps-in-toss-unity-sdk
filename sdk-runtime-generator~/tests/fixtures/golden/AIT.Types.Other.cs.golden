@@ -405,38 +405,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public class AddAccessoryButtonOptions
-    {
-        [Preserve]
-        [JsonProperty("id")]
-        public string Id;
-        [Preserve]
-        [JsonProperty("title")]
-        public string Title;
-        [Preserve]
-        [JsonProperty("icon")]
-        public AddAccessoryButtonOptionsIcon Icon;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public class AddAccessoryButtonOptionsIcon
-    {
-        [Preserve]
-        [JsonProperty("name")]
-        public string Name;
-
-        [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public class AlbumItemResponse
     {
         [Preserve]

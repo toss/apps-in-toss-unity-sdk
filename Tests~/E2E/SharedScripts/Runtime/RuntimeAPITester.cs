@@ -292,7 +292,10 @@ public class RuntimeAPITester : MonoBehaviour
         TestAPICall("DeviceOs", async () => { await AIT.DeviceOs(); });
         TestAPICall("SafeAreaGet", async () => { await AIT.SafeAreaGet(); });
         TestAPICall("GetSafeAreaInsets", async () => { await AIT.GetSafeAreaInsets(); });
+#if AIT_SDK_3_2_0_OR_NEWER
+        // web-framework 3.2.0에서 추가 (APITestCatalog 의 버전 경계와 같다)
         TestAPICall("StorageGetItemsIsSupported", async () => { await AIT.StorageGetItemsIsSupported(); });
+#endif
     }
 
     /// <summary>

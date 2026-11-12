@@ -111,7 +111,10 @@ namespace AppsInToss.Editor
             // ===== 예외 처리 (사용자 지정 또는 자동) =====
             // 출처: UnityVersion.md:393, 431
             // 실제 적용은 아래 ApplySentryFriendlyWebGLSettings에서 수행 (stack trace와 함께 관리)
-            WebGLExceptionSupport exceptionSupport = ConvertToExceptionSupport(editorConfig.exceptionSupport);
+            // AIT_EXCEPTION_SUPPORT 환경 변수가 있으면 설정값보다 우선한다(CI 측정·비교용).
+            WebGLExceptionSupport exceptionSupport = ResolveExceptionSupport(
+                editorConfig.exceptionSupport,
+                System.Environment.GetEnvironmentVariable("AIT_EXCEPTION_SUPPORT"));
 
             // ===== 파일 해싱 =====
             // Unity 2021.3에서 nameFilesAsHashes = true 시 Bee 빌드 루프 버그 발생
@@ -456,6 +459,59 @@ namespace AppsInToss.Editor
                 3 => WebGLExceptionSupport.FullWithoutStacktrace,
                 _ => AITDefaultSettings.GetDefaultExceptionSupport()
             };
+        }
+
+        /// <summary>
+        /// AIT_EXCEPTION_SUPPORT 환경 변수 값을 WebGLExceptionSupport로 변환한다.
+        /// 허용 값(대소문자 무시): none / explicit / full-without-stacktrace / full-with-stacktrace
+        /// (enum 이름 ExplicitlyThrownExceptionsOnly / FullWithoutStacktrace / FullWithStacktrace도 허용).
+        /// 알 수 없는 값이면 false.
+        /// </summary>
+        internal static bool TryParseExceptionSupportOverride(string value, out WebGLExceptionSupport result)
+        {
+            result = WebGLExceptionSupport.None;
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "none":
+                    result = WebGLExceptionSupport.None;
+                    return true;
+                case "explicit":
+                case "explicitlythrownexceptionsonly":
+                    result = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+                    return true;
+                case "full-without-stacktrace":
+                case "fullwithoutstacktrace":
+                    result = WebGLExceptionSupport.FullWithoutStacktrace;
+                    return true;
+                case "full-with-stacktrace":
+                case "fullwithstacktrace":
+                    result = WebGLExceptionSupport.FullWithStacktrace;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// 예외 처리 모드 결정. 우선순위: AIT_EXCEPTION_SUPPORT 환경 변수(유효할 때) > 설정 저장값 > 자동 기본값.
+        /// 환경 변수 값이 올바르지 않으면 경고를 남기고 설정 저장값을 쓴다.
+        /// </summary>
+        internal static WebGLExceptionSupport ResolveExceptionSupport(int storedValue, string envValue)
+        {
+            if (!string.IsNullOrEmpty(envValue))
+            {
+                if (TryParseExceptionSupportOverride(envValue, out var parsed))
+                {
+                    Debug.Log($"[AIT] 환경 변수 오버라이드: AIT_EXCEPTION_SUPPORT={parsed}");
+                    return parsed;
+                }
+
+                Debug.LogWarning($"[AIT] AIT_EXCEPTION_SUPPORT 환경 변수 값이 올바르지 않습니다: '{envValue}' (none/explicit/full-without-stacktrace/full-with-stacktrace 필요)");
+            }
+
+            return ConvertToExceptionSupport(storedValue);
         }
 
 #if UNITY_2023_3_OR_NEWER

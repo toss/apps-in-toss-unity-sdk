@@ -30,9 +30,21 @@ on:
       - '.github/scripts/generate-perf-report.js'
       - '.github/scripts/unity-build/**'
   workflow_dispatch:
+    inputs:
+      exception_support:
+        description: 'AIT_EXCEPTION_SUPPORT: none | explicit | full-without-stacktrace | full-with-stacktrace (빈 값이면 SDK 기본값)'
+        type: string
+        required: false
+        default: ''
+      unity_versions:
+        description: '측정할 Unity 버전 JSON 배열 (예: ["6000.0"])'
+        type: string
+        required: false
+        default: '["2021.3","6000.0","6000.3"]'
 
 concurrency:
-  group: perf-${{ github.event.pull_request.number || github.ref }}
+  # 예외 처리 모드별 dispatch가 서로 취소하지 않도록 exception_support를 그룹에 포함
+  group: perf-${{ github.event.pull_request.number || github.ref }}-${{ inputs.exception_support || 'default' }}
   cancel-in-progress: true
 
 permissions:
@@ -93,7 +105,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "6000.0", "6000.3"]
+        unity-version: ${{ fromJSON(inputs.unity_versions || '["2021.3","6000.0","6000.3"]') }}
 
     uses: ./.github/workflows/unity-build.yml
     with:
@@ -108,6 +120,7 @@ jobs:
       build-method: HeavyBuildRunner.CommandLineHeavyBuild
       fast-build: false      # release wasm(배포·preview 와 동일 프로필) — dev build/Debug il2cpp 비활성
       compression-format: "1" # fast-build 가 표현 못 하는 유일 노브: gzip 으로 현실적 on-wire 측정
+      exception-support: ${{ inputs.exception_support || '' }} # workflow_dispatch 전용 (모드별 wasm 비교 측정)
     secrets:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
@@ -129,7 +142,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unity-version: ["2021.3", "6000.0", "6000.3"]
+        unity-version: ${{ fromJSON(inputs.unity_versions || '["2021.3","6000.0","6000.3"]') }}
 
     env:
       HEAVY_PROJECT: ${{ github.workspace }}/Tests~/E2E/HeavySampleUnityProject-${{ matrix.unity-version }}
@@ -185,6 +198,7 @@ jobs:
           # 빌드와 동일 값으로 전파 — 결과 JSON의 buildType/compressionFormat에 기록
           AIT_DEVELOPMENT_BUILD: "false"
           AIT_COMPRESSION_FORMAT: "1"
+          AIT_EXCEPTION_SUPPORT: ${{ inputs.exception_support || '' }}
         run: pnpm run test:perf
 
       - name: Upload Perf Result
@@ -276,7 +290,7 @@ jobs:
         env:
           PERF_HEAD_REF: ${{ needs.setup.outputs.head_ref }}
           PERF_OS: macos
-          PERF_UNITY_VERSIONS: "2021.3,6000.0,6000.3"
+          PERF_UNITY_VERSIONS: ${{ inputs.unity_versions && join(fromJSON(inputs.unity_versions), ',') || '2021.3,6000.0,6000.3' }}
         run: node .github/scripts/generate-perf-report.js
 
       - name: Write Job Summary

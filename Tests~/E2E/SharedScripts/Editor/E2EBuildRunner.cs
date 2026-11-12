@@ -437,9 +437,6 @@ public class E2EBuildRunner
     {
         int sub = AITWebGLBuilder.LastBuildSubtarget;
         Debug.Log($"[TextureProbe] BuildPlayer subtarget = {(WebGLTextureSubtarget)sub}");
-        if (sub != (int)WebGLTextureSubtarget.ASTC)
-            return $"BuildPlayerOptions.subtarget is {(WebGLTextureSubtarget)sub}, expected ASTC";
-
         var report = AITWebGLBuilder.LastBuildReport;
         if (report == null) return "build report is null";
 
@@ -452,6 +449,8 @@ public class E2EBuildRunner
                     size = System.Math.Max(size, (long)c.packedSize);
 #pragma warning restore CS0618
         Debug.Log($"[TextureProbe] probe texture packed size = {size} bytes (RGBA8-class 4bpp-or-more formats: 262144, ASTC 6x6: ~118000)");
+        if (sub != (int)WebGLTextureSubtarget.ASTC)
+            return $"BuildPlayerOptions.subtarget is {(WebGLTextureSubtarget)sub}, expected ASTC";
         if (size < 0) return "probe texture not found in BuildReport.packedAssets";
         if (size > 200000) return $"probe texture packed size {size} is not ASTC-sized (DXT/ETC2 RGBA would be 262144)";
         Debug.Log("[TextureProbe] OK: texture is ASTC-compressed");

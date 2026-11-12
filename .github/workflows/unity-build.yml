@@ -88,7 +88,7 @@ on:
         required: false
         default: true
       exception-support:
-        description: 'AIT_EXCEPTION_SUPPORT override: none | explicit | full-without-stacktrace | full-with-stacktrace. 빈 값이면 SDK 설정/기본값(explicit) 그대로. 예외 처리 모드별 wasm 크기 측정용.'
+        description: 'AIT_EXCEPTION_SUPPORT override: none | explicit | full-without-stacktrace | full-with-stacktrace. 빈 값이면 SDK 설정/기본값(full-without-stacktrace) 그대로. 예외 처리 모드별 wasm 크기 측정용.'
         type: string
         required: false
         default: ''

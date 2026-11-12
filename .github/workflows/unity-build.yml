@@ -87,6 +87,11 @@ on:
         type: boolean
         required: false
         default: true
+      exception-support:
+        description: 'AIT_EXCEPTION_SUPPORT override: none | explicit | full-without-stacktrace | full-with-stacktrace. 빈 값이면 SDK 설정/기본값(full-without-stacktrace) 그대로. 예외 처리 모드별 wasm 크기 측정용.'
+        type: string
+        required: false
+        default: ''
     secrets:
       AIT_AD_INTERSTITIAL_ID:
         description: 'Interstitial ad ID for testing'
@@ -147,7 +152,7 @@ jobs:
     # 이중방어 락을 둔다. 같은 매트릭스 잡이 동시에 두 번 dispatch되는 케이스만
     # 차단하고, 다른 unity-version 잡끼리는 머신 핀(위)으로 분리된다.
     concurrency:
-      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}
+      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}-${{ inputs.exception-support || 'default' }}
       cancel-in-progress: false
 
     outputs:
@@ -834,6 +839,7 @@ jobs:
           #   주의: dev 빌드 wasm은 콘솔 번들 크기 제한 초과 가능(6000.x ~134MiB) → 배포 호출자는 fast-build=false.
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
+          AIT_EXCEPTION_SUPPORT: ${{ inputs.exception-support }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           UNITY_PATH: ${{ steps.unity-macos.outputs.UNITY_PATH }}
           UNITY_VERSION_FULL: ${{ steps.unity-macos.outputs.UNITY_VERSION }}
@@ -874,6 +880,7 @@ jobs:
           AIT_COMPRESSION_FORMAT: ${{ inputs.compression-format != '' && inputs.compression-format || (inputs.fast-build && '0' || '') }}
           AIT_DEVELOPMENT_BUILD: ${{ inputs.fast-build && 'true' || '' }}
           AIT_IL2CPP_CONFIGURATION: ${{ inputs.fast-build && 'Debug' || '' }}
+          AIT_EXCEPTION_SUPPORT: ${{ inputs.exception-support }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           UNITY_PATH: ${{ steps.unity-windows.outputs.UNITY_PATH }}
           UNITY_VERSION_FULL: ${{ steps.unity-windows.outputs.UNITY_VERSION }}

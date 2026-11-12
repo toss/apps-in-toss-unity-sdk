@@ -127,6 +127,62 @@ public class AITBuildProfileMappingTests
             "드롭다운 'FullWithStacktrace'(저장값 2)는 반드시 FullWithStacktrace로 매핑되어야 함");
     }
 
+    // =====================================================
+    // AIT_EXCEPTION_SUPPORT 환경 변수 오버라이드
+    // 값: none / explicit / full-without-stacktrace / full-with-stacktrace (대소문자 무시, enum 이름도 허용)
+    // =====================================================
+
+    [TestCase("none", WebGLExceptionSupport.None)]
+    [TestCase("explicit", WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly)]
+    [TestCase("full-without-stacktrace", WebGLExceptionSupport.FullWithoutStacktrace)]
+    [TestCase("full-with-stacktrace", WebGLExceptionSupport.FullWithStacktrace)]
+    [TestCase("FULL-WITH-STACKTRACE", WebGLExceptionSupport.FullWithStacktrace)]
+    [TestCase(" Explicit ", WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly)]
+    [TestCase("FullWithoutStacktrace", WebGLExceptionSupport.FullWithoutStacktrace)]
+    public void TryParseExceptionSupportOverride_ValidValues_Parse(string value, WebGLExceptionSupport expected)
+    {
+        Assert.IsTrue(AITBuildInitializer.TryParseExceptionSupportOverride(value, out var result));
+        Assert.AreEqual(expected, result);
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("  ")]
+    [TestCase("full")]
+    [TestCase("2")]
+    public void TryParseExceptionSupportOverride_InvalidValues_ReturnFalse(string value)
+    {
+        Assert.IsFalse(AITBuildInitializer.TryParseExceptionSupportOverride(value, out _));
+    }
+
+    [Test]
+    public void ResolveExceptionSupport_ValidEnv_OverridesStoredValue()
+    {
+        // 설정 저장값이 1(Explicit)이어도 env가 우선
+        Assert.AreEqual(WebGLExceptionSupport.FullWithoutStacktrace,
+            AITBuildInitializer.ResolveExceptionSupport(1, "full-without-stacktrace"));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    public void ResolveExceptionSupport_NoEnv_UsesStoredValue(string env)
+    {
+        Assert.AreEqual(WebGLExceptionSupport.FullWithStacktrace,
+            AITBuildInitializer.ResolveExceptionSupport(2, env));
+        Assert.AreEqual(AITDefaultSettings.GetDefaultExceptionSupport(),
+            AITBuildInitializer.ResolveExceptionSupport(-1, env));
+    }
+
+    [Test]
+    public void ResolveExceptionSupport_InvalidEnv_FallsBackToStoredValue()
+    {
+        UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
+            new System.Text.RegularExpressions.Regex("AIT_EXCEPTION_SUPPORT"));
+
+        Assert.AreEqual(WebGLExceptionSupport.None,
+            AITBuildInitializer.ResolveExceptionSupport(0, "bogus"));
+    }
+
 #if UNITY_2023_3_OR_NEWER
     // =====================================================
     // ConvertToPowerPreference 전수 매핑 (Unity 2023.3+)

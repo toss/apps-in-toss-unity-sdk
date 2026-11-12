@@ -34,13 +34,38 @@ public class AITBuildInitializerSettingsTests
     // =====================================================
 
     [Test]
-    public void GetDefaultExceptionSupport_Returns_ExplicitlyThrownExceptionsOnly()
+    public void GetDefaultExceptionSupport_Returns_FullWithoutStacktrace()
     {
-        // FullWithStacktrace는 디버그용이라 wasm이 크게 커지고 느려진다. 자동 기본값은 Unity 기본값이어야 한다.
-        // stack trace가 필요한 사용자는 exceptionSupport를 명시적으로 지정한다.
+        // ExplicitlyThrownExceptionsOnly는 null 접근을 wasm trap/메모리 손상으로 만든다. 자동 기본값은 FullWithoutStacktrace여야 한다.
+        // FullWithStacktrace는 wasm이 크게 커지므로(brotli 약 +30%) 사용자가 명시할 때만 쓴다.
         var result = AITDefaultSettings.GetDefaultExceptionSupport();
-        Assert.AreEqual(WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly, result,
-            "Auto exception support must be ExplicitlyThrownExceptionsOnly (FullWithStacktrace greatly increases wasm size)");
+        Assert.AreEqual(WebGLExceptionSupport.FullWithoutStacktrace, result,
+            "Auto exception support must be FullWithoutStacktrace (Explicit-only turns null access into wasm traps; FullWithStacktrace greatly increases wasm size)");
+    }
+
+    [Test]
+    public void ResolveExceptionSupport_Auto_UsesFullWithoutStacktrace_ExplicitChoicesRespected()
+    {
+        Assert.AreEqual(WebGLExceptionSupport.FullWithoutStacktrace, AITBuildInitializer.ResolveExceptionSupport(-1, null));
+        Assert.AreEqual(WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly, AITBuildInitializer.ResolveExceptionSupport(1, null));
+        Assert.AreEqual(WebGLExceptionSupport.None, AITBuildInitializer.ResolveExceptionSupport(0, null));
+        Assert.AreEqual(WebGLExceptionSupport.FullWithStacktrace, AITBuildInitializer.ResolveExceptionSupport(2, null));
+    }
+
+    [TestCase(WebGLExceptionSupport.None)]
+    [TestCase(WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly)]
+    public void WarnIfExceptionSupportUnsafe_UnsafeModes_LogWarning(WebGLExceptionSupport mode)
+    {
+        UnityEngine.TestTools.LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("FullWithoutStacktrace"));
+        Assert.IsTrue(AITBuildInitializer.WarnIfExceptionSupportUnsafe(mode));
+    }
+
+    [TestCase(WebGLExceptionSupport.FullWithoutStacktrace)]
+    [TestCase(WebGLExceptionSupport.FullWithStacktrace)]
+    public void WarnIfExceptionSupportUnsafe_SafeModes_NoWarning(WebGLExceptionSupport mode)
+    {
+        Assert.IsFalse(AITBuildInitializer.WarnIfExceptionSupportUnsafe(mode));
+        UnityEngine.TestTools.LogAssert.NoUnexpectedReceived();
     }
 
     // =====================================================

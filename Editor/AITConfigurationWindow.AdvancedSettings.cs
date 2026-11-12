@@ -185,8 +185,16 @@ namespace AppsInToss.Editor
                 ? $"예외 처리 모드 (자동: {defaultValue})"
                 : "예외 처리 모드";
 
-            // FullWithStacktrace/FullWithoutStacktrace는 wasm 크기를 크게 늘리고 런타임을 느리게 한다 (디버깅·에러 추적 stack trace 용도로만 선택)
-            string[] options = { $"자동 ({defaultValue}, Unity 기본값)", "None", "ExplicitlyThrownOnly", "FullWithStacktrace (wasm 크기 증가·느림, 디버깅용)", "FullWithoutStacktrace (wasm 크기 증가·느림)" };
+            // None/ExplicitlyThrownOnly는 null 참조·배열 범위 초과가 예외로 던져지지 않아 wasm trap(크래시)이나 메모리 손상 위험이 있다.
+            // FullWithStacktrace는 raw wasm이 대략 2배(brotli 약 +30%)라 stack trace가 꼭 필요할 때만 선택한다.
+            string[] options =
+            {
+                $"자동 ({defaultValue})",
+                "None (null 접근 시 크래시·메모리 손상 위험, 비권장)",
+                "ExplicitlyThrownOnly (null 접근 시 크래시·메모리 손상 위험, brotli 약 -2%)",
+                "FullWithStacktrace (raw wasm 약 2배, brotli 약 +30%, 디버깅용)",
+                "FullWithoutStacktrace (권장)"
+            };
             int currentIndex = config.exceptionSupport < 0 ? 0 : config.exceptionSupport + 1;
             int newIndex = EditorGUILayout.Popup(label, currentIndex, options);
             config.exceptionSupport = newIndex == 0 ? -1 : newIndex - 1;
@@ -197,6 +205,14 @@ namespace AppsInToss.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+
+            WebGLExceptionSupport effective = AITBuildInitializer.ConvertToExceptionSupport(config.exceptionSupport);
+            if (effective == WebGLExceptionSupport.None || effective == WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly)
+            {
+                EditorGUILayout.HelpBox(
+                    "이 모드에서는 null 참조·배열 범위 초과가 예외로 던져지지 않아 wasm trap(크래시)이나 메모리 손상으로 이어질 수 있습니다. FullWithoutStacktrace를 권장합니다(brotli 약 +2%).",
+                    MessageType.Warning);
+            }
         }
 
         private void DrawShowUnityLogoSetting()

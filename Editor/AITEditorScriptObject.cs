@@ -271,7 +271,7 @@ namespace AppsInToss
         public bool wasmStreaming = true;
 
         [Header("고급 설정 (주의: 변경 시 호환성 문제 발생 가능)")]
-        [Tooltip("-1 = 자동 (ExplicitlyThrownExceptionsOnly, Unity 기본값). FullWithStacktrace는 wasm 크기를 크게 늘리고 런타임을 느리게 하므로 디버깅이나 에러 추적용 stack trace가 필요할 때만 명시적으로 선택하세요.")]
+        [Tooltip("-1 = 자동 (FullWithoutStacktrace). None/ExplicitlyThrownOnly는 null 참조·배열 범위 초과가 예외로 던져지지 않아 wasm trap(크래시)이나 메모리 손상으로 이어질 수 있습니다(FullWithoutStacktrace 대비 brotli 약 2% 절약). FullWithStacktrace는 raw wasm이 대략 2배, brotli가 약 30% 늘어나므로 stack trace가 꼭 필요할 때만 선택하세요.")]
         public int exceptionSupport = -1;
 
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
@@ -535,11 +535,12 @@ namespace AppsInToss
         /// </summary>
         public static WebGLExceptionSupport GetDefaultExceptionSupport()
         {
-            // Unity 기본값(ExplicitlyThrownExceptionsOnly)을 그대로 쓴다.
-            // FullWithStacktrace는 Unity 문서상 디버그용이다. wasm 크기가 크게 늘고(invoke_* JS 트램펄린 import 증가,
-            // 함수 본문 수 배 확대) 런타임도 느려지므로 기본값으로 쓰지 않는다.
-            // stack trace가 필요하면 고급 설정의 exceptionSupport를 명시적으로 FullWithStacktrace로 지정한다.
-            return WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+            // FullWithoutStacktrace를 기본값으로 쓴다.
+            // ExplicitlyThrownExceptionsOnly는 null 참조·null delegate 호출·배열 범위 초과가 예외로 던져지지 않고
+            // wasm trap이나 조용한 메모리 손상이 된다(null Action을 호출한 실제 게임이 iOS에서 크래시한 사례).
+            // 실측(Unity 6000.0, brotli): Explicit 7.47MB, FullWithoutStacktrace 7.60MB(+1.8%), FullWithStacktrace 9.67MB(+29.5%).
+            // FullWithStacktrace는 raw wasm이 대략 2배가 되므로 stack trace가 꼭 필요할 때만 명시적으로 지정한다.
+            return WebGLExceptionSupport.FullWithoutStacktrace;
         }
 
         /// <summary>

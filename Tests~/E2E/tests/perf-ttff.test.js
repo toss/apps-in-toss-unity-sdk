@@ -344,6 +344,7 @@ test('TTFF 실측 (median-of-N, record-only)', async ({ browser }) => {
     unityVersion: UNITY_VERSION,
     buildType: process.env.AIT_DEVELOPMENT_BUILD === 'true' ? 'development' : 'release',
     compressionFormat: process.env.AIT_COMPRESSION_FORMAT ?? null,
+    exceptionSupport: process.env.AIT_EXCEPTION_SUPPORT || null,
     project: PROJECT,
     timestamp: new Date().toISOString(),
     throttle: {

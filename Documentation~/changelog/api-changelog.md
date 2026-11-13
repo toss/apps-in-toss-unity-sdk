@@ -14,7 +14,7 @@ API 총 232개 · 추가 3 · 변경 2 · 제거 0
 
 **변경된 API**
 
-- `AIT.PartnerAddAccessoryButton`: `params: AddAccessoryButtonParams → object; isDeprecated: false → true`
+- `AIT.PartnerAddAccessoryButton`: `params: AddAccessoryButtonParams → LegacyAddAccessoryButtonParams; isDeprecated: false → true`
 - `AIT.PartnerRemoveAccessoryButton`: `isDeprecated: false → true`
 
 ### v3.8.0 → v3.9.0

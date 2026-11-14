@@ -85,10 +85,11 @@ namespace AppsInToss.Editor
                     // 비치명적 플레이스홀더 (경고만). 템플릿 드리프트 신호라 Sentry 캡처는 유지하되,
                     // 줄마다 따로 로그하면 구분선·목록 줄이 각각 별개 이슈로 쌓이므로 한 건으로 묶는다.
                     var placeholderList = string.Join("\n", uniquePlaceholders.Select(p => $"  - {p}"));
-                    Debug.LogWarning(
+                    AITLog.Warning(
                         "[AIT] ⚠ 미치환된 플레이스홀더 발견 (비치명적)\n"
                         + placeholderList + "\n"
-                        + $"파일: {filePath}"
+                        + $"파일: {filePath}",
+                        sentryCapture: false
                     );
                 }
             }

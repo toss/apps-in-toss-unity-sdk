@@ -38,8 +38,8 @@ importers:
         specifier: 4.1.12
         version: 4.1.12(vitest@4.1.12)
       glob:
-        specifier: 14.0.3
-        version: 14.0.3
+        specifier: 14.0.4
+        version: 14.0.4
       tsx:
         specifier: 4.23.15
         version: 4.23.15
@@ -1106,8 +1106,8 @@ packages:
     resolution: {integrity: sha512-r+mvuDjrjMpsdw46Kmeydb8bdHm7wOKw8wNBtTndkjbPjgAp5oUJUxRE76wZFknxIPokfWvep2qSXK37aXE6zg==}
     hasBin: true
 
-  glob@14.0.3:
-    resolution: {integrity: sha512-A1vjIwC3qpdCso45Iw127gnp7sPhqgY8lUQhDrArIs+GbmfaaVPFuoyy7WyLT9EPZCRZ7j7aLdwUhQmHWesEow==}
+  glob@14.0.4:
+    resolution: {integrity: sha512-mMiwNKoJZ4HAIRVJxotO6LsNRReA30gQwP9E2/p94tfLv+jygCNpKDjhhSL6OLY6LE371EZm5EAf7RpYuUqlsw==}
     engines: {node: 18 || 20 || >=22}
 
   graceful-fs@4.2.11:
@@ -2795,7 +2795,7 @@ snapshots:
 
   giget@3.3.1: {}
 
-  glob@14.0.3:
+  glob@14.0.4:
     dependencies:
       minimatch: 11.0.5
       minipass: 7.1.3

@@ -62,6 +62,7 @@ public class E2EBuildRunner
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 #endif
         SetupBenchmarkScene();
+        PocBenchAssets.Generate();
 
         // 씬 저장
         EditorSceneManager.SaveScene(scene, scenePath);

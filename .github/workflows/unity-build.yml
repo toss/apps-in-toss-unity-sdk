@@ -685,13 +685,15 @@ jobs:
       # 디버그/리포트 artifact: actions/upload-artifact의 finalize transient 실패가
       # 빌드 자체를 fail로 만들지 않도록 continue-on-error로 격리
       # (run #682, #695에서 windows-1-5 머신의 finalize 단계가 0.87s 만에 무성한 실패).
+      # sdk-version은 bulk release처럼 한 run에서 여러 SDK 버전을 돌릴 때만 넘어온다.
+      # 아티팩트 이름은 run 안에서 겹치면 안 되므로 그때만 버전을 붙인다.
       - name: Upload EditMode Test Results
         id: upload-editmode-results
         if: inputs.run-editmode-test && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: editmode-results-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
           path: Tests~/E2E/${{ inputs.project-dir-prefix }}-${{ inputs.unity-version }}/editmode-results.xml
           if-no-files-found: ignore
           retention-days: 7
@@ -704,7 +706,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
           path: /tmp/unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -715,7 +717,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-editmode-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
           path: ${{ runner.temp }}\unity-editmode-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7

@@ -6,8 +6,30 @@
  * HTML과 마크다운 양쪽이 항상 동일한 데이터를 보도록 한다.
  */
 
-import type { ParsedAPI } from '../../../src/types.js';
+import type { ParsedAPI, ParsedType } from '../../../src/types.js';
 import { mapToCSharpType } from '../../../src/validators/types.js';
+
+/**
+ * changelog에 표시할 타입 이름.
+ *
+ * mapToCSharpType은 이름 없는 객체 타입(`__type`)이 import 경로를 raw에 담고 있으면 그 끝 이름을 쓰지만,
+ * 교차(`&`)·`Omit` 별칭처럼 raw가 별칭 이름만 담긴 경우에는 'object'로 떨어뜨린다.
+ * 이렇게 되면 실제 C# 시그니처는 그대로인데 changelog에는 타입이 object로 바뀐 것처럼 찍힌다.
+ * 이름 있는 별칭 참조(raw가 식별자 하나)이면 그 별칭 이름을 쓰고,
+ * 인라인 객체 리터럴은 기존대로 object로 둔다. (코드 생성은 mapToCSharpType을 그대로 쓴다.)
+ */
+function changelogTypeName(type: ParsedType): string {
+  const mapped = mapToCSharpType(type);
+  if (mapped === 'object' && type.kind === 'object' && type.name === '__type') {
+    const raw = type.raw.trim();
+    if (/^[A-Za-z_]\w*$/.test(raw)) {
+      // 별칭 이름으로 다시 매핑해 외부(DOM 등) 타입 판정을 그대로 따른다. 외부 타입이면 object가 유지된다.
+      const aliased = mapToCSharpType({ ...type, name: raw });
+      if (aliased !== 'object') return aliased;
+    }
+  }
+  return mapped;
+}
 
 export interface SerializedParam {
   name: string;
@@ -50,11 +72,11 @@ function serializeAPI(api: ParsedAPI, versions: string[]): SerializedAPI {
     examples: api.examples,
     parameters: api.parameters.map(p => ({
       name: p.name,
-      type: mapToCSharpType(p.type),
+      type: changelogTypeName(p.type),
       optional: p.optional,
       description: p.description,
     })),
-    returnType: mapToCSharpType(api.returnType),
+    returnType: changelogTypeName(api.returnType),
     isAsync: api.isAsync,
     isCallbackBased: api.isCallbackBased,
     isEventSubscription: api.isEventSubscription,

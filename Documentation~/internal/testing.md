@@ -146,6 +146,20 @@ E2E CI는 압축 비활성화(`AIT_COMPRESSION_FORMAT="0"`)로 실행되어 신�
 
 `test_level`이 `2`가 아니면 `e2e-*` 잡이 skipped 처리되고 OS별 결과는 `build-*` 결과로 폴백합니다.
 
+PR에서는 `Runtime/SDK/**`, `Tests~/E2E/SharedScripts/**`, `test-e2e.yml`이 바뀔 때 자동으로 돕니다.
+
+### SDK 버전별 검증
+
+하네스는 최신 SDK 기준으로 쓰이지만, bulk release는 옛 버전도 다시 배포합니다. 그래서 세 곳에서 옛 버전을 확인합니다.
+
+| 어디서 | 무엇을 |
+|--------|--------|
+| `test-e2e.yml`의 `editmode-oldest-sdk` | 가장 오래된 배포 대상 버전(`sdk-policy.json` `minVersion`과 3.1.0 중 높은 쪽)으로 재생성해 macOS Unity 2021.3 EditMode. `sdk_version_override` 실행에서는 건너뜀 |
+| `test-e2e.yml` 수동 실행의 `sdk_version_override` | 지정한 버전으로 재생성해 전체 매트릭스 실행 |
+| `release.yml`의 `editmode-gate` | 릴리즈 버전으로 재생성해 macOS Unity 2021.3 EditMode. 통과해야 태그 생성. 3.x가 아니면 건너뜀 |
+
+특정 버전 이후에 생긴 API를 하네스에서 부르면 `AppsInTossTestScripts.asmdef`의 `versionDefines`에 `AIT_SDK_x_y_z_OR_NEWER` 심볼을 두고 호출과 `APITestCatalog.AllAPINames` 항목을 그 심볼로 감쌉니다. 그 버전 미만에서 빠지는 이름은 `APITestCatalog.VersionGatedOutAPINames`에 넣으면 `SDKAPIReflectionTests`가 그 API가 실제로 없는지 확인합니다.
+
 ### 러너 라우팅
 
 self-hosted 러너는 슬롯 라벨 `ait-slot-<N>`으로 잡을 라우팅하고, 버전→슬롯 매핑은 `unity-build.yml`의 `runs-on`에 있습니다. 같은 슬롯이 늘 같은 버전만 빌드해 `Library` 캐시가 유지됩니다. 매핑에 없는 버전이나 라벨이 빠진 슬롯은 매트릭스 잡이 큐에 남고, 라이선스 에러는 `fix-licensing-client.sh`(`.github/scripts/unity-build/`)가 서명/버전을 비교해 자동 완화합니다.

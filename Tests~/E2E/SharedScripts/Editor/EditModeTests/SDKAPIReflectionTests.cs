@@ -7,6 +7,7 @@
 
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using AppsInToss;
 
@@ -40,6 +41,23 @@ public class SDKAPIReflectionTests
             }
         }
         Assert.IsTrue(found, $"AIT.{methodName}() should exist as a public static method");
+    }
+
+    // 이 SDK 버전보다 나중에 생겨 AllAPINames 에서 빠진 API는 정말 없어야 한다.
+    // 있으면 APITestCatalog / asmdef versionDefines 의 버전 경계가 실제보다 높아 테스트가 빠진 것이다.
+    [Test]
+    public void VersionGatedOut_APIs_Are_Absent()
+    {
+        var present = new List<string>();
+        foreach (var name in APITestCatalog.VersionGatedOutAPINames)
+        {
+            if (aitType.GetMethod(name, BindingFlags.Public | BindingFlags.Static) != null)
+                present.Add(name);
+        }
+        Assert.IsEmpty(present,
+            "다음 API는 이 SDK 버전에 이미 있는데 버전 경계 때문에 테스트에서 빠졌습니다. " +
+            "APITestCatalog 와 AppsInTossTestScripts.asmdef 의 버전 경계를 낮추세요: " +
+            string.Join(", ", present));
     }
 
     // web-framework 3.0.0에서 제거된 API(web-bridge → webview-bridge 리네임).

@@ -8,7 +8,7 @@
 
 | 워크플로 | 트리거 | 용도 |
 |----------|--------|------|
-| E2E Tests | PR(`Runtime/SDK/**` 변경), 수동, `workflow_call` | Unity WebGL 빌드와 Playwright E2E |
+| E2E Tests | PR(`Runtime/SDK/**`, `Tests~/E2E/SharedScripts/**`, `test-e2e.yml` 변경), 수동, `workflow_call` | Unity WebGL 빌드와 Playwright E2E |
 | Unity Build | `workflow_call` 전용 | 다른 워크플로가 호출하는 빌드 모듈 |
 | Preview | 수동 | 브랜치나 PR을 빌드해 미리보기 배포 |
 | Perf | PR 라벨, push(main), 수동 | 콜드 로드 TTFF 측정과 baseline 비교 |
@@ -55,7 +55,7 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows --paginate \
 
 ### E2E Tests
 
-`Runtime/SDK/**`를 바꾸는 PR은 자동으로 E2E Tests가 돌고 결과가 PR 코멘트로 올라옵니다. 포크 PR은 self-hosted Unity 러너를 쓰지 않도록 setup부터 건너뜁니다. 그 밖의 PR이나 브랜치는 아래처럼 수동으로 실행합니다.
+`Runtime/SDK/**`나 테스트 하네스(`Tests~/E2E/SharedScripts/**`), `test-e2e.yml`을 바꾸는 PR은 자동으로 E2E Tests가 돌고 결과가 PR 코멘트로 올라옵니다. 포크 PR은 self-hosted Unity 러너를 쓰지 않도록 setup부터 건너뜁니다. 그 밖의 PR이나 브랜치는 아래처럼 수동으로 실행합니다.
 
 `target_ref`에 PR 번호를 넣으면 결과가 PR 코멘트로 자동 게시됩니다. `#` 접두사 없이 숫자만 넣습니다.
 
@@ -196,6 +196,8 @@ EOF
 ```
 
 `versions`를 비우면 모든 `release/v*` 태그가 후보입니다. 어느 경우든 `min_version`보다 낮은 버전은 건너뛰고, 비워 둔 `min_version`은 `sdk-policy.json`의 `minVersion`과 하한 3.1.0 중 높은 쪽입니다. 3.1 미만을 다시 배포하려면 `min_version`을 낮춰 지정합니다.
+
+버전마다 `release.yml`의 EditMode 게이트(macOS Unity 2021.3)를 통과해야 태그를 만듭니다. 게이트에서 실패한 버전만 릴리즈되지 않고 나머지 버전은 그대로 진행합니다.
 
 ## 상태 확인
 

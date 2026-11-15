@@ -15,8 +15,11 @@
 | jslib 브릿지 | `Runtime/SDK/Plugins/` |
 | 인프라 | `Runtime/SDK/AITCore.cs` |
 | WebGL 쪽 호출 연결 | `WebGLTemplates/AITTemplate/BuildConfig~/unity-bridge.ts` |
+| 테스트 하네스용 API 카탈로그 | `Tests~/E2E/SharedScripts/Runtime/AITApiCatalog.g.cs` |
 
 카테고리 목록은 `sdk-runtime-generator~/src/categories.ts`가 단일 출처입니다.
+
+API 카탈로그는 `src/generators/api-catalog.ts`가 생성된 `AIT.<카테고리>.cs`와 `AIT.Types.*.cs`를 읽어 만듭니다. API 이름별 카테고리, 카테고리 순서, 생성된 enum의 멤버 이름이 들어 있고, `APIParameterInspector`가 손으로 들고 있던 표를 대신합니다. `GeneratedApiCatalogGuardTests`(EditMode)가 카탈로그와 실제 컴파일된 API·enum이 맞는지 확인하고, `check:drift`도 카탈로그를 봅니다.
 
 ## API 분류와 이름
 
@@ -94,7 +97,7 @@ C#의 `using X = Y;` 별칭은 선언한 파일 안에서만 보입니다. 라�
 - `PermissionName`, `ConsentedUserDataKey` enum은 멤버 순서를 이전 SDK에 맞추고 새 멤버를 뒤에 붙입니다. 정수 값이 바뀌지 않습니다.
 - `IAPGetCompletedOrRefundedOrders(int timeoutMs = 0)`는 기본값까지 그대로이고, 새 시그니처는 첫 인자를 필수로 둬 모호하지 않습니다. `GrantPromotionRewardForGame`은 옛 매개변수 타입을 받는 `[Obsolete]` 오버로드가 있습니다.
 - 검증은 main과 새 빌드의 DLL을 리플렉션으로 비교해 제거와 변경이 0건인지 보는 방식으로 합니다(추가와 `[Obsolete]` 추가만 허용). 알려진 예외는 위 필드에서 프로퍼티가 된 2건입니다.
-- `APICategory`는 예전에 `Other`였던 API 9개가 도메인 카테고리(Media, Notification, Payment, Promotion, Review, SystemInfo, User)로 옮겨졌습니다. 카테고리를 읽는 코드는 `Tests~/E2E`의 `APIParameterInspector`뿐이고 매핑 가드 테스트가 있습니다.
+- `APICategory`는 예전에 `Other`였던 API 9개가 도메인 카테고리(Media, Notification, Payment, Promotion, Review, SystemInfo, User)로 옮겨졌습니다. 카테고리를 읽는 코드는 `Tests~/E2E`의 `APIParameterInspector`뿐이고, 생성된 API 카탈로그(`AITApiCatalog.g.cs`)를 따릅니다.
 - API 143개가 추가됐고, 3.x에서 deprecated인 API 90여 개는 `[Obsolete]`입니다. 경고일 뿐 컴파일을 막지 않습니다.
 
 ## 문서 링크가 생성물로 들어가는 지점

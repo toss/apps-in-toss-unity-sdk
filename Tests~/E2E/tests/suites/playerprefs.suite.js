@@ -1,6 +1,7 @@
 // @ts-check
 // 이 디렉터리 파일은 *.test.js 이름 금지(playwright 기본 testMatch에 잡힘)
-import { test, expect } from '@playwright/test';
+import { test as baseTest, expect } from '@playwright/test';
+import { playerPrefsCaseSelected } from '../lib/shard.js';
 import { waitForUnityInstance, reloadAndWaitForUnity } from '../lib/unity.js';
 import {
   triggerPlayerPrefsAndWait,
@@ -16,6 +17,15 @@ import {
 // page를 재사용하고, serial 실행 순서로 이를 보장한다.
 // -------------------------------------------------------------------------
 export function registerPlayerPrefsTests(ctx) {
+  // AIT_E2E_SHARD가 정한 샤드에 속하지 않는 케이스는 등록하지 않는다(케이스 본문은 그대로).
+  // test.describe/test.afterAll 등 나머지 멤버는 baseTest로 그대로 위임한다.
+  const test = new Proxy(baseTest, {
+    apply(target, thisArg, args) {
+      if (typeof args[0] === 'string' && !playerPrefsCaseSelected(args[0])) return undefined;
+      return Reflect.apply(target, thisArg, args);
+    },
+  });
+
   test.describe.serial('9. PlayerPrefs Persistence (platform Storage mock)', () => {
     /** @type {import('@playwright/test').Page} */
     let mockPage = null;

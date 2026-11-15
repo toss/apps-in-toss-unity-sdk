@@ -3,8 +3,14 @@ import { defineConfig, devices } from '@playwright/test';
 // 모바일 에뮬레이션 활성화 여부 (macOS CI에서만 true)
 const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
 
+// AIT_E2E_SHARD=playerprefs-N job은 PlayerPrefs 케이스만 돌린다. 진입 파일 외의 독립 spec
+// (audio-resume, perf-ttff 등)은 core 샤드가 맡으므로 여기서 제외해 중복 실행을 막는다.
+// 값 검증은 lib/shard.js가 한다.
+const isPlayerPrefsShard = (process.env.AIT_E2E_SHARD || '').startsWith('playerprefs-');
+
 export default defineConfig({
   testDir: './',
+  ...(isPlayerPrefsShard ? { testMatch: ['e2e-full-pipeline.test.js'] } : {}),
   timeout: 300000, // 5분 (Unity 로딩 포함)
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

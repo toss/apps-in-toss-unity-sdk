@@ -1051,13 +1051,15 @@ jobs:
 
       # WebGL 빌드 Unity 로그를 통합 분류기로 보낸다 — Brotli 크래시/디스크 풀 등
       # 빌드 실패의 인프라 원인을 grep으로 세분화하기 위함.
+      # sdk-version이 있으면(bulk release·beta release) 이름에 버전을 붙인다. 붙이지 않으면
+      # bulk release 한 run에 같은 이름의 로그가 버전 수만큼 쌓여 어느 버전 것인지 구분할 수 없다.
       - name: Upload Build Unity Log (macOS)
         id: upload-build-log-macos
         if: inputs.os == 'macos' && inputs.run-build && (inputs.test-level || '2') != '0' && always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
           path: /tmp/unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1068,7 +1070,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
           path: ${{ runner.temp }}\unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7

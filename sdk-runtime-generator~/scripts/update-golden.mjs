@@ -3,7 +3,7 @@
 // golden은 생성기 변경이 의도치 않게 출력을 바꾸지 않았는지 보는 회귀 기준이다. web-framework 버전을
 // 올리면 입력이 바뀌어 출력도 정당하게 바뀌므로, SDK 업데이트 워크플로가 `pnpm generate` 뒤에 이
 // 스크립트로 golden을 함께 갱신한다. 갱신된 diff는 업데이트 PR에서 리뷰한다.
-// 대상은 differential.test.ts와 같다: AIT.Types.{Category}.cs 전체와 AITCore.cs.
+// 대상은 differential.test.ts와 같다: AIT.Types.{Category}.cs 전체, AITCore.cs, AITJsonCodec.cs.
 //
 // 사용: pnpm generate && pnpm test:update-golden
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
@@ -22,7 +22,7 @@ if (!existsSync(sdkDir)) {
 mkdirSync(goldenDir, { recursive: true });
 
 const targets = readdirSync(sdkDir).filter(f => TYPE_FILE_RE.test(f));
-targets.push('AITCore.cs');
+targets.push('AITCore.cs', 'AITJsonCodec.cs');
 for (const f of targets) {
   copyFileSync(path.join(sdkDir, f), path.join(goldenDir, `${f}.golden`));
   console.log(`golden 갱신: ${f}`);

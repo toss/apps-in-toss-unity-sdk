@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Scripting;
 
@@ -16,33 +15,27 @@ namespace AppsInToss
 {
     [Serializable]
     [Preserve]
-    public class AddAccessoryButtonOptions
+    public partial class AddAccessoryButtonOptions
     {
         [Preserve]
-        [JsonProperty("id")]
         public string Id;
         [Preserve]
-        [JsonProperty("icon")]
         public AddAccessoryButtonOptionsIcon Icon;
         [Preserve]
-        [JsonProperty("title")]
         public string Title;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 
     [Serializable]
     [Preserve]
-    public class AddAccessoryButtonOptionsIcon
+    public partial class AddAccessoryButtonOptionsIcon
     {
         [Preserve]
-        [JsonProperty("name")]
         public string Name;
 
         [Preserve]
-        [Newtonsoft.Json.JsonExtensionData]
-        public System.Collections.Generic.IDictionary<string, Newtonsoft.Json.Linq.JToken> _extensionData;
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
     }
 }

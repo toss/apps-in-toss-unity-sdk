@@ -360,32 +360,6 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
-    public partial class AddAccessoryButtonOptions
-    {
-        [Preserve]
-        public string Id;
-        [Preserve]
-        public string Title;
-        [Preserve]
-        public AddAccessoryButtonOptionsIcon Icon;
-
-        [Preserve]
-        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
-    public partial class AddAccessoryButtonOptionsIcon
-    {
-        [Preserve]
-        public string Name;
-
-        [Preserve]
-        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
-    }
-
-    [Serializable]
-    [Preserve]
     public partial class AlbumItemResponse
     {
         [Preserve]

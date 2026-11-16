@@ -116,6 +116,8 @@ namespace AppsInToss
             if (t == typeof(SetIosSwipeGestureEnabledOptions)) return R_SetIosSwipeGestureEnabledOptions(j);
             if (t == typeof(SetScreenAwakeModeOptions)) return R_SetScreenAwakeModeOptions(j);
             if (t == typeof(SetSecureScreenOptions)) return R_SetSecureScreenOptions(j);
+            if (t == typeof(AddNavigationBarAccessoryButtonOptions)) return R_AddNavigationBarAccessoryButtonOptions(j);
+            if (t == typeof(AddNavigationBarAccessoryButtonOptionsIcon)) return R_AddNavigationBarAccessoryButtonOptionsIcon(j);
             if (t == typeof(EventLogParams)) return R_EventLogParams(j);
             if (t == typeof(AppsInTossSignTossCertParams)) return R_AppsInTossSignTossCertParams(j);
             if (t == typeof(OnVisibilityChangedByTransparentServiceWebEventParams)) return R_OnVisibilityChangedByTransparentServiceWebEventParams(j);
@@ -143,6 +145,8 @@ namespace AppsInToss
             if (t == typeof(LoadFullScreenAdOptions)) return R_LoadFullScreenAdOptions(j);
             if (t == typeof(ShowFullScreenAdOptions)) return R_ShowFullScreenAdOptions(j);
             if (t == typeof(SafeAreaInsets)) return R_SafeAreaInsets(j);
+            if (t == typeof(AddAccessoryButtonOptions)) return R_AddAccessoryButtonOptions(j);
+            if (t == typeof(AddAccessoryButtonOptionsIcon)) return R_AddAccessoryButtonOptionsIcon(j);
             if (t == typeof(IsMinVersionSupportedMinVersions)) return R_IsMinVersionSupportedMinVersions(j);
             if (t == typeof(RewardFromContactsViralEvent)) return R_RewardFromContactsViralEvent(j);
             if (t == typeof(ContactsViralSuccessEvent)) return R_ContactsViralSuccessEvent(j);
@@ -165,8 +169,6 @@ namespace AppsInToss
             if (t == typeof(GameCenterGameProfileResponse)) return R_GameCenterGameProfileResponse(j);
             if (t == typeof(AdUserEarnedReward)) return R_AdUserEarnedReward(j);
             if (t == typeof(AdUserEarnedRewardData)) return R_AdUserEarnedRewardData(j);
-            if (t == typeof(AddAccessoryButtonOptions)) return R_AddAccessoryButtonOptions(j);
-            if (t == typeof(AddAccessoryButtonOptionsIcon)) return R_AddAccessoryButtonOptionsIcon(j);
             if (t == typeof(AlbumItemResponse)) return R_AlbumItemResponse(j);
             if (t == typeof(AppsInTossGlobals)) return R_AppsInTossGlobals(j);
             if (t == typeof(CompletedOrRefundedOrdersResultOrder)) return R_CompletedOrRefundedOrdersResultOrder(j);
@@ -2007,6 +2009,41 @@ namespace AppsInToss
             return o;
         }
 
+        private static readonly string[] N_AddNavigationBarAccessoryButtonOptions = { "accessibilityLabel", "icon" };
+        internal static AddNavigationBarAccessoryButtonOptions R_AddNavigationBarAccessoryButtonOptions(JsonValue j)
+        {
+            if (j == null || j.Kind != JsonValueKind.Object) return null;
+            var o = new AddNavigationBarAccessoryButtonOptions();
+            foreach (var p in j._members)
+            {
+                var v = p.Value;
+                switch (AITJson.Match(p.Key, N_AddNavigationBarAccessoryButtonOptions))
+                {
+                    case 0: if (AITJson.TryStr(v, out string x0)) { o.AccessibilityLabel = x0; } break;
+                    case 1: if (AITJson.TryObj<AddNavigationBarAccessoryButtonOptionsIcon>(v, AITJsonCodec.R_AddNavigationBarAccessoryButtonOptionsIcon, out AddNavigationBarAccessoryButtonOptionsIcon x1)) { o.Icon = x1; } break;
+                    default: AITJson.Ext(ref o._extensionData, p); break;
+                }
+            }
+            return o;
+        }
+
+        private static readonly string[] N_AddNavigationBarAccessoryButtonOptionsIcon = { "name" };
+        internal static AddNavigationBarAccessoryButtonOptionsIcon R_AddNavigationBarAccessoryButtonOptionsIcon(JsonValue j)
+        {
+            if (j == null || j.Kind != JsonValueKind.Object) return null;
+            var o = new AddNavigationBarAccessoryButtonOptionsIcon();
+            foreach (var p in j._members)
+            {
+                var v = p.Value;
+                switch (AITJson.Match(p.Key, N_AddNavigationBarAccessoryButtonOptionsIcon))
+                {
+                    case 0: if (AITJson.TryStr(v, out string x0)) { o.Name = x0; } break;
+                    default: AITJson.Ext(ref o._extensionData, p); break;
+                }
+            }
+            return o;
+        }
+
         private static readonly string[] N_EventLogParams = { "log_type", "log_name", "params" };
         internal static EventLogParams R_EventLogParams(JsonValue j)
         {
@@ -2492,6 +2529,42 @@ namespace AppsInToss
             return o;
         }
 
+        private static readonly string[] N_AddAccessoryButtonOptions = { "id", "icon", "title" };
+        internal static AddAccessoryButtonOptions R_AddAccessoryButtonOptions(JsonValue j)
+        {
+            if (j == null || j.Kind != JsonValueKind.Object) return null;
+            var o = new AddAccessoryButtonOptions();
+            foreach (var p in j._members)
+            {
+                var v = p.Value;
+                switch (AITJson.Match(p.Key, N_AddAccessoryButtonOptions))
+                {
+                    case 0: if (AITJson.TryStr(v, out string x0)) { o.Id = x0; } break;
+                    case 1: if (AITJson.TryObj<AddAccessoryButtonOptionsIcon>(v, AITJsonCodec.R_AddAccessoryButtonOptionsIcon, out AddAccessoryButtonOptionsIcon x1)) { o.Icon = x1; } break;
+                    case 2: if (AITJson.TryStr(v, out string x2)) { o.Title = x2; } break;
+                    default: AITJson.Ext(ref o._extensionData, p); break;
+                }
+            }
+            return o;
+        }
+
+        private static readonly string[] N_AddAccessoryButtonOptionsIcon = { "name" };
+        internal static AddAccessoryButtonOptionsIcon R_AddAccessoryButtonOptionsIcon(JsonValue j)
+        {
+            if (j == null || j.Kind != JsonValueKind.Object) return null;
+            var o = new AddAccessoryButtonOptionsIcon();
+            foreach (var p in j._members)
+            {
+                var v = p.Value;
+                switch (AITJson.Match(p.Key, N_AddAccessoryButtonOptionsIcon))
+                {
+                    case 0: if (AITJson.TryStr(v, out string x0)) { o.Name = x0; } break;
+                    default: AITJson.Ext(ref o._extensionData, p); break;
+                }
+            }
+            return o;
+        }
+
         private static readonly string[] N_IsMinVersionSupportedMinVersions = { "android", "ios" };
         internal static IsMinVersionSupportedMinVersions R_IsMinVersionSupportedMinVersions(JsonValue j)
         {
@@ -2890,42 +2963,6 @@ namespace AppsInToss
                 {
                     case 0: if (AITJson.TryStr(v, out string x0)) { o.UnitType = x0; } break;
                     case 1: if (AITJson.TryDbl(v, out double x1)) { o.UnitAmount = x1; } break;
-                    default: AITJson.Ext(ref o._extensionData, p); break;
-                }
-            }
-            return o;
-        }
-
-        private static readonly string[] N_AddAccessoryButtonOptions = { "id", "title", "icon" };
-        internal static AddAccessoryButtonOptions R_AddAccessoryButtonOptions(JsonValue j)
-        {
-            if (j == null || j.Kind != JsonValueKind.Object) return null;
-            var o = new AddAccessoryButtonOptions();
-            foreach (var p in j._members)
-            {
-                var v = p.Value;
-                switch (AITJson.Match(p.Key, N_AddAccessoryButtonOptions))
-                {
-                    case 0: if (AITJson.TryStr(v, out string x0)) { o.Id = x0; } break;
-                    case 1: if (AITJson.TryStr(v, out string x1)) { o.Title = x1; } break;
-                    case 2: if (AITJson.TryObj<AddAccessoryButtonOptionsIcon>(v, AITJsonCodec.R_AddAccessoryButtonOptionsIcon, out AddAccessoryButtonOptionsIcon x2)) { o.Icon = x2; } break;
-                    default: AITJson.Ext(ref o._extensionData, p); break;
-                }
-            }
-            return o;
-        }
-
-        private static readonly string[] N_AddAccessoryButtonOptionsIcon = { "name" };
-        internal static AddAccessoryButtonOptionsIcon R_AddAccessoryButtonOptionsIcon(JsonValue j)
-        {
-            if (j == null || j.Kind != JsonValueKind.Object) return null;
-            var o = new AddAccessoryButtonOptionsIcon();
-            foreach (var p in j._members)
-            {
-                var v = p.Value;
-                switch (AITJson.Match(p.Key, N_AddAccessoryButtonOptionsIcon))
-                {
-                    case 0: if (AITJson.TryStr(v, out string x0)) { o.Name = x0; } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -4520,6 +4557,29 @@ namespace AppsInToss
         }
     }
 
+    partial class AddNavigationBarAccessoryButtonOptions : IAITJsonWritable
+    {
+        void IAITJsonWritable.WriteJson(AITJsonWriter w)
+        {
+            w.BeginObject();
+            w.Name("accessibilityLabel"); w.Value(this.AccessibilityLabel);
+            w.Name("icon"); AITJson.Obj(w, this.Icon);
+            AITJson.Ext(w, this._extensionData);
+            w.EndObject();
+        }
+    }
+
+    partial class AddNavigationBarAccessoryButtonOptionsIcon : IAITJsonWritable
+    {
+        void IAITJsonWritable.WriteJson(AITJsonWriter w)
+        {
+            w.BeginObject();
+            w.Name("name"); w.Value(this.Name);
+            AITJson.Ext(w, this._extensionData);
+            w.EndObject();
+        }
+    }
+
     partial class EventLogParams : IAITJsonWritable
     {
         void IAITJsonWritable.WriteJson(AITJsonWriter w)
@@ -4843,6 +4903,30 @@ namespace AppsInToss
         }
     }
 
+    partial class AddAccessoryButtonOptions : IAITJsonWritable
+    {
+        void IAITJsonWritable.WriteJson(AITJsonWriter w)
+        {
+            w.BeginObject();
+            w.Name("id"); w.Value(this.Id);
+            w.Name("icon"); AITJson.Obj(w, this.Icon);
+            w.Name("title"); w.Value(this.Title);
+            AITJson.Ext(w, this._extensionData);
+            w.EndObject();
+        }
+    }
+
+    partial class AddAccessoryButtonOptionsIcon : IAITJsonWritable
+    {
+        void IAITJsonWritable.WriteJson(AITJsonWriter w)
+        {
+            w.BeginObject();
+            w.Name("name"); w.Value(this.Name);
+            AITJson.Ext(w, this._extensionData);
+            w.EndObject();
+        }
+    }
+
     partial class IsMinVersionSupportedMinVersions : IAITJsonWritable
     {
         void IAITJsonWritable.WriteJson(AITJsonWriter w)
@@ -5110,30 +5194,6 @@ namespace AppsInToss
             w.BeginObject();
             w.Name("unitType"); w.Value(this.UnitType);
             w.Name("unitAmount"); w.Value(this.UnitAmount);
-            AITJson.Ext(w, this._extensionData);
-            w.EndObject();
-        }
-    }
-
-    partial class AddAccessoryButtonOptions : IAITJsonWritable
-    {
-        void IAITJsonWritable.WriteJson(AITJsonWriter w)
-        {
-            w.BeginObject();
-            w.Name("id"); w.Value(this.Id);
-            w.Name("title"); w.Value(this.Title);
-            w.Name("icon"); AITJson.Obj(w, this.Icon);
-            AITJson.Ext(w, this._extensionData);
-            w.EndObject();
-        }
-    }
-
-    partial class AddAccessoryButtonOptionsIcon : IAITJsonWritable
-    {
-        void IAITJsonWritable.WriteJson(AITJsonWriter w)
-        {
-            w.BeginObject();
-            w.Name("name"); w.Value(this.Name);
             AITJson.Ext(w, this._extensionData);
             w.EndObject();
         }

@@ -447,7 +447,7 @@ namespace AppsInToss.Editor
         {
             if (string.IsNullOrEmpty(remoteHash))
             {
-                Debug.LogWarning("[AIT] SDK 원격 버전을 확인할 수 없습니다. 네트워크 연결을 확인하세요.");
+                AITLog.Warning("[AIT] SDK 원격 버전을 확인할 수 없습니다. 네트워크 연결을 확인하세요.", sentryCapture: false);
                 if (isManualCheck)
                 {
                     EditorUtility.DisplayDialog(

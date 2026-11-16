@@ -133,6 +133,11 @@ public class SentryNoiseSuppressionCallsiteTests
             "19M",
             expectWarning: false);  // AITLog.Error (사용자에게 표시해야 하므로 Error 레벨)
 
+    /// <summary>회귀 가드 — APPS-IN-TOSS-UNITY-SDK-19F: SDK 원격 버전 확인 불가 안내 로그.</summary>
+    [Test]
+    public void Sdk19F_RemoteVersionUnavailableNotice_StaysSentrySuppressed()
+        => AssertCallsiteSuppressed("AITAutoUpdater.cs", "SDK 원격 버전을 확인할 수 없습니다", "19F");
+
     /// <summary>
     /// fileName 소스에서 messageAnchor를 내보내는 가장 가까운 선행 로그 호출이
     /// AITLog.Warning( 또는 AITLog.Error(이고, 그 호출 인자에 sentryCapture: false가 포함됨을

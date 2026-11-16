@@ -352,7 +352,7 @@ jobs:
   # WebGL 산출물은 OS-독립적이라 ubuntu에서 동일하게 동작.
   # =====================================================
   e2e-macos:
-    name: E2E (macOS build, Unity ${{ matrix.unity-version }})
+    name: E2E (macOS build, Unity ${{ matrix.unity-version }}, ${{ matrix.shard }})
     needs: [setup, build-macos]
     if: needs.build-macos.result == 'success' && (inputs.test_level || '2') == '2'
     runs-on: ubuntu-latest
@@ -362,8 +362,12 @@ jobs:
       fail-fast: false
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"]
+        # core: playerprefs를 뺀 전부. playerprefs-1/2: 9번대를 시간 기준으로 나눈 두 묶음.
+        # 묶음 정의와 이유는 Tests~/E2E/tests/lib/shard.js.
+        shard: [core, playerprefs-1, playerprefs-2]
 
     env:
+      AIT_E2E_SHARD: ${{ matrix.shard }}
       MOBILE_EMULATION: "true"
       TEST_LEVEL: ${{ inputs.test_level || '2' }}
       AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
@@ -417,7 +421,9 @@ jobs:
         run: pnpm test
 
       - name: Upload Benchmark Results
-        if: always()
+        # 결과 JSON은 core 샤드만 만든다(playerprefs 샤드는 빈 결과라 올리지 않는다).
+        # 이름은 generate-benchmark-report.js가 읽는 형태를 유지한다.
+        if: always() && matrix.shard == 'core'
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-macos-${{ matrix.unity-version }}
@@ -428,7 +434,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-macos-${{ matrix.unity-version }}
+          name: playwright-report-macos-${{ matrix.unity-version }}-${{ matrix.shard }}
           # playwright.config.ts의 reporter가 ['list']뿐이라 playwright-report/는 생성되지
           # 않는다 — 실제 실패 증거(trace.zip, 실패 스크린샷)는 기본 outputDir인
           # test-results/에 쌓이므로 반드시 함께 업로드해야 한다.
@@ -443,7 +449,7 @@ jobs:
   # Playwright E2E Tests - Windows 빌드 산출물 (ubuntu-latest)
   # =====================================================
   e2e-windows:
-    name: E2E (Windows build, Unity ${{ matrix.unity-version }})
+    name: E2E (Windows build, Unity ${{ matrix.unity-version }}, ${{ matrix.shard }})
     needs: [setup, build-windows]
     if: needs.build-windows.result == 'success' && (inputs.test_level || '2') == '2'
     runs-on: ubuntu-latest
@@ -453,8 +459,12 @@ jobs:
       fail-fast: false
       matrix:
         unity-version: ["2021.3", "2022.3", "6000.0", "6000.3", "6000.6"]
+        # core: playerprefs를 뺀 전부. playerprefs-1/2: 9번대를 시간 기준으로 나눈 두 묶음.
+        # 묶음 정의와 이유는 Tests~/E2E/tests/lib/shard.js.
+        shard: [core, playerprefs-1, playerprefs-2]
 
     env:
+      AIT_E2E_SHARD: ${{ matrix.shard }}
       TEST_LEVEL: ${{ inputs.test_level || '2' }}
       AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
 
@@ -506,7 +516,9 @@ jobs:
         run: pnpm test
 
       - name: Upload Benchmark Results
-        if: always()
+        # 결과 JSON은 core 샤드만 만든다(playerprefs 샤드는 빈 결과라 올리지 않는다).
+        # 이름은 generate-benchmark-report.js가 읽는 형태를 유지한다.
+        if: always() && matrix.shard == 'core'
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-windows-${{ matrix.unity-version }}
@@ -517,7 +529,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-windows-${{ matrix.unity-version }}
+          name: playwright-report-windows-${{ matrix.unity-version }}-${{ matrix.shard }}
           # playwright.config.ts의 reporter가 ['list']뿐이라 playwright-report/는 생성되지
           # 않는다 — 실제 실패 증거(trace.zip, 실패 스크린샷)는 기본 outputDir인
           # test-results/에 쌓이므로 반드시 함께 업로드해야 한다.

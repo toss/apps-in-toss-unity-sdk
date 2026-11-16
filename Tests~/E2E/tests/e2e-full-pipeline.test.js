@@ -14,6 +14,7 @@ import { registerBuildAndDevServerTests } from './suites/build-and-dev.suite.js'
 import { registerProductionCoreTests } from './suites/production-core.suite.js';
 import { registerTutorialTests } from './suites/tutorials.suite.js';
 import { registerNestedCallbackTests } from './suites/nested-callback.suite.js';
+import { shouldRunCore, shouldRunPlayerPrefs } from './lib/shard.js';
 import { registerPlayerPrefsTests } from './suites/playerprefs.suite.js';
 
 /**
@@ -55,11 +56,13 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
       devServer.process = null;
     }
 
-    writeResultFiles(SAMPLE_PROJECT);
+    // 벤치마크/결과 JSON은 코어 샤드만 의미가 있다. playerprefs 샤드는 빈 결과를 남기지 않는다.
+    if (shouldRunCore()) writeResultFiles(SAMPLE_PROJECT);
   });
 
 
-  registerBuildAndDevServerTests({ devServer });
+  // AIT_E2E_SHARD(lib/shard.js)로 CI가 job을 나눠 돌린다. 비어 있으면 전부 실행.
+  if (shouldRunCore()) registerBuildAndDevServerTests({ devServer });
 
 
   // -------------------------------------------------------------------------
@@ -164,10 +167,12 @@ test.describe('Apps in Toss Unity SDK E2E Pipeline', () => {
     });
 
 
-    registerProductionCoreTests({ session });
-    registerTutorialTests({ session });
-    registerNestedCallbackTests({ session });
-    registerPlayerPrefsTests({ getPort: () => session.port });
+    if (shouldRunCore()) {
+      registerProductionCoreTests({ session });
+      registerTutorialTests({ session });
+      registerNestedCallbackTests({ session });
+    }
+    if (shouldRunPlayerPrefs()) registerPlayerPrefsTests({ getPort: () => session.port });
 
   }); // end of test.describe.serial
 

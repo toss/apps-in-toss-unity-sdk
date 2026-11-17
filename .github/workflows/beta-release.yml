@@ -21,7 +21,7 @@ run-name: "Beta Release - v${{ inputs.version }} → #${{ inputs.channel_ref }} 
 # 새 베타 배포는 out-of-band(슬랙/이슈)로 알리고 제휴사가 수동으로 갱신한다.
 #
 # release.yml과의 의도적 차이(채널 격리, INV1~INV5):
-#   - output: immutable 태그 대신 이동 channel_ref 브랜치 + -beta 스냅샷 태그
+#   - output: 이동 channel_ref 브랜치 + -beta 스냅샷 태그(한 번 만들면 삭제·재생성 없음, 이미 있으면 빌드 전에 중단)
 #   - GitHub Release: 무조건 --prerelease --latest=false (stable의 조건부 분기 미사용)
 #   - bare 버전 입력은 package.json .version을 prerelease로 정규화 → Sentry env=beta 격리 유지
 #   - 배포는 SDK 샘플 앱만(intoss-private 검증용 게시 게이트) — partner/production 배포나 Latest 승격이 아님
@@ -185,6 +185,17 @@ jobs:
 
           # 스냅샷 태그는 정규화된 PKG_VERSION에서 파생 → .version과 항상 일치
           BETA_TAG="release/v${PKG_VERSION}"
+
+          # --- 스냅샷 태그 선검사 (Immutable Releases) ---
+          # 게시된 Release는 태그를 잠그고, Release를 지워도 그 태그 이름은 다시 쓸 수 없다.
+          # 그래서 스냅샷 태그/Release는 삭제·재생성하지 않는다. 이미 있으면 빌드 전에 멈춘다.
+          # deploy_probe_only는 채널을 게시하지 않으므로 검사하지 않는다.
+          if [ "${{ inputs.deploy_probe_only }}" != "true" ]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/${BETA_TAG}" >/dev/null 2>&1; then
+              echo "::error::스냅샷 태그 ${BETA_TAG}가 이미 있습니다. 스냅샷 태그와 Release는 불변이라 다시 만들 수 없습니다. 새 스냅샷이 필요하면 다른 web-framework 버전(예: 3.1.0-beta.2)을 입력하거나, source_ref가 바뀐 상태에서 bare 버전을 입력해 -beta.<sha>가 달라지게 하세요. 채널 브랜치(${CHANNEL_REF})는 기존 스냅샷 커밋을 가리키도록 수동으로 옮길 수 있습니다."
+              exit 1
+            fi
+          fi
 
           echo "npm_version=${NPM_VERSION}" >> $GITHUB_OUTPUT
           echo "pkg_version=${PKG_VERSION}" >> $GITHUB_OUTPUT
@@ -779,14 +790,19 @@ jobs:
           Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
           echo "Orphan commit SHA: ${COMMIT}"
 
+          # 게시 직전 재검사: 빌드 중에 같은 태그가 생겼다면 채널 브랜치를 옮기기 전에 멈춘다.
+          if git ls-remote --exit-code --tags origin "refs/tags/${BETA_TAG}" >/dev/null 2>&1; then
+            echo "::error::스냅샷 태그 ${BETA_TAG}가 빌드 중에 생겼습니다. 불변 태그라 덮어쓰지 않습니다."
+            exit 1
+          fi
+
           # 채널 브랜치로 force-push (이동 ref — 항상 최신 베타 HEAD)
           git push -f origin "${COMMIT}:refs/heads/${CHANNEL_REF}"
           echo "채널 브랜치 푸시 완료: refs/heads/${CHANNEL_REF}"
 
-          # 스냅샷 태그 upsert (immutable 스냅샷 + GitHub Release 앵커)
-          git push origin --delete "${BETA_TAG}" 2>/dev/null || true
-          git tag -f "${BETA_TAG}" "${COMMIT}" -m "베타 릴리즈: v${PKG_VERSION}"
-          git push -f origin "refs/tags/${BETA_TAG}:refs/tags/${BETA_TAG}"
+          # 스냅샷 태그 생성 (불변 스냅샷 + GitHub Release 앵커). 삭제·force 이동 없음.
+          git tag "${BETA_TAG}" "${COMMIT}" -m "베타 릴리즈: v${PKG_VERSION}"
+          git push origin "refs/tags/${BETA_TAG}:refs/tags/${BETA_TAG}"
           echo "스냅샷 태그 푸시 완료: ${BETA_TAG}"
 
           # 임시 staging ref 정리
@@ -861,9 +877,6 @@ jobs:
           - [Unity Editor 설정](https://github.com/${{ github.repository }}#readme)
           EOF
           )
-
-          # 기존 릴리즈가 있으면 삭제 후 재생성 (태그는 이미 푸시됨)
-          gh release delete "${BETA_TAG}" --yes 2>/dev/null || true
 
           echo "태그 전파 대기 중 (5초)..."
           sleep 5

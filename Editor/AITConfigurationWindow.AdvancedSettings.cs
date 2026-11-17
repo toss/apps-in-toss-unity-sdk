@@ -627,14 +627,16 @@ namespace AppsInToss.Editor
 
             EditorGUILayout.EndHorizontal();
 
-            // 끄면(기본값) JS 디컴프레서가 번들에서 제거되어 호스팅 CDN이 Content-Encoding: br를
-            // 직접 서빙해야 한다. AIT 플랫폼 CDN은 보장하지만, 자체 호스팅 시 미설정이면 로드 실패.
-            if (config.decompressionFallback != 1)
+            // 끄면 JS 디컴프레서가 번들에서 제거되어 호스팅 CDN과 WebView가 Content-Encoding: br를
+            // 처리해야 한다. 기본값(켬)은 brotli 를 풀지 못하는 WebView 에서도 동작한다.
+            bool fallbackOff = config.decompressionFallback < 0 ? !defaultValue : config.decompressionFallback == 0;
+            if (fallbackOff)
             {
                 EditorGUILayout.HelpBox(
                     "Decompression Fallback이 꺼지면 호스팅 서버가 Content-Encoding: br(또는 gzip)을 " +
-                    "직접 서빙해야 합니다. Apps in Toss 플랫폼 CDN은 보장하지만, 자체 호스팅 시 " +
-                    "압축 헤더 미설정이면 로드가 실패합니다.",
+                    "직접 서빙해야 하고, WebView 가 brotli 를 네이티브로 풀 수 있어야 합니다. " +
+                    "Apps in Toss 플랫폼 CDN은 헤더를 보장하지만, brotli 를 풀지 못하는 Android WebView 나 " +
+                    "자체 호스팅에서 헤더가 없으면 로드가 실패합니다.",
                     MessageType.Warning
                 );
             }

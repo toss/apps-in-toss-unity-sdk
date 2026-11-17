@@ -361,7 +361,7 @@ namespace AppsInToss
         [Tooltip("-1 = 자동 (false), Unity Pro 라이선스 필요")]
         public int showUnityLogo = -1;
 
-        [Tooltip("-1 = 자동 (false). 끄면 JS Brotli 디컴프레서가 번들에서 제거됨 — 플랫폼 CDN의 Content-Encoding: br 의존")]
+        [Tooltip("-1 = 자동 (true). 켜면 .unityweb 로 빌드되고 JS Brotli 디컴프레서가 번들에 포함됨 — brotli 를 풀지 못하는 WebView 에서도 동작. 끄면 플랫폼 CDN의 Content-Encoding: br 에 의존하는 대신 wasm 스트리밍 컴파일 등 perf 최적화가 적용됨")]
         public int decompressionFallback = -1;
 
         [Tooltip("-1 = 자동 (false)")]
@@ -974,7 +974,8 @@ namespace AppsInToss
 
         /// <summary>
         /// 기본 압축 포맷: Brotli
-        /// decompressionFallback=false이므로 브라우저/CDN이 Content-Encoding: br로 네이티브 해제 (모든 Unity 버전 Brotli)
+        /// decompressionFallback=false(수동 선택)이면 브라우저/CDN이 Content-Encoding: br로 네이티브 해제한다.
+        /// 기본값(decompressionFallback=true)에서는 .unityweb 로 빌드되어 로더가 직접 푼다.
         /// </summary>
         public static WebGLCompressionFormat GetDefaultCompressionFormat()
         {
@@ -1109,14 +1110,15 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 기본 Decompression Fallback: 비활성화(false)
-        /// 끄면 Unity가 JS Brotli 디컴프레서를 프레임워크 번들에서 제외 → 다운로드/파싱 바이트 감소.
-        /// 대신 브라우저/CDN이 Content-Encoding: br로 .unityweb를 네이티브 해제하도록 의존한다.
-        /// Apps in Toss 플랫폼 CDN이 br 인코딩을 서빙하는 전제에서만 안전(자체 호스팅 시 헤더 필수).
+        /// 기본 Decompression Fallback: 활성화(true)
+        /// 켜면 .unityweb 로 빌드되고 JS Brotli 디컴프레서가 번들에 포함되어, brotli 를 네이티브로 풀지
+        /// 못하는 Android WebView 에서도 로드된다. 끄면 JS 디컴프레서가 빠져 다운로드/파싱 바이트가 줄고
+        /// wasm 스트리밍 컴파일 등 .br 전제의 perf 최적화가 적용되지만, 브라우저/CDN 의 Content-Encoding: br
+        /// 네이티브 해제에 의존한다(수동 선택).
         /// </summary>
         public static bool GetDefaultDecompressionFallback()
         {
-            return false;
+            return true;
         }
 
         /// <summary>

@@ -105,6 +105,7 @@ mergeInto(LibraryManager.library, {
                 options: optionsObj,
                 onEvent: function(data) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] GoogleAdMobShowAppsInTossAdMob event:', data);
+                    if (data && data.type === 'dismissed' && window.AITAudio && window.AITAudio.recover) window.AITAudio.recover('ad');
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
@@ -668,6 +669,7 @@ mergeInto(LibraryManager.library, {
                 options: { adGroupId: adGroupIdVal },
                 onEvent: function(data) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] showFullScreenAd event:', data);
+                    if (data && data.type === 'dismissed' && window.AITAudio && window.AITAudio.recover) window.AITAudio.recover('ad');
                     var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,

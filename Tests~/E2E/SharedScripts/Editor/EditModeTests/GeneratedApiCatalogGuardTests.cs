@@ -39,6 +39,12 @@ public class GeneratedApiCatalogGuardTests
     /// <summary>
     /// AIT와 같은 어셈블리의 AppsInToss 네임스페이스 최상위 public enum 전부.
     /// </summary>
+    // API d.ts에서 오지 않는 SDK 내부 enum. 카탈로그는 API 타입만 담으므로 대조에서 뺀다.
+    private static readonly HashSet<string> NonApiRuntimeEnums = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "JsonValueKind", // AITJson.cs: JsonValue가 담은 JSON 값의 종류
+    };
+
     private static List<Type> GetRuntimeEnums()
     {
         var aitType = Type.GetType("AppsInToss.AIT, AppsInTossSDK");
@@ -54,6 +60,7 @@ public class GeneratedApiCatalogGuardTests
 
         return aitType.Assembly.GetTypes()
             .Where(t => t.IsEnum && t.IsPublic && !t.IsNested && t.Namespace == "AppsInToss")
+            .Where(t => !NonApiRuntimeEnums.Contains(t.Name))
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
     }

@@ -23,7 +23,7 @@ function memberDocs(): Map<string, boolean> {
     const lines = fs.readFileSync(path.join(SDK_DIR, file), 'utf-8').split('\n');
     let cls = '';
     lines.forEach((line, i) => {
-      const c = line.match(/^\s*public (?:class|enum) (\w+)/);
+      const c = line.match(/^\s*public (?:partial )?(?:class|enum) (\w+)/);
       if (c) {
         cls = c[1];
         return;

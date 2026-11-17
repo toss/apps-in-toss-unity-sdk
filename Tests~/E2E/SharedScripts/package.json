@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "displayName": "Apps in Toss SDK Test Scripts",
   "description": "Shared test scripts for Apps in Toss Unity SDK E2E testing",
-  "unity": "2021.3"
+  "unity": "2021.3",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.2"
+  }
 }

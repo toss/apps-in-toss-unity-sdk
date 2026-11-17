@@ -12,6 +12,9 @@ public class VisibilityBGMTester : MonoBehaviour
     private AudioSource audioSource;
     private bool isInitialized = false;
     private bool isPlaying = false;
+    private AudioClip generatedClip;
+    private AudioClip compressedClip;
+    private bool useCompressedClip = false;
 
     // UI 상태
     private string statusText = "준비 중...";
@@ -23,6 +26,7 @@ public class VisibilityBGMTester : MonoBehaviour
     private Text _infoTextUI;
     private Button _toggleButton;
     private Text _toggleButtonText;
+    private Text _clipButtonText;
 
     void Start()
     {
@@ -90,6 +94,7 @@ public class VisibilityBGMTester : MonoBehaviour
         }
 
         clip.SetData(samples, 0);
+        generatedClip = clip;
         audioSource.clip = clip;
         audioSource.Play();
 
@@ -168,6 +173,9 @@ public class VisibilityBGMTester : MonoBehaviour
         _toggleButton = UIBuilder.CreateButton(section, "", onClick: ToggleBGM);
         _toggleButtonText = _toggleButton.GetComponentInChildren<Text>();
 
+        var clipButton = UIBuilder.CreateButton(section, "", onClick: ToggleClipKind);
+        _clipButtonText = clipButton.GetComponentInChildren<Text>();
+
         UpdateUI();
     }
 
@@ -188,11 +196,46 @@ public class VisibilityBGMTester : MonoBehaviour
         {
             _toggleButtonText.text = isPlaying ? "BGM 정지" : "BGM 재생";
         }
+
+        if (_clipButtonText != null)
+        {
+            _clipButtonText.text = useCompressedClip
+                ? "클립: Compressed In Memory (<audio>)"
+                : "클립: 생성 PCM (Web Audio 버퍼)";
+        }
     }
 
     private void ToggleBGM()
     {
         if (isPlaying) StopBGM(); else StartBGM();
+        UpdateUI();
+    }
+
+    /// <summary>
+    /// 생성 PCM 클립과 Compressed In Memory 클립을 바꿔 재생합니다.
+    /// WebGL에서 Compressed In Memory 클립은 HTMLAudioElement로 재생됩니다.
+    /// </summary>
+    private void ToggleClipKind()
+    {
+        if (audioSource == null) return;
+
+        if (compressedClip == null)
+        {
+            compressedClip = Resources.Load<AudioClip>("Audio/test_bgm_compressed");
+        }
+        if (compressedClip == null)
+        {
+            Debug.LogWarning("[VisibilityBGMTester] Audio/test_bgm_compressed 를 찾지 못했습니다");
+            return;
+        }
+
+        useCompressedClip = !useCompressedClip;
+        audioSource.Stop();
+        audioSource.clip = useCompressedClip ? compressedClip : generatedClip;
+        audioSource.Play();
+        isPlaying = true;
+        Debug.Log($"[VisibilityBGMTester] clip={audioSource.clip.name} loadType={audioSource.clip.loadType}");
+        UpdateStatus();
         UpdateUI();
     }
 

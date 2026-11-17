@@ -1,0 +1,65 @@
+name: Signed Commit
+description: |
+  스테이징된 변경을 GitHub REST git data API(blobs -> trees -> commits -> refs)로 커밋해
+  GitHub이 자동 서명한(Verified) 커밋으로 브랜치에 올린다. main 브랜치 Ruleset의
+  required_signatures 때문에 러너의 `git commit` + `git push`(서명 없음) 커밋은 머지할 수 없다.
+  호출 전에 `git add` 로 변경을 스테이징해야 하고, 변경이 없으면 아무것도 만들지 않는다.
+  author/committer를 지정하면 서명되지 않으므로 입력으로 받지 않는다.
+  호출하는 잡에 `permissions: contents: write` 가 필요하다.
+
+inputs:
+  branch:
+    required: true
+    description: '대상 브랜치명 (refs/heads/ 접두사 없이). 없으면 생성, 있으면 갱신'
+  message:
+    required: true
+    description: '커밋 메시지 전체 (제목 + 본문)'
+  parent-sha:
+    required: false
+    description: '부모 커밋 sha (기본: 현재 HEAD)'
+    default: ''
+  force:
+    required: false
+    description: 'true면 기존 브랜치를 non-fast-forward로도 덮어쓴다 (force push 대체)'
+    default: 'false'
+  sync-local:
+    required: false
+    description: 'true면 새 커밋을 fetch해 로컬 브랜치·작업트리를 그 커밋에 맞춘다'
+    default: 'true'
+  require-verified:
+    required: false
+    description: 'true면 커밋 verification.verified가 false일 때 ref를 건드리기 전에 실패시킨다'
+    default: 'true'
+  token:
+    required: false
+    description: 'contents: write 토큰'
+    default: ${{ github.token }}
+  repository:
+    required: false
+    description: 'owner/name (기본: 현재 저장소)'
+    default: ${{ github.repository }}
+
+outputs:
+  committed:
+    description: 'true | false (변경이 없으면 false)'
+    value: ${{ steps.commit.outputs.committed }}
+  commit-sha:
+    description: '생성된 커밋 sha (변경이 없으면 빈 문자열)'
+    value: ${{ steps.commit.outputs.commit_sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create signed commit via REST API
+      id: commit
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        BRANCH: ${{ inputs.branch }}
+        MESSAGE: ${{ inputs.message }}
+        PARENT_SHA: ${{ inputs.parent-sha }}
+        FORCE: ${{ inputs.force }}
+        SYNC_LOCAL: ${{ inputs.sync-local }}
+        REQUIRE_VERIFIED: ${{ inputs.require-verified }}
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/signed-commit/signed-commit.sh"

@@ -1,0 +1,299 @@
+// -----------------------------------------------------------------------
+// BuildOutputValidator.cs - 빌드 산출물 검증
+// Level 1: WebGL 빌드 후 C# 레벨에서 산출물 구조를 검증
+// build-validation.json을 생성하여 Playwright에서 재사용
+// -----------------------------------------------------------------------
+
+using UnityEngine;
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using AppsInToss.Editor;
+
+public static class BuildOutputValidator
+{
+    [Serializable]
+    public class ValidationResult
+    {
+        public bool passed;
+        public float buildSizeMB;
+        public string compressionFormat;
+        public int fileCount;
+        public string[] errors;
+        public string[] warnings;
+        public FileDetail[] files;
+
+        // wasm 섹션 크기(진단, P0-5). 해제한 wasm 기준이며 측정하지 못했으면 -1. 검증 통과 여부에는 영향이 없다.
+        public long wasmCodeBytes = -1;
+        public long wasmTotalBytes = -1;
+        public long wasmDataBytes = -1;
+        public string wasmFile;
+    }
+
+    [Serializable]
+    public class FileDetail
+    {
+        public string name;
+        public long sizeBytes;
+        public string type;
+    }
+
+    /// <summary>
+    /// 빌드 산출물 전체 검증
+    /// </summary>
+    public static ValidationResult ValidateAll(string projectPath)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        var files = new List<FileDetail>();
+
+        string aitBuildPath = Path.Combine(projectPath, "ait-build");
+        string distWebPath = Path.Combine(aitBuildPath, "dist", "web");
+        string distBuildPath = Path.Combine(distWebPath, "Build");
+
+        // 1. ait-build/ 디렉토리 존재 확인
+        if (!Directory.Exists(aitBuildPath))
+        {
+            errors.Add("ait-build/ directory not found");
+            return BuildResult(false, 0, "unknown", 0, errors, warnings, files);
+        }
+
+        // 2. package.json 존재 확인
+        string packageJsonPath = Path.Combine(aitBuildPath, "package.json");
+        if (!File.Exists(packageJsonPath))
+        {
+            errors.Add("ait-build/package.json not found");
+        }
+
+        // 3. apps-in-toss.config.ts 존재 + 플레이스홀더 확인 (web-framework 3.x ait build가 cosmiconfig로 탐색하는 설정)
+        string appsInTossConfigPath = Path.Combine(aitBuildPath, "apps-in-toss.config.ts");
+        if (File.Exists(appsInTossConfigPath))
+        {
+            string content = File.ReadAllText(appsInTossConfigPath);
+            var placeholders = CheckForPlaceholders(content);
+            if (placeholders.Count > 0)
+            {
+                errors.Add($"apps-in-toss.config.ts has unsubstituted placeholders: {string.Join(", ", placeholders)}");
+            }
+        }
+        else
+        {
+            warnings.Add("apps-in-toss.config.ts not found");
+        }
+
+        // 4. node_modules/ 존재 확인
+        string nodeModulesPath = Path.Combine(aitBuildPath, "node_modules");
+        if (!Directory.Exists(nodeModulesPath))
+        {
+            errors.Add("ait-build/node_modules/ not found (npm install may have failed)");
+        }
+
+        // 5. dist/web/ 존재 확인
+        if (!Directory.Exists(distWebPath))
+        {
+            errors.Add("ait-build/dist/web/ not found");
+            return BuildResult(false, 0, "unknown", 0, errors, warnings, files);
+        }
+
+        // 6. dist/web/Build/ 존재 확인
+        if (!Directory.Exists(distBuildPath))
+        {
+            errors.Add("ait-build/dist/web/Build/ not found");
+            return BuildResult(false, 0, "unknown", 0, errors, warnings, files);
+        }
+
+        // 7. index.html 존재 + 플레이스홀더 확인
+        string indexPath = Path.Combine(distWebPath, "index.html");
+        if (File.Exists(indexPath))
+        {
+            string content = File.ReadAllText(indexPath);
+            var placeholders = CheckForPlaceholders(content);
+            if (placeholders.Count > 0)
+            {
+                errors.Add($"index.html has unsubstituted placeholders: {string.Join(", ", placeholders)}");
+            }
+        }
+        else
+        {
+            errors.Add("dist/web/index.html not found");
+        }
+
+        // 8. 필수 빌드 파일 확인
+        string[] buildFiles = Directory.GetFiles(distBuildPath);
+        bool hasLoader = false;
+        bool hasWasm = false;
+        bool hasData = false;
+        bool hasFramework = false;
+        string compressionFormat = "unknown";
+
+        foreach (string file in buildFiles)
+        {
+            string fileName = Path.GetFileName(file);
+            var info = new FileInfo(file);
+
+            files.Add(new FileDetail
+            {
+                name = fileName,
+                sizeBytes = info.Length,
+                type = DetectFileType(fileName)
+            });
+
+            if (fileName.EndsWith(".loader.js")) hasLoader = true;
+
+            if (fileName.Contains(".wasm"))
+            {
+                hasWasm = true;
+                compressionFormat = DetectCompression(fileName);
+            }
+
+            if (fileName.Contains(".data"))
+            {
+                hasData = true;
+            }
+
+            if (fileName.Contains(".framework.js"))
+            {
+                hasFramework = true;
+            }
+        }
+
+        if (!hasLoader) errors.Add("Missing loader.js in Build/");
+        if (!hasWasm) errors.Add("Missing .wasm file in Build/");
+        if (!hasData) errors.Add("Missing .data file in Build/");
+        if (!hasFramework) errors.Add("Missing .framework.js file in Build/");
+
+        // 9. Build/ 파일 수 검증 — 선별 복사 회귀 감지
+        int expectedMaxFiles = 6; // loader, data, framework, wasm + symbols + 여유 1
+        if (buildFiles.Length > expectedMaxFiles)
+        {
+            warnings.Add($"Build/ contains {buildFiles.Length} files (expected ≤{expectedMaxFiles}). Possible orphaned files from previous builds.");
+        }
+
+        // 허용된 파일 타입만 있는지 검증
+        foreach (var detail in files)
+        {
+            if (detail.type == "other")
+            {
+                warnings.Add($"Unexpected file in Build/: {detail.name}");
+            }
+        }
+
+        // 10. 빌드 크기 계산
+        float buildSizeMB = GetDirectorySizeMB(distWebPath);
+        int fileCount = files.Count;
+
+        bool passed = errors.Count == 0;
+        var result = BuildResult(passed, buildSizeMB, compressionFormat, fileCount, errors, warnings, files);
+
+        // 11. wasm 코드 섹션 크기(진단). 압축 파일은 내장 Node 로 풀어 읽는다. 실패해도 검증 결과는 그대로다.
+        MeasureWasmSections(distBuildPath, buildFiles, result);
+        return result;
+    }
+
+    /// <summary>
+    /// 해제한 wasm 의 code/data 섹션 크기를 result 에 채우고 <c>[AIT-CodeSize] code=&lt;bytes&gt; ...</c> 한 줄을 남긴다.
+    /// 어떤 실패도 던지지 않는다(측정 못 하면 값은 -1, 사유는 경고 로그).
+    /// </summary>
+    private static void MeasureWasmSections(string distBuildPath, string[] buildFiles, ValidationResult result)
+    {
+        try
+        {
+            string wasmPath = null;
+            foreach (string f in buildFiles)
+            {
+                if (DetectFileType(Path.GetFileName(f)) == "wasm") { wasmPath = f; break; }
+            }
+            if (wasmPath == null) return;
+
+            result.wasmFile = Path.GetFileName(wasmPath);
+            if (AITWasmSections.TryMeasureFile(wasmPath, out AITWasmSections.Sizes sizes, out string error))
+            {
+                result.wasmCodeBytes = sizes.codeBytes;
+                result.wasmTotalBytes = sizes.totalBytes;
+                result.wasmDataBytes = sizes.dataBytes;
+                Debug.Log($"[AIT-CodeSize] code={sizes.codeBytes} total={sizes.totalBytes} data={sizes.dataBytes} custom={sizes.customBytes} file={result.wasmFile}");
+            }
+            else
+            {
+                Debug.LogWarning($"[AIT-CodeSize] 측정 실패({result.wasmFile}): {error}");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[AIT-CodeSize] 측정 예외(무시): {e.Message}");
+        }
+    }
+
+    private static ValidationResult BuildResult(bool passed, float buildSizeMB, string compressionFormat,
+        int fileCount, List<string> errors, List<string> warnings, List<FileDetail> files)
+    {
+        return new ValidationResult
+        {
+            passed = passed,
+            buildSizeMB = buildSizeMB,
+            compressionFormat = compressionFormat,
+            fileCount = fileCount,
+            errors = errors.ToArray(),
+            warnings = warnings.ToArray(),
+            files = files.ToArray()
+        };
+    }
+
+    /// <summary>
+    /// 플레이스홀더 패턴 검사
+    /// </summary>
+    public static List<string> CheckForPlaceholders(string content)
+    {
+        var found = new List<string>();
+        var patterns = new[] { @"%UNITY_[A-Z_]+%", @"%AIT_[A-Z_]+%" };
+
+        foreach (var pattern in patterns)
+        {
+            foreach (Match match in Regex.Matches(content, pattern))
+            {
+                if (!found.Contains(match.Value))
+                {
+                    found.Add(match.Value);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static string DetectCompression(string fileName)
+    {
+        if (fileName.EndsWith(".br")) return "brotli";
+        if (fileName.EndsWith(".gz")) return "gzip";
+        if (fileName.EndsWith(".unityweb")) return "unityweb";
+        return "disabled";
+    }
+
+    public static string DetectFileType(string fileName)
+    {
+        if (fileName.Contains(".symbols.json")) return "symbols";
+        if (fileName.Contains(".wasm")) return "wasm";
+        if (fileName.Contains(".data")) return "data";
+        if (fileName.Contains(".framework.js")) return "framework";
+        if (fileName.EndsWith(".loader.js")) return "loader";
+        return "other";
+    }
+
+    private static float GetDirectorySizeMB(string dirPath)
+    {
+        long totalSize = 0;
+        try
+        {
+            foreach (string file in Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories))
+            {
+                totalSize += new FileInfo(file).Length;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[BuildOutputValidator] Failed to calculate directory size: {e.Message}");
+        }
+        return totalSize / (1024f * 1024f);
+    }
+}

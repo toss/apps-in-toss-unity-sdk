@@ -6,6 +6,7 @@ using System.Text;
 using UnityEngine;
 
 // WebGPU PoC 벤치마크. 씬 로드 후 자동 실행되며 결과는 window.__pocBench / localStorage 'pocBenchRuns'에 남는다.
+//   S: 빌드마다 소금(salt)이 달라지는 커스텀 셰이더 변형 40개 첫 표시(기기 셰이더 캐시가 없는 콜드 컴파일)
 //   C: Standard 셰이더 변형 80개 첫 표시(셰이더 컴파일 부담)
 //   A: 드로우콜 N개(머티리얼 인스턴스가 모두 다른 큐브) 250~4000
 //   B: 화면 전체 반투명 쿼드 K겹 4~32
@@ -43,7 +44,7 @@ public class PocBench : MonoBehaviour
 
     const float WarmupMs = 2000f, MeasureMs = 5000f;
     static readonly int[] DrawCalls = { 250, 500, 1000, 2000, 4000 };
-    static readonly int[] Overdraw = { 4, 8, 16, 32 };
+    static readonly int[] Overdraw = { 4, 8, 16, 32, 64, 128, 256 };
 
     readonly Report report = new Report();
     long frameStartTicks;
@@ -121,6 +122,8 @@ public class PocBench : MonoBehaviour
         benchLight.shadows = LightShadows.None;
 
         Publish();
+        int coldCount = Resources.LoadAll<Material>("PocBench/Cold").Length;
+        if (coldCount > 0) yield return RunStage("S" + coldCount, "S", coldCount);
         yield return RunStage("C80", "C", PocBenchVariantCount());
         foreach (var n in DrawCalls) yield return RunStage("A" + n, "A", n);
         foreach (var k in Overdraw) yield return RunStage("B" + k, "B", k);
@@ -244,8 +247,8 @@ public class PocBench : MonoBehaviour
         }
         else
         {
-            // C: 변형 머티리얼마다 구 하나. 첫 표시 때 셰이더 변형이 처음 쓰인다.
-            var mats = Resources.LoadAll<Material>("PocBench/Variants");
+            // S/C: 변형 머티리얼마다 구 하나. 첫 표시 때 셰이더 변형이 처음 쓰인다.
+            var mats = Resources.LoadAll<Material>(group == "S" ? "PocBench/Cold" : "PocBench/Variants");
             var mesh = PrimitiveMesh(PrimitiveType.Sphere);
             int cols = Mathf.CeilToInt(Mathf.Sqrt(mats.Length * aspect));
             int rows = Mathf.CeilToInt(mats.Length / (float)cols);

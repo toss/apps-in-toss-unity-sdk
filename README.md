@@ -35,9 +35,20 @@ Unity 2021.3 이상을 지원하고 Unity 6 LTS 이상을 권장합니다.
 
 광고 연동, 로딩 화면 커스터마이징, Sentry 연동은 포털에서 확인할 수 있고, 기여 가이드는 [저장소 문서](Documentation~/Contributing.md)에 있습니다.
 
+## 릴리스 태그
+
+SDK 릴리스 버전은 `<web-framework 버전>+<N>` 형식입니다(예: `3.10.0+1`). N은 같은 web-framework 버전 안에서 빌드를 구분하는 번호로, 새 web-framework 버전의 첫 빌드가 `+1`입니다. `package.json`의 `version`은 계속 `X.Y.Z`이고 번호 N은 태그 이름과 릴리스 커밋 설명에만 나타납니다.
+
+릴리스 태그는 두 가지입니다.
+
+- 고정 태그 `release/vX.Y.Z+N`: 한 번 만들면 옮기거나 지우지 않는 태그입니다. GitHub Release도 이 태그에만 붙습니다. 정확히 그 빌드에 고정하려면 `#release/vX.Y.Z+N`을 설치 ref로 씁니다.
+- 별칭 태그 `release/vX.Y.Z`: 새 빌드의 Release가 게시되면 그 빌드의 커밋으로 옮겨지는 태그입니다. Release는 붙지 않습니다. `#release/vX.Y.Z`로 설치하면 해당 web-framework 버전의 최신 빌드를 받고 기존 설치 URL도 그대로 동작합니다.
+
+고정 태그는 태그 보호 규칙과 Immutable Releases로 보호되어 삭제나 덮어쓰기가 되지 않습니다.
+
 ## 베타 채널 (파일럿 전용)
 
-`web-framework` 3.0.0 기반 SDK를 미리 테스트하려는 **선택된 파일럿 제휴사**를 위한 옵트인 베타 채널이 있습니다 (`...git#beta`). 일반 서비스 배포에는 stable(`#release/vX.Y.Z`)을 사용하세요. 설치·수동 업데이트·stable 복귀 절차는 [베타 채널 가이드](Documentation~/BetaChannel.md)를 참고하세요.
+`web-framework` 3.0.0 기반 SDK를 미리 테스트하려는 **선택된 파일럿 제휴사**를 위한 옵트인 베타 채널이 있습니다 (`...git#beta`). 일반 서비스 배포에는 stable(`#release/vX.Y.Z`, 최신 빌드를 따라가는 별칭 태그)을 사용하세요. 설치·수동 업데이트·stable 복귀 절차는 [베타 채널 가이드](Documentation~/BetaChannel.md)를 참고하세요.
 
 ## perf 베타 채널 (파일럿 전용)
 

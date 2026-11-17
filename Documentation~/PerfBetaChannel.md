@@ -8,7 +8,7 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
 
 | 항목 | stable | perf 베타 채널 |
 |------|--------|----------------|
-| 설치 ref | `#release/vX.Y.Z` (불변 태그) | `#beta-perf` (이동 브랜치) |
+| 설치 ref | `#release/vX.Y.Z` (별칭 태그) 또는 `#release/vX.Y.Z+N` (고정 태그) | `#beta-perf` (이동 브랜치) |
 | 콜드 로드 최적화 레버 | 없음 | 자동 적용 + 직접 확인해야 하는 레버 |
 | 번들 마킹 | 없음 | `.ait` 헤더와 `window.AITLoading.buildVariant`에 `"perf"` 주입 |
 | 자동 업데이트 프롬프트 | 표시됨 | 표시 안 됨 (수동 관리) |
@@ -94,7 +94,7 @@ WebGL 콜드 로드 시간을 줄이는 실험적 최적화 레버를 미리 적
 
 ## stable 로 복귀
 
-fragment를 불변 stable 태그로 되돌립니다.
+fragment를 stable 태그로 되돌립니다. `#release/vX.Y.Z`는 해당 web-framework 버전의 최신 빌드를 가리키는 별칭이고 특정 빌드에 고정하려면 `#release/vX.Y.Z+N`을 씁니다.
 
 ```json
 "im.toss.apps-in-toss-unity-sdk": "https://github.com/toss/apps-in-toss-unity-sdk.git#release/vX.Y.Z"

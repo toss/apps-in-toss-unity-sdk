@@ -62,6 +62,14 @@ namespace AppsInToss.Editor
                     return handle;
                 }
 
+                // 텍스처 포맷 가드가 WarnOnly/Off면 사용자가 서브타겟 변경을 원하지 않은 것이므로 따른다.
+                var guardMode = AITTextureFormatGuard.ResolveCurrentMode(config, out _);
+                if (guardMode != AITTextureFormatGuardMode.AutoConvert)
+                {
+                    Debug.Log($"[AIT-TextureSubtarget] 텍스처 포맷 가드가 {guardMode} 라 서브타겟 {currentName} 를 그대로 둡니다.");
+                    return handle;
+                }
+
                 if (!ShouldSwitchToAstc(config.webglTextureSubtargetAuto, currentName))
                 {
                     Debug.Log($"[AIT-TextureSubtarget] 프로젝트가 서브타겟 {currentName} 를 직접 지정해 그대로 둡니다.");

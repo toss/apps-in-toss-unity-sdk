@@ -34,6 +34,7 @@ public class SentryReleaseResolverTests
     [TestCase("10.20.30")]
     [TestCase("3.0.0-")]                   // 빈 trailing hyphen → SemVer상 prerelease 식별자 없음 → stable
     [TestCase("2.6.1+build")]              // build metadata만 → stable
+    [TestCase("3.10.0+1")]                 // 릴리스 리비전 → stable
     [TestCase("2.6.1+build-20240101")]     // build metadata 내 hyphen은 무시 → stable
     public void IsPrerelease_StableVersions_ReturnsFalse(string version)
     {
@@ -112,6 +113,20 @@ public class SentryReleaseResolverTests
         Assert.AreEqual(
             "apps-in-toss.unity@3.0.0-beta.9d42c0b",
             AITSentryReleaseResolver.ResolveRelease("3.0.0-beta.9d42c0b", null));
+    }
+
+    [Test]
+    public void ResolveRelease_RevisionVersion_NoOverride_KeepsRevision()
+    {
+        Assert.AreEqual("apps-in-toss.unity@3.10.0+1",
+            AITSentryReleaseResolver.ResolveRelease("3.10.0+1", null));
+    }
+
+    [Test]
+    public void ResolveRelease_NoRevision_Unchanged()
+    {
+        Assert.AreEqual("apps-in-toss.unity@3.10.0",
+            AITSentryReleaseResolver.ResolveRelease("3.10.0", null));
     }
 
     [Test]

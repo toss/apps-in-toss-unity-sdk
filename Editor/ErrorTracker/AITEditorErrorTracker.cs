@@ -129,11 +129,11 @@ namespace AppsInToss.Editor.ErrorTracker
         }
 
         /// <summary>
-        /// 릴리즈 문자열을 반환합니다. (예: "apps-in-toss.unity@2.4.1")
+        /// 릴리즈 문자열을 반환합니다. (예: "apps-in-toss.unity@2.4.1", 리비전이 있으면 "apps-in-toss.unity@2.4.1+2")
         /// </summary>
         internal static string GetRelease()
         {
-            return $"{RELEASE_PREFIX}@{AITVersion.Version}";
+            return $"{RELEASE_PREFIX}@{AITVersion.ReleaseVersion}";
         }
 
         #endregion

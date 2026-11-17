@@ -72,13 +72,13 @@ namespace AppsInToss.Sentry.Editor
             //   - 명시된 SENTRY_ENVIRONMENT / SENTRY_RELEASE env가 있으면 그 값을 우선 사용
             //   - 없으면 SDK 버전(AITVersion.Version)에서 자동 파생:
             //       · prerelease 빌드(예: 3.0.0-beta.x) → environment "beta" (stable triage 오염 방지)
-            //       · release 식별자 → "apps-in-toss.unity@{버전}" (release.yml의 Sentry release 컨벤션과 정합)
+            //       · release 식별자 → "apps-in-toss.unity@{릴리스 버전}" (리비전 빌드는 X.Y.Z+N, release.yml의 Sentry release 컨벤션과 정합)
             //   - stable 빌드는 environment를 설정하지 않아 Sentry 기본값("production")을 그대로 사용 (동작 불변)
             string sdkVersion = AITVersion.Version;
             string environment = AITSentryReleaseResolver.ResolveEnvironment(
                 sdkVersion, Environment.GetEnvironmentVariable("SENTRY_ENVIRONMENT"));
             string release = AITSentryReleaseResolver.ResolveRelease(
-                sdkVersion, Environment.GetEnvironmentVariable("SENTRY_RELEASE"));
+                AITVersion.ReleaseVersion, Environment.GetEnvironmentVariable("SENTRY_RELEASE"));
 
             // release가 비어 있으면(override 없음 + SDK 버전이 unknown) environment/release를 bake할 수 없다.
             // 이 경우 Sentry가 기본값(environment="production", release=Application.version)을 사용하므로,

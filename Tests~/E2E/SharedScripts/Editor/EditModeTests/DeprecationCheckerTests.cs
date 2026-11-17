@@ -703,6 +703,167 @@ public class DeprecationCheckerTests
     }
 
     // =====================================================
+    // 리비전: 정책 값 X.Y.Z / X.Y.Z+N 과 클라이언트 (core, revision) 비교
+    // 맨 X.Y.Z = 그 core의 모든 리비전, X.Y.Z+N = 그 리비전 하나. 리비전을 모르는 클라이언트는 0.
+    // =====================================================
+
+    [Test]
+    public void ParsePolicyVersion_BareAndRevision()
+    {
+        Assert.AreEqual(new Version(3, 10, 0), AITDeprecationChecker.ParsePolicyVersion("3.10.0"));
+        Assert.AreEqual(new Version(3, 10, 0, 2), AITDeprecationChecker.ParsePolicyVersion("3.10.0+2"));
+        Assert.AreEqual(new Version(2, 4, 0, 1), AITDeprecationChecker.ParsePolicyVersion("2.4+1"));
+    }
+
+    [TestCase("3.10.0+")]
+    [TestCase("3.10.0+0")]
+    [TestCase("3.10.0+01")]
+    [TestCase("3.10.0+-1")]
+    [TestCase("3.10.0+x")]
+    [TestCase("3.10.0+1+2")]
+    [TestCase("3.10.0+99999999999")]
+    [TestCase("3.10.0-beta+1")]
+    [TestCase("+1")]
+    public void ParsePolicyVersion_MalformedRevision_Throws(string value)
+    {
+        Assert.Catch<Exception>(() => AITDeprecationChecker.ParsePolicyVersion(value));
+    }
+
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"3.10.0+2\"}", "3.10.0+2")]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"3.10.0\"}", "3.10.0")]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"10.0.0+1\"}", "10.0.0+1")] // MaxReasonable은 core만 본다
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"3.10.0+0\"}", null)]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"3.10.0+abc\"}", null)]
+    [TestCase("{\"schemaVersion\":1,\"minVersion\":\"11.0.0+1\"}", null)]
+    public void ParseMinVersionFromJson_RevisionValues(string json, string expected)
+    {
+        var actual = AITDeprecationChecker.ParseMinVersionFromJson(json);
+        Assert.AreEqual(expected == null ? null : AITDeprecationChecker.ParsePolicyVersion(expected), actual);
+    }
+
+    [TestCase("3.1.0+2", "3.1.0+2")]
+    [TestCase("3.1.0+x", null)]
+    [TestCase("3.1.0+0", null)]
+    [TestCase("99.0.0+1", null)]
+    public void ParseRecommendedVersionFromJson_RevisionValues(string value, string expected)
+    {
+        string json = "{\"schemaVersion\":1,\"minVersion\":\"2.4.0\",\"recommendedVersion\":\"" + value + "\"}";
+        var actual = AITDeprecationChecker.ParseRecommendedVersionFromJson(json);
+        Assert.AreEqual(expected == null ? null : AITDeprecationChecker.ParsePolicyVersion(expected), actual);
+    }
+
+    // client, min, expectedDeprecated. client는 SDK가 만드는 형태(리비전 0이면 3-part)와 같다.
+    [TestCase("3.10.0", "3.10.0", false)]     // 맨 값: 같은 core는 모든 리비전 허용
+    [TestCase("3.10.0+1", "3.10.0", false)]
+    [TestCase("3.10.0+7", "3.10.0", false)]
+    [TestCase("3.9.9+5", "3.10.0", true)]
+    [TestCase("3.10.0", "3.10.0+1", true)]    // 리비전을 모르는 클라이언트는 0 < 1
+    [TestCase("3.10.0+1", "3.10.0+2", true)]  // 같은 core, 낮은 리비전
+    [TestCase("3.10.0+2", "3.10.0+2", false)]
+    [TestCase("3.10.0+3", "3.10.0+2", false)]
+    [TestCase("3.10.1", "3.10.0+9", false)]   // 더 높은 core는 리비전과 무관
+    [TestCase("3.9.9+9", "3.10.0+1", true)]
+    public void ClientVersionVsPolicy_MinVersion(string client, string min, bool expectedDeprecated)
+    {
+        var current = AITDeprecationChecker.ParsePolicyVersion(client);
+        var minVersion = AITDeprecationChecker.ParsePolicyVersion(min);
+        Assert.AreEqual(expectedDeprecated, current < minVersion);
+    }
+
+    [TestCase("3.10.0", false, "Warn")]       // 권장이 +2면 리비전 0은 권장 대상
+    [TestCase("3.10.0+1", false, "Warn")]
+    [TestCase("3.10.0+1", true, "Block")]
+    [TestCase("3.10.0+2", true, "None")]
+    [TestCase("3.10.0+3", true, "None")]
+    [TestCase("3.10.1", true, "None")]
+    [TestCase("3.9.0+4", false, "Warn")]
+    public void EvaluateRecommendation_RevisionRecommended(string client, bool enforce, string expected)
+    {
+        Assert.AreEqual(expected, AITDeprecationChecker.EvaluateRecommendation(
+            AITDeprecationChecker.ParsePolicyVersion(client),
+            new Version(2, 4, 0),
+            AITDeprecationChecker.ParsePolicyVersion("3.10.0+2"),
+            enforce).ToString());
+    }
+
+    [Test]
+    public void EvaluateRecommendation_BareRecommended_AcceptsEveryRevisionOfThatCore()
+    {
+        var recommended = AITDeprecationChecker.ParsePolicyVersion("3.10.0");
+        foreach (var client in new[] { "3.10.0", "3.10.0+1", "3.10.0+5" })
+        {
+            Assert.AreEqual(AITDeprecationChecker.RecommendationLevel.None,
+                AITDeprecationChecker.EvaluateRecommendation(
+                    AITDeprecationChecker.ParsePolicyVersion(client), new Version(2, 4, 0), recommended, true),
+                client);
+        }
+    }
+
+    [TestCase("release/v3.10.0", true)]   // 별칭은 가장 새 리비전을 가리키므로 core만 비교
+    [TestCase("release/v3.11.0", true)]
+    [TestCase("release/v3.9.9", false)]
+    [TestCase("release/v3.10.0+2", false)] // 불변 태그는 업그레이드 대상이 아니다
+    [TestCase("release/v3.11.0+1", false)]
+    public void IsRecommendationTarget_RevisionRecommended_UsesAliasCore(string tag, bool expected)
+    {
+        Assert.AreEqual(expected, AITDeprecationChecker.IsRecommendationTarget(
+            tag, AITDeprecationChecker.ParsePolicyVersion("3.10.0+2")));
+    }
+
+    [Test]
+    public void ParseLatestTag_IgnoresRevisionTags_AndPicksAlias()
+    {
+        string input =
+            "a1\trefs/tags/release/v3.10.0\n" +
+            "a2\trefs/tags/release/v3.10.0+1\n" +
+            "a3\trefs/tags/release/v3.10.0+2\n" +
+            "a4\trefs/tags/release/v3.9.0\n";
+        Assert.AreEqual("release/v3.10.0",
+            AITDeprecationChecker.ParseLatestTag(input, new Version(2, 0, 0)));
+    }
+
+    [Test]
+    public void ParseLatestTag_OnlyRevisionTags_ReturnsNull()
+    {
+        string input =
+            "a1\trefs/tags/release/v3.10.0+1\n" +
+            "a2\trefs/tags/release/v3.10.0+1^{}\n" +
+            "a3\trefs/tags/release/v3.11.0+12\n";
+        Assert.IsNull(AITDeprecationChecker.ParseLatestTag(input, new Version(2, 0, 0)));
+    }
+
+    [Test]
+    public void ParseLatestTag_HigherRevisionTagDoesNotBeatHigherAlias()
+    {
+        string input =
+            "a1\trefs/tags/release/v3.11.0+30\n" +
+            "a2\trefs/tags/release/v3.10.0\n" +
+            "a3\trefs/tags/release/v3.11.0\n";
+        Assert.AreEqual("release/v3.11.0",
+            AITDeprecationChecker.ParseLatestTag(input, new Version(2, 0, 0)));
+    }
+
+    [Test]
+    public void ParseLatestTag_MinVersionWithRevision_FiltersByCore()
+    {
+        string input = "a1\trefs/tags/release/v3.10.0\n";
+        // 별칭 v3.10.0은 +2 이상일 수 있으므로 core가 같으면 후보로 남는다.
+        Assert.AreEqual("release/v3.10.0",
+            AITDeprecationChecker.ParseLatestTag(input, new Version(3, 10, 0, 2)));
+        Assert.IsNull(AITDeprecationChecker.ParseLatestTag(input, new Version(3, 11, 0, 1)));
+    }
+
+    [Test]
+    public void BuildMessages_ShowRevisionAsPlusN()
+    {
+        var current = AITDeprecationChecker.ParsePolicyVersion("3.10.0+1");
+        var recommended = AITDeprecationChecker.ParsePolicyVersion("3.10.0+2");
+        StringAssert.Contains("v3.10.0+1", AITDeprecationChecker.BuildRecommendationMessage(current, recommended));
+        StringAssert.Contains("v3.10.0+2", AITDeprecationChecker.BuildBlockMessage(current, recommended));
+        StringAssert.Contains("v3.10.0+2", AITDeprecationChecker.BuildManualUpdateGuide(recommended));
+    }
+
+    // =====================================================
     // ResetCache / SetMinVersionForTesting: 내부 API 존재 확인
     // =====================================================
 

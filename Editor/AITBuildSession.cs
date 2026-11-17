@@ -279,7 +279,7 @@ namespace AppsInToss.Editor
                     s.sessionId = System.Guid.NewGuid().ToString("N");
                     s.startedAtUnixSec = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     s.unityVersion = Application.unityVersion;
-                    s.sdkVersion = AppsInToss.AITVersion.Version;
+                    s.sdkVersion = AppsInToss.AITVersion.ReleaseVersion;
                     s.playerSettings = default;
                     s.childPids.Clear();
                     s.stage = BuildStage.Preparing;
@@ -410,7 +410,7 @@ namespace AppsInToss.Editor
             long now = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (now - session.startedAtUnixSec > StaleThresholdSec) return true;
             if (session.unityVersion != Application.unityVersion) return true;
-            if (session.sdkVersion != AppsInToss.AITVersion.Version) return true;
+            if (session.sdkVersion != AppsInToss.AITVersion.ReleaseVersion) return true;
             return false;
         }
 

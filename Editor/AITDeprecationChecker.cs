@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Diagnostics;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -30,7 +31,7 @@ namespace AppsInToss.Editor
         private const int GIT_TIMEOUT_MS = 10000;
         private const int SUPPORTED_SCHEMA_VERSION = 1;
 
-        // 동적으로 가져온 minVersion이 이 값을 초과하면 무시합니다.
+        // 동적으로 가져온 minVersion이 이 값을 초과하면 무시합니다(리비전은 보지 않고 core만 비교).
         // 손상된 정책 파일이 모든 사용자를 차단하는 것을 방지합니다.
         private static readonly Version MaxReasonableMinVersion = new Version(10, 0, 0);
 
@@ -139,7 +140,7 @@ namespace AppsInToss.Editor
                 _cachedMinVersion = FallbackDeprecationThreshold;
             }
 
-            Debug.Log($"[AIT] SDK 최소 버전 정책: v{_cachedMinVersion}");
+            Debug.Log($"[AIT] SDK 최소 버전 정책: v{FormatVersion(_cachedMinVersion)}");
             return _cachedMinVersion;
         }
 
@@ -209,12 +210,12 @@ namespace AppsInToss.Editor
 
             try
             {
-                var version = NormalizeVersion(new Version(policy.minVersion));
+                var version = ParsePolicyVersion(policy.minVersion);
 
                 // 비정상적으로 높은 minVersion은 정책 파일 손상으로 간주
-                if (version > MaxReasonableMinVersion)
+                if (CoreOf(version) > MaxReasonableMinVersion)
                 {
-                    Debug.LogWarning($"[AIT] minVersion {version}이 비정상적으로 높습니다. 폴백 사용.");
+                    Debug.LogWarning($"[AIT] minVersion {FormatVersion(version)}이 비정상적으로 높습니다. 폴백 사용.");
                     return null;
                 }
 
@@ -255,10 +256,10 @@ namespace AppsInToss.Editor
 
             try
             {
-                var version = NormalizeVersion(new Version(policy.recommendedVersion));
-                if (version > MaxReasonableMinVersion)
+                var version = ParsePolicyVersion(policy.recommendedVersion);
+                if (CoreOf(version) > MaxReasonableMinVersion)
                 {
-                    Debug.LogWarning($"[AIT] recommendedVersion {version}이 비정상적으로 높습니다. 무시합니다.");
+                    Debug.LogWarning($"[AIT] recommendedVersion {FormatVersion(version)}이 비정상적으로 높습니다. 무시합니다.");
                     return null;
                 }
 
@@ -312,6 +313,55 @@ namespace AppsInToss.Editor
             }
 
             return version;
+        }
+
+        /// <summary>
+        /// 정책 값("X.Y.Z" 또는 "X.Y.Z+N")을 비교용 Version으로 바꿉니다. 형식이 틀리면 예외를 던집니다.
+        /// 리비전은 System.Version의 네 번째 자리(Revision)에 담습니다.
+        ///   "X.Y.Z"   → 3-part: 그 core의 모든 리비전을 뜻합니다(리비전 0과 같게 비교됨).
+        ///   "X.Y.Z+N" → 4-part(N >= 1): 그 리비전 하나를 뜻합니다.
+        /// 클라이언트는 <see cref="GetCurrentVersion"/>으로 같은 형태로 만들어 비교하므로
+        /// 리비전을 알 수 없는 클라이언트(0)는 어떤 +N보다 낮습니다.
+        /// </summary>
+        internal static Version ParsePolicyVersion(string value)
+        {
+            int plus = value.IndexOf('+');
+            if (plus < 0) return NormalizeVersion(new Version(value));
+
+            var core = NormalizeVersion(new Version(value.Substring(0, plus)));
+            string revisionPart = value.Substring(plus + 1);
+            if (!Regex.IsMatch(revisionPart, @"^[1-9][0-9]*\z")
+                || !int.TryParse(revisionPart, NumberStyles.None, CultureInfo.InvariantCulture, out int revision))
+            {
+                throw new FormatException($"잘못된 리비전: {value}");
+            }
+
+            return new Version(core.Major, core.Minor, core.Build, revision);
+        }
+
+        /// <summary>리비전을 뗀 3-part core 버전입니다.</summary>
+        private static Version CoreOf(Version version)
+        {
+            return new Version(version.Major, version.Minor, Math.Max(version.Build, 0));
+        }
+
+        /// <summary>표시용 문자열입니다. 리비전이 있으면 "X.Y.Z+N", 없으면 "X.Y.Z"입니다.</summary>
+        private static string FormatVersion(Version version)
+        {
+            return version.Revision > 0 ? $"{CoreOf(version)}+{version.Revision}" : version.ToString();
+        }
+
+        /// <summary>
+        /// 설치된 SDK의 core 버전과 리비전을 정책 값과 같은 형태로 만듭니다.
+        /// 리비전이 없으면(0) 3-part core 그대로입니다. core를 파싱할 수 없으면 예외를 던집니다.
+        /// </summary>
+        private static Version GetCurrentVersion()
+        {
+            var core = new Version(AITVersion.Version);
+            int revision = AITVersion.Revision;
+            return revision > 0
+                ? new Version(core.Major, core.Minor, Math.Max(core.Build, 0), revision)
+                : core;
         }
 
         [Serializable]
@@ -368,7 +418,7 @@ namespace AppsInToss.Editor
 
             try
             {
-                var current = new Version(versionStr);
+                var current = GetCurrentVersion();
                 var minVersion = GetMinVersionCached();
                 return current < minVersion;
             }
@@ -424,7 +474,7 @@ namespace AppsInToss.Editor
             {
                 var minVersion = GetMinVersionCached();
                 return EvaluateRecommendation(
-                    new Version(versionStr), minVersion, _cachedRecommendedVersion, _cachedEnforceRecommended);
+                    GetCurrentVersion(), minVersion, _cachedRecommendedVersion, _cachedEnforceRecommended);
             }
             catch (Exception)
             {
@@ -441,7 +491,8 @@ namespace AppsInToss.Editor
             if (string.IsNullOrEmpty(tag) || recommendedVersion == null) return false;
 
             var match = Regex.Match(tag, @"^release/v(\d+\.\d+\.\d+)$");
-            return match.Success && new Version(match.Groups[1].Value) >= recommendedVersion;
+            // 태그는 가장 새 리비전을 가리키는 별칭이라 리비전은 비교하지 않고 core만 봅니다.
+            return match.Success && new Version(match.Groups[1].Value) >= CoreOf(recommendedVersion);
         }
 
         /// <summary>
@@ -466,8 +517,8 @@ namespace AppsInToss.Editor
         internal static string BuildRecommendationMessage(Version current, Version recommendedVersion)
         {
             return
-                $"현재 사용 중인 Apps in Toss Unity SDK v{current}보다 새로운 " +
-                $"v{recommendedVersion} 이상으로 업데이트를 권장합니다.\n\n" +
+                $"현재 사용 중인 Apps in Toss Unity SDK v{FormatVersion(current)}보다 새로운 " +
+                $"v{FormatVersion(recommendedVersion)} 이상으로 업데이트를 권장합니다.\n\n" +
                 "지금 버전으로도 빌드와 배포는 계속할 수 있습니다." +
                 BuildLegacyOriginNote(current, recommendedVersion);
         }
@@ -478,9 +529,9 @@ namespace AppsInToss.Editor
         internal static string BuildBlockMessage(Version current, Version recommendedVersion)
         {
             return
-                $"현재 사용 중인 Apps in Toss Unity SDK v{current}는 " +
-                $"v{recommendedVersion} 미만이라 빌드와 배포가 차단됩니다.\n\n" +
-                $"v{recommendedVersion} 이상으로 업데이트해 주세요." +
+                $"현재 사용 중인 Apps in Toss Unity SDK v{FormatVersion(current)}는 " +
+                $"v{FormatVersion(recommendedVersion)} 미만이라 빌드와 배포가 차단됩니다.\n\n" +
+                $"v{FormatVersion(recommendedVersion)} 이상으로 업데이트해 주세요." +
                 BuildLegacyOriginNote(current, recommendedVersion);
         }
 
@@ -491,7 +542,7 @@ namespace AppsInToss.Editor
         {
             return
                 "업데이트할 최신 버전을 자동으로 찾지 못했습니다.\n" +
-                $"Package Manager에서 SDK를 v{recommendedVersion} 이상으로 직접 업데이트해 주세요.";
+                $"Package Manager에서 SDK를 v{FormatVersion(recommendedVersion)} 이상으로 직접 업데이트해 주세요.";
         }
 
         /// <summary>
@@ -523,7 +574,7 @@ namespace AppsInToss.Editor
             // 차단은 유지합니다. 업그레이드가 실패해도 이 플래그는 리셋되지 않기 때문입니다.
             if (level == RecommendationLevel.Warn && _upgradeInProgress) return false;
 
-            var current = new Version(AITVersion.Version);
+            var current = GetCurrentVersion();
             var recommended = _cachedRecommendedVersion;
 
             // batch 모드의 DisplayDialog는 응답 없이 곧장 반환하므로 대화도 업그레이드도 하지 않습니다.
@@ -602,8 +653,8 @@ namespace AppsInToss.Editor
                 "SDK 지원 종료 안내",
                 $"현재 사용 중인 Apps in Toss Unity SDK v{AITVersion.Version}은 " +
                 "지원이 종료되었습니다.\n\n" +
-                $"SDK v{minVersion} 미만 버전으로는 더 이상 빌드 및 배포가 불가능합니다.\n" +
-                $"앱인토스 콘솔에서도 v{minVersion} 미만 번들은 거부됩니다.\n\n" +
+                $"SDK v{FormatVersion(minVersion)} 미만 버전으로는 더 이상 빌드 및 배포가 불가능합니다.\n" +
+                $"앱인토스 콘솔에서도 v{FormatVersion(minVersion)} 미만 번들은 거부됩니다.\n\n" +
                 $"SDK {latestVersion}으로 업그레이드해 주세요.",
                 $"{latestVersion}으로 업데이트",
                 "닫기"
@@ -670,7 +721,7 @@ namespace AppsInToss.Editor
             var level = GetRecommendationLevel();
             if (level == RecommendationLevel.None) return;
 
-            var current = new Version(AITVersion.Version);
+            var current = GetCurrentVersion();
             var recommended = _cachedRecommendedVersion;
             bool block = level == RecommendationLevel.Block;
 
@@ -744,7 +795,7 @@ namespace AppsInToss.Editor
             // AITAutoUpdater의 업데이트 다이얼로그와 중복 표시 방지
             SessionState.SetBool(AUTO_UPDATE_SESSION_KEY, true);
 
-            var current = new Version(AITVersion.Version);
+            var current = GetCurrentVersion();
             string latestVersion = GetLatestVersionDisplay();
             bool block = GetRecommendationLevel() == RecommendationLevel.Block;
             bool shouldUpdate = EditorUtility.DisplayDialog(
@@ -837,6 +888,9 @@ namespace AppsInToss.Editor
         {
             Version bestVersion = null;
             string bestTag = null;
+            // 업그레이드 대상은 태그 별칭(리비전 없는 core)이라 core끼리만 비교합니다.
+            // release/vX.Y.Z+N 같은 불변 태그는 아래 정규식이 받지 않아 무시됩니다.
+            var minCore = minVersion == null ? null : CoreOf(minVersion);
 
             foreach (string line in output.Split('\n'))
             {
@@ -858,7 +912,7 @@ namespace AppsInToss.Editor
                 try
                 {
                     var version = new Version(versionStr);
-                    if (version < minVersion) continue;
+                    if (version < minCore) continue;
                     if (bestVersion == null || version > bestVersion)
                     {
                         bestVersion = version;

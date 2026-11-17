@@ -341,7 +341,9 @@ jobs:
       sdk-version-override: ${{ inputs.sdk_version_override || '' }}
       test-level: ${{ inputs.test_level || '2' }}
       debug-runner: ${{ inputs.debug_runner || false }}
-      # 2 = Brotli. fast-build(dev build)는 유지해 빌드 시간을 줄이고 압축 포맷만 덮어쓴다.
+      # 2 = Brotli. Development 빌드는 압축 설정과 무관하게 비압축 산출물을 내므로(6000.3 실측)
+      # fast-build를 끄고 배포와 같은 Release 빌드로 만든다.
+      fast-build: false
       compression-format: '2'
       artifact-suffix: '-brotli-fallback'
     secrets:

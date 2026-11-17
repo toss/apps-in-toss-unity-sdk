@@ -127,10 +127,11 @@ jobs:
             exit 0
           fi
 
-          # 배포 제외 버전(denylist) 검사 — 건너뛴 버전의 실수 재배포 방지 (core 기준)
+          # 배포 제외 버전(denylist) 검사 — 건너뛴 버전의 실수 재배포 방지
+          # 맨 버전(X.Y.Z)은 그 core 의 모든 리비전을, X.Y.Z+N 은 그 리비전 하나를 막는다
           DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' sdk-policy.json)
           for DENIED in $DENIED_VERSIONS; do
-            if [ "$CORE" = "$DENIED" ] || [[ "$CORE" == "$DENIED"-* ]]; then
+            if [ "$VERSION" = "$DENIED" ] || [ "$CORE" = "$DENIED" ] || [[ "$CORE" == "$DENIED"-* ]]; then
               echo "::error::배포가 제외된 버전입니다: ${VERSION} (거부 목록: ${DENIED})"
               exit 1
             fi

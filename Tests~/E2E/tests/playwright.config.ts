@@ -8,9 +8,16 @@ const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
 // 값 검증은 lib/shard.js가 한다.
 const isPlayerPrefsShard = (process.env.AIT_E2E_SHARD || '').startsWith('playerprefs-');
 
+// brotli-fallback 샤드는 Brotli 빌드 전용 spec 하나만 돌린다. 다른 샤드와 로컬 전체 실행에서는
+// 이 spec을 뺀다(압축을 끈 빌드에서는 전제가 성립하지 않는다).
+const isBrotliFallbackShard = (process.env.AIT_E2E_SHARD || '') === 'brotli-fallback';
+
 export default defineConfig({
   testDir: './',
   ...(isPlayerPrefsShard ? { testMatch: ['e2e-full-pipeline.test.js'] } : {}),
+  ...(isBrotliFallbackShard
+    ? { testMatch: ['brotli-fallback.test.js'] }
+    : { testIgnore: ['brotli-fallback.test.js', '**/node_modules/**'] }),
   timeout: 300000, // 5분 (Unity 로딩 포함)
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

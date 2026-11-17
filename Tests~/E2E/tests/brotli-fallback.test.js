@@ -35,7 +35,8 @@ function listUnityWebFiles() {
  * @param {import('@playwright/test').Browser} browser
  * @param {number} port
  */
-async function bootAndCollect(browser, port) {
+// host: 정적 서버는 127.0.0.1에 바인딩하고, vite preview는 localhost(IPv6일 수 있음)에 바인딩한다.
+async function bootAndCollect(browser, port, host = '127.0.0.1') {
   const context = await browser.newContext();
   const page = await context.newPage();
   /** @type {{ url: string, status: number, encoding: string | undefined, head: Buffer | null }[]} */
@@ -64,7 +65,7 @@ async function bootAndCollect(browser, port) {
     }
   });
 
-  const response = await page.goto(`http://127.0.0.1:${port}/?e2e=true`, { waitUntil: 'networkidle', timeout: 120000 });
+  const response = await page.goto(`http://${host}:${port}/?e2e=true`, { waitUntil: 'networkidle', timeout: 120000 });
   expect(response?.status()).toBe(200);
   await page.waitForFunction(() => window['unityInstance'] !== undefined, { timeout: 180000 });
 
@@ -136,7 +137,7 @@ test.describe.serial('Brotli + Decompression Fallback', () => {
     test.setTimeout(420000);
     const prod = await startProductionServer(AIT_BUILD, SERVER_PORT);
     try {
-      const { buildResponses, errors, results } = await bootAndCollect(browser, prod.port);
+      const { buildResponses, errors, results } = await bootAndCollect(browser, prod.port, 'localhost');
 
       expect(buildResponses.length, '.unityweb 요청이 있어야 한다').toBeGreaterThanOrEqual(3);
       for (const r of buildResponses) {

@@ -304,6 +304,97 @@ test.describe('AudioContext interrupted 복구', () => {
   });
 });
 
+/** 브라우저가 건 pause 를 흉내 낸다: pause() 호출 없이 paused 가 되고 pause 이벤트만 온다. */
+const browserPause = (page) => page.evaluate(() => {
+  const w = /** @type {any} */ (window);
+  w.__paused = true;
+  w.__el.dispatchEvent(new Event('pause'));
+});
+
+test.describe('브라우저가 멈춘 미디어 복구', () => {
+  test('pause() 호출 없이 멈춘 미디어를 다음 클릭에서 다시 재생한다', async ({ page }) => {
+    await openSynthetic(page);
+    await addPlayingAudio(page);
+
+    await browserPause(page);
+    let s = await audioState(page);
+    expect(s.browserPausedMedia).toBe(1);
+    expect(await mediaCalls(page)).toEqual({ play: 0, pause: 0 });
+
+    await page.evaluate(() => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    s = await audioState(page);
+    expect(s.browserPausedMedia).toBe(0);
+    expect(await mediaCalls(page)).toEqual({ play: 1, pause: 0 });
+    expect(s.audioLog.map((e) => e.ev).filter((ev) => ev.startsWith('media'))).toEqual(['mediaPaused', 'mediaRecover']);
+  });
+
+  test('recover() 는 브라우저가 멈춘 미디어를 바로 다시 재생하고 개수를 돌려준다', async ({ page }) => {
+    await openSynthetic(page);
+    await addPlayingAudio(page);
+    await browserPause(page);
+
+    expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.recover('ad'))).toBe(1);
+    expect(await mediaCalls(page)).toEqual({ play: 1, pause: 0 });
+    expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.recover('ad'))).toBe(0);
+  });
+
+  test('게임이 pause() 로 멈춘 미디어는 다시 재생하지 않는다', async ({ page }) => {
+    await openSynthetic(page);
+    await addPlayingAudio(page);
+    await page.evaluate(() => {
+      const w = /** @type {any} */ (window);
+      w.__el.pause(); // 래핑된 pause → 게임 소유
+      w.__paused = true;
+      w.__el.dispatchEvent(new Event('pause'));
+    });
+
+    expect((await audioState(page)).browserPausedMedia).toBe(0);
+    await page.evaluate(() => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.recover())).toBe(0);
+    expect(await mediaCalls(page)).toMatchObject({ play: 0 });
+  });
+
+  test('브라우저가 멈춘 뒤 게임이 직접 다시 재생했거나 재생이 끝난 미디어는 건드리지 않는다', async ({ page }) => {
+    await openSynthetic(page);
+    await addPlayingAudio(page);
+    await browserPause(page);
+    await page.evaluate(() => { const w = /** @type {any} */ (window); w.__el.play(); w.__paused = false; });
+    expect((await audioState(page)).browserPausedMedia).toBe(0);
+
+    await browserPause(page);
+    await page.evaluate(() => /** @type {any} */ (window).__el.dispatchEvent(new Event('ended')));
+    expect((await audioState(page)).browserPausedMedia).toBe(0);
+    expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.recover())).toBe(0);
+    expect(await mediaCalls(page)).toEqual({ play: 1, pause: 0 });
+  });
+
+  test('hidden 때문에 우리가 멈춘 미디어는 복귀 때 한 번만 재생한다', async ({ page }) => {
+    await openSynthetic(page);
+    await addPlayingAudio(page);
+    await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
+    await browserPause(page); // 우리가 부른 pause 가 낸 이벤트
+    expect((await audioState(page)).browserPausedMedia).toBe(0);
+
+    await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
+    expect(await mediaCalls(page)).toEqual({ play: 1, pause: 1 });
+  });
+
+  test('브라우저가 멈춘 미디어는 visible 복귀에서도 다시 재생한다', async ({ page }) => {
+    await openSynthetic(page);
+    await addPlayingAudio(page);
+    await browserPause(page);
+    await page.evaluate(() => /** @type {any} */ (window).__setHidden(true));
+    await page.evaluate(() => /** @type {any} */ (window).__setHidden(false));
+    expect(await mediaCalls(page)).toEqual({ play: 1, pause: 0 });
+    expect((await audioState(page)).browserPausedMedia).toBe(0);
+  });
+
+  test('레이어를 끄면 recover() 는 아무것도 하지 않는다', async ({ page }) => {
+    await openSynthetic(page, { query: '?aitaudio=0' });
+    expect(await page.evaluate(() => /** @type {any} */ (window).AITAudio.recover())).toBe(0);
+  });
+});
+
 test.describe('hidden / visible 전이', () => {
   test('hidden 에서 running context 를 suspend 하고 미디어를 pause, visible 에서 우리가 멈춘 것만 재개한다', async ({ page }) => {
     await openSynthetic(page);

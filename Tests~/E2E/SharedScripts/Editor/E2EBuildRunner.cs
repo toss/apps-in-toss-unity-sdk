@@ -181,6 +181,9 @@ public class E2EBuildRunner
         config.viteHost = GetEnvString("AIT_VITE_HOST", "localhost");
         config.vitePort = GetEnvInt("AIT_VITE_PORT", 5173 + portOffset);
         Debug.Log($"✓ Server config: Vite={config.viteHost}:{config.vitePort}");
+        // perf E2E(wasm 스트리밍·CE 네이티브 서빙·data 재포장)는 .br 산출물(fallback OFF) 전제라 기본 0 으로 고정한다.
+        // SDK 기본값(자동=켬, .unityweb)을 태우려면 AIT_E2E_DECOMPRESSION_FALLBACK=-1 로 지정한다.
+        config.decompressionFallback = GetEnvInt("AIT_E2E_DECOMPRESSION_FALLBACK", 0);
         // 권한 전체 활성화 - apps-in-toss.config.ts / bundle.json 의 permissions 배열 생성 경로를 E2E에서 태운다.
         // AITConfig.asset은 추적하지 않으므로(루트 .gitignore) fresh clone에서는 기본값(전부 false)으로
         // 생성된다. 여기서 코드로 지정해야 산출물이 픽스처 유무와 무관하게 동일해진다.

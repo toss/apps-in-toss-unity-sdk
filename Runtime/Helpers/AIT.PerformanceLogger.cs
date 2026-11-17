@@ -199,9 +199,9 @@ namespace AppsInToss
         /// 로그 페이로드({log_name, log_type, params} 와이어 모양)를 JSON 문자열로 만든다.
         /// </summary>
         /// <remarks>
-        /// 부팅 첫 씬의 scene_loaded 로그는 첫 프레임 전에 나간다. 여기서 Newtonsoft 를 처음 쓰면
-        /// 리플렉션으로 계약을 만드는 비용이 그대로 TTFF 에 얹히므로(6000.3 CPU 4x 기준 약 87ms)
-        /// 이 로거가 쓰는 값 형식은 직접 쓴다. 모르는 형식이 섞이면 Newtonsoft 로 넘긴다.
+        /// 부팅 첫 씬의 scene_loaded 로그는 첫 프레임 전에 나간다. 여기서 범용 JSON 직렬화를 처음 쓰면
+        /// 그 초기화 비용이 그대로 TTFF 에 얹히므로(Newtonsoft 시절 6000.3 CPU 4x 기준 약 87ms)
+        /// 이 로거가 쓰는 값 형식은 직접 쓴다. 모르는 형식이 섞이면 AITJsonSettings.Serialize 로 넘긴다.
         /// </remarks>
         internal static string BuildLogJson(string logName, Dictionary<string, object> parameters)
         {
@@ -268,7 +268,7 @@ namespace AppsInToss
             }
         }
 
-        // Newtonsoft 와 같게 정수로 떨어지는 실수에도 소수점을 남긴다(1 -> 1.0).
+        // AITJsonSettings.Serialize(이전 Newtonsoft 출력과 동일)와 같게 정수로 떨어지는 실수에도 소수점을 남긴다(1 -> 1.0).
         private static void AppendJsonFloat(StringBuilder sb, string text)
         {
             sb.Append(text);

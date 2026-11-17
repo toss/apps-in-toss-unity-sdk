@@ -3,7 +3,7 @@
 // Level 0: AssetDatabase 비의존 순수 헬퍼 함수 EditMode 테스트
 //   - EffectiveFirstInteractiveLog: null/tri-state 해석 (fail-open 포함)
 //   - ShouldEmitFirstInteractive: alreadySent, 프록시 씬 접두, null/빈 씬명, Ordinal 대소문자
-//   - BuildLogJson: 직접 쓴 JSON 이 Newtonsoft 직렬화 결과와 같은지 대조
+//   - BuildLogJson: 직접 쓴 JSON 이 AITJsonSettings.Serialize(이전 Newtonsoft 출력과 동일) 결과와 같은지 대조
 // -----------------------------------------------------------------------
 
 using System.Collections.Generic;
@@ -133,8 +133,8 @@ public class AITFirstInteractiveLogTests
     }
 
     // =====================================================
-    // 8) BuildLogJson — Newtonsoft 직렬화와 같은 문자열
-    //    (첫 프레임 전에 Newtonsoft 를 깨우지 않으려고 직접 쓰므로 형식이 어긋나면 안 됨)
+    // 8) BuildLogJson — AITJsonSettings.Serialize 와 같은 문자열
+    //    (첫 프레임 전에 범용 직렬화를 깨우지 않으려고 직접 쓰므로 형식이 어긋나면 안 됨)
     // =====================================================
 
     private static string SerializeWithNewtonsoft(string logName, Dictionary<string, object> parameters)

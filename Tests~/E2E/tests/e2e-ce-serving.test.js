@@ -96,10 +96,20 @@ function isPortAvailable(port) {
   });
 }
 
+// 포트가 비었는지: 127.0.0.1 바인드가 되고, 127.0.0.1/::1 어느 쪽으로도 연결이 안 돼야 한다.
+// 바인드 검사만 하면 이전 vite preview 가 ::1 에만 리슨하고 있을 때(localhost → ::1) 비었다고 오판한다.
+async function isPortFree(port) {
+  if (!(await isPortAvailable(port))) return false;
+  for (const host of ['127.0.0.1', '::1']) {
+    if (await tryConnect(port, host)) return false;
+  }
+  return true;
+}
+
 async function waitForPortRelease(port, timeoutMs = 10000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await isPortAvailable(port)) {
+    if (await isPortFree(port)) {
       return true;
     }
     await new Promise((r) => setTimeout(r, 200));
@@ -132,23 +142,72 @@ async function waitForPortListening(port, timeoutMs = 90000) {
   throw new Error(`vite preview가 ${timeoutMs}ms 내에 포트 ${port}를 열지 않음`);
 }
 
-// vite preview 기동 — ait-build/vite.config.ts의 unityWebContentEncodingPlugin이
-// configurePreviewServer 훅으로 CE/Content-Type 미들웨어를 등록한다.
-async function startPreviewServer() {
-  const isWindows = process.platform === 'win32';
+function killPortListeners(port) {
   try {
-    if (isWindows) {
-      execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${SERVER_PORT} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
+    if (process.platform === 'win32') {
+      execSync(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a 2>nul`, { stdio: 'ignore', shell: true });
     } else {
-      execSync(`lsof -ti:${SERVER_PORT} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      execSync(`lsof -ti tcp:${port} -sTCP:LISTEN | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
     }
   } catch {}
-  await waitForPortRelease(SERVER_PORT, 5000);
+}
+
+// spawn(shell: true) 의 자식만 죽이면 그 아래 pnpx → vite 프로세스가 남아 포트를 계속 쥔다.
+// POSIX 는 detached 로 띄운 프로세스 그룹 전체를, Windows 는 taskkill /T 로 트리 전체를 죽인다.
+function killProcessTree(proc) {
+  if (!proc || proc.pid === undefined) return;
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /PID ${proc.pid} /T /F 2>nul`, { stdio: 'ignore', shell: true });
+    } else {
+      process.kill(-proc.pid, 'SIGKILL');
+    }
+  } catch {
+    try { proc.kill('SIGKILL'); } catch {}
+  }
+}
+
+/**
+ * vite preview 를 내리고 포트가 실제로 빌 때까지 기다린다(다음 테스트가 같은 포트를 바로 쓴다).
+ * @param {import('child_process').ChildProcess | null} proc
+ */
+async function stopPreviewServer(proc) {
+  killProcessTree(proc);
+  killPortListeners(SERVER_PORT);
+  await waitForPortRelease(SERVER_PORT, 10000);
+}
+
+// 페이지가 여는 것과 같은 URL(localhost)로 HTTP 응답이 올 때까지 폴링한다.
+async function waitForHttpReady(port, timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(`http://localhost:${port}/`, { method: 'GET' });
+      if (res.ok) return true;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
+}
+
+// vite preview 기동 — ait-build/vite.config.ts의 unityWebContentEncodingPlugin이
+// configurePreviewServer 훅으로 CE/Content-Type 미들웨어를 등록한다.
+// 앞 테스트의 서버가 아직 죽는 중이면(SIGKILL 직후) 그 서버가 연결을 받아 준비 확인을 통과시키고, 곧 사라져
+// page.goto 가 ERR_CONNECTION_REFUSED 로 실패한다(새 서버는 --strictPort 라 포트를 못 잡고 끝난다).
+// 그래서 띄우기 전에 포트가 완전히 빈 것을 확인하고, 띄운 뒤에는 우리 프로세스가 살아 있는 상태에서 HTTP 응답까지 본다.
+async function startPreviewServer() {
+  killPortListeners(SERVER_PORT);
+  const released = await waitForPortRelease(SERVER_PORT, 15000);
+  if (!released) {
+    throw new Error(`포트 ${SERVER_PORT} 가 15초 안에 비지 않음 — 이전 vite preview 가 남아 있다`);
+  }
 
   const server = spawn('pnpx', ['vite', 'preview', '--outDir', 'dist/web', '--port', String(SERVER_PORT), '--strictPort'], {
     cwd: AIT_BUILD,
     stdio: 'pipe',
     shell: true,
+    // POSIX: 자체 프로세스 그룹으로 띄워 stopPreviewServer 가 pnpx/vite 자손까지 함께 죽일 수 있게 한다.
+    detached: process.platform !== 'win32',
     env: { ...process.env, NODE_OPTIONS: '' }
   });
   server.stdout.on('data', (data) => {
@@ -157,12 +216,20 @@ async function startPreviewServer() {
   server.stderr.on('data', (data) => {
     console.error('[vite preview:ce error]', data.toString());
   });
+  const exited = () => server.exitCode !== null || server.signalCode !== null;
 
-  // 준비 확인은 stdout이 아니라 실제 TCP 연결로 — waitForPortListening 주석 참조
+  // 준비 확인은 stdout이 아니라 실제 TCP 연결 + HTTP 응답으로 — waitForPortListening 주석 참조
   try {
     await waitForPortListening(SERVER_PORT, 90000);
+    const httpReady = await waitForHttpReady(SERVER_PORT, 30000);
+    if (exited()) {
+      throw new Error(`vite preview 가 준비 전에 종료됨(exit=${server.exitCode}, signal=${server.signalCode}) — 포트 ${SERVER_PORT} 를 다른 프로세스가 쥐고 있었을 수 있다`);
+    }
+    if (!httpReady) {
+      throw new Error(`vite preview 가 30초 안에 http://localhost:${SERVER_PORT}/ 에 응답하지 않음`);
+    }
   } catch (e) {
-    try { server.kill('SIGKILL'); } catch {}
+    await stopPreviewServer(server);
     throw e;
   }
   return server;
@@ -176,7 +243,7 @@ test.describe('CE Native Serving (brotli/gzip, decompressionFallback OFF)', () =
 
   test.afterAll(async () => {
     if (serverProcess) {
-      try { serverProcess.kill('SIGKILL'); } catch {}
+      await stopPreviewServer(serverProcess);
       serverProcess = null;
     }
   });
@@ -344,7 +411,7 @@ test.describe('스트리밍 자산 인코딩 정책 (Content-Encoding 없는 CDN
 
   test.afterAll(async () => {
     if (serverProcess) {
-      try { serverProcess.kill('SIGKILL'); } catch {}
+      await stopPreviewServer(serverProcess);
       serverProcess = null;
     }
   });
@@ -361,6 +428,7 @@ test.describe('스트리밍 자산 인코딩 정책 (Content-Encoding 없는 CDN
     test.skip(streamingBrotliOptIn || streamDirs.length === 0, '옵트인 빌드이거나 스트리밍 자산이 없는 빌드');
     test.setTimeout(300000);
 
+    if (serverProcess) { await stopPreviewServer(serverProcess); serverProcess = null; }
     serverProcess = await startPreviewServer();
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -387,6 +455,7 @@ test.describe('스트리밍 자산 인코딩 정책 (Content-Encoding 없는 CDN
     test.skip(streamBrFiles.length === 0, 'ait-stream-* .br 자산 없음 (AIT_STREAMING_BROTLI=1 빌드에서만 실행)');
     test.setTimeout(300000);
 
+    if (serverProcess) { await stopPreviewServer(serverProcess); serverProcess = null; }
     serverProcess = await startPreviewServer();
     const context = await browser.newContext();
     const page = await context.newPage();

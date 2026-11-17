@@ -19,6 +19,9 @@ import { fileURLToPath } from 'url';
  *  - 전역 Uint8Array 를 Proxy 로 감싸 생성자 호출을 센다. 숫자 길이/배열/타입드 배열로 만드는 '새 할당'만 기록하고
  *    ArrayBuffer 위의 뷰(HEAPU8 등)는 할당이 아니므로 제외한다.
  *  - %TypedArray%.prototype.slice 와 ArrayBuffer.prototype.slice 도 감싼다(로더의 u.slice(0, f) 복사 경로).
+ *  - 전역 ArrayBuffer 생성자도 센다. releaseConsumedData 로 로더가 패치된 빌드는 ait-datarelease.js 의 alloc 훅이
+ *    data 버퍼를 크기 조절 가능 ArrayBuffer 로 잡고 그 위의 뷰를 로더에 준다. 이 경로는 Uint8Array 생성자로는 보이지 않는다
+ *    (훅은 WebKit 전용 엔진에서 꺼지므로 iPhone UA 의 Mobile Chrome 프로젝트에서는 stock new Uint8Array(d) 로 돌아간다).
  *  - 64KB 이상 할당만 {kind, len, 호출 위치}로 남긴다.
  *
  * 기대: .data 크기(RAW = __AIT_PERF.dataRawSize)급 할당이 정확히 1건이고 그 길이가 RAW 와 같다.
@@ -133,6 +136,21 @@ const ALLOC_TRACE_INIT_SCRIPT = `
       try { record('ab-slice', r.byteLength); } catch (e) {}
       return r;
     };
+  } catch (e) {}
+
+  // 4) new ArrayBuffer(n[, {maxByteLength}]) — ait-datarelease.js 의 alloc 훅은 data 버퍼를 크기 조절 가능 ArrayBuffer 로
+  //    잡고 그 위에 뷰(new Uint8Array(ab, 0, d))를 만든다. 뷰는 1) 에서 할당으로 세지 않으므로 여기서 버퍼 생성을 센다.
+  //    new Uint8Array(n) 은 내부에서 버퍼를 만들 뿐 이 생성자를 부르지 않으므로 이중 계산되지 않는다.
+  try {
+    var OrigAB = window.ArrayBuffer;
+    var ABProxy = new Proxy(OrigAB, {
+      construct: function (target, args, newTarget) {
+        var obj = Reflect.construct(target, args, newTarget === ABProxy ? target : newTarget);
+        try { record(obj.resizable ? 'ab-new-resizable' : 'ab-new', obj.byteLength); } catch (e) {}
+        return obj;
+      }
+    });
+    window.ArrayBuffer = ABProxy;
   } catch (e) {}
 })();
 `;
@@ -258,7 +276,7 @@ async function loadAndTrace(browser, url, opts = {}) {
       }
     });
     const consoleLines = [];
-    page.on('console', (m) => { const t = m.text(); if (t.indexOf('[AIT-DataBuf]') >= 0) consoleLines.push(t); });
+    page.on('console', (m) => { const t = m.text(); if (t.indexOf('[AIT-DataBuf]') >= 0 || t.indexOf('[AIT-DataRelease]') >= 0) consoleLines.push(t); });
 
     const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
     expect(resp?.status(), 'navigation should return 200').toBe(200);
@@ -269,7 +287,8 @@ async function loadAndTrace(browser, url, opts = {}) {
 
     const trace = await page.evaluate(() => window['__aitAllocTrace'] || []);
     const state = await page.evaluate(() => (window['__AIT_DATABUF'] && window['__AIT_DATABUF'].getState) ? window['__AIT_DATABUF'].getState() : null);
-    return { perf, trace, state, dataResponse, consoleLines };
+    const relState = await page.evaluate(() => (window['__AIT_DATAREL'] && window['__AIT_DATAREL'].getState) ? window['__AIT_DATAREL'].getState() : null);
+    return { perf, trace, state, relState, dataResponse, consoleLines };
   } finally {
     await context.close().catch(() => {});
   }
@@ -293,6 +312,8 @@ test.afterAll(async () => {
 });
 
 async function startServer() {
+  // 앞 테스트의 서버를 먼저 내리고 포트가 빌 때까지 기다린다(죽는 중인 서버가 준비 확인에 응답하는 경합 방지).
+  if (serverProcess) { await killServer(serverProcess, serverPort); serverProcess = null; }
   const prod = await startProductionServer(AIT_BUILD, DEFAULT_PORT);
   serverProcess = prod.process;
   serverPort = prod.port;
@@ -313,6 +334,7 @@ test.describe('data 응답 정확 크기 재포장 (ait-databuf)', () => {
     console.log(`  __AIT_PERF.exactDataBody=${r.perf && r.perf.exactDataBody} dataRawSize=${r.perf && r.perf.dataRawSize} unityweb=${r.perf && r.perf.unityweb}`);
     console.log(`  data 응답: ${JSON.stringify(r.dataResponse)}`);
     console.log(`  databuf 상태: ${JSON.stringify(r.state)}`);
+    console.log(`  datarelease 상태: ${JSON.stringify(r.relState)}`);
     for (const l of r.consoleLines) console.log(`  ${l}`);
     console.log(`  >= ${TRACE_MIN_BYTES / 1024}KB 할당 ${r.trace.length}건:\n    ${describe(r.trace)}`);
 
@@ -331,6 +353,10 @@ test.describe('data 응답 정확 크기 재포장 (ait-databuf)', () => {
     const sized = dataSized(r.trace, raw);
     expect(sized.length, `data 크기급 할당이 정확히 1건이어야 한다(복사 없음). 트레이스:\n    ${describe(r.trace)}`).toBe(1);
     expect(sized[0].len, 'data 버퍼 길이는 압축 해제 크기(RAW)와 같아야 한다').toBe(raw);
+    // datarelease alloc 훅이 버퍼를 잡았다면 그 1건이 바로 크기 조절 가능 ArrayBuffer 여야 한다(로더 stock 할당이 추가로 없었다).
+    if (r.relState && r.relState.allocated) {
+      expect(sized[0].kind, 'datarelease alloc 훅이 잡은 data 버퍼는 크기 조절 가능 ArrayBuffer 다').toBe('ab-new-resizable');
+    }
 
     // 응답 처리 결과: 압축 전송이면 재포장, 이미 정확한 길이면 건드리지 않는다.
     // Playwright 가 본 첫 .data 응답이 gzip 이어도, 로더가 실제로 읽은 응답이 이미 정확한 길이(Content-Length==RAW,

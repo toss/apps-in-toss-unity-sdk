@@ -315,6 +315,44 @@ jobs:
       FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
 
   # =====================================================
+  # Brotli + Decompression Fallback 빌드 (macOS, Unity 6000.3 하나)
+  # 나머지 E2E 빌드는 압축을 끄고(AIT_COMPRESSION_FORMAT=0) 돌리므로, 안정 버전 기본값인
+  # Brotli .unityweb 경로는 이 빌드 하나만 검증한다. Decompression Fallback은 SDK 기본값(켜짐)을 그대로 쓴다.
+  # 6000.3은 Unity 6 계열 loader를 대표한다. 빌드는 하나뿐이고 아티팩트 이름만 따로 둔다.
+  # =====================================================
+  build-brotli-fallback:
+    name: Build (macOS, Unity 6000.3, Brotli + Decompression Fallback)
+    needs: [setup]
+    if: (inputs.test_level || '2') != '0'
+
+    concurrency:
+      group: e2e-${{ github.workflow }}-${{ needs.setup.outputs.ref || github.event.pull_request.number || github.ref }}-brotli-fallback-${{ inputs.sdk_version_override || 'default' }}
+      cancel-in-progress: true
+
+    uses: ./.github/workflows/unity-build.yml
+    with:
+      repository: ${{ needs.setup.outputs.repository }}
+      ref: ${{ needs.setup.outputs.ref }}
+      os: macos
+      unity-version: '6000.3'
+      run-build: true
+      run-editmode-test: false
+      clean-library: ${{ inputs.clean_library || false }}
+      sdk-version-override: ${{ inputs.sdk_version_override || '' }}
+      test-level: ${{ inputs.test_level || '2' }}
+      debug-runner: ${{ inputs.debug_runner || false }}
+      # 2 = Brotli. fast-build(dev build)는 유지해 빌드 시간을 줄이고 압축 포맷만 덮어쓴다.
+      compression-format: '2'
+      artifact-suffix: '-brotli-fallback'
+    secrets:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+
+  # =====================================================
   # EditMode - 가장 오래된 배포 대상 SDK 버전
   # 하네스는 최신 SDK 기준으로 쓰이므로, 새 API를 버전 심볼(AIT_SDK_x_y_z_OR_NEWER) 없이
   # 부르면 옛 버전에서 컴파일이 깨진다. bulk release는 그 버전들도 다시 배포하므로
@@ -541,12 +579,82 @@ jobs:
           retention-days: 7
 
   # =====================================================
+  # Playwright E2E - Brotli + Decompression Fallback 빌드 (ubuntu-latest)
+  # 같은 산출물을 Content-Encoding 없는 정적 서버(A)와 vite preview(B)로 서빙해 부팅을 확인한다.
+  # 시나리오 설명은 Tests~/E2E/tests/brotli-fallback.test.js.
+  # =====================================================
+  e2e-brotli-fallback:
+    name: E2E (macOS build, Unity 6000.3, Brotli + Decompression Fallback)
+    needs: [setup, build-brotli-fallback]
+    if: needs.build-brotli-fallback.result == 'success' && (inputs.test_level || '2') == '2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      AIT_E2E_SHARD: brotli-fallback
+      TEST_LEVEL: ${{ inputs.test_level || '2' }}
+      AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-6000.3/ait-build
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.setup.outputs.repository }}
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Download AIT Build Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ait-build-macos-6000.3-brotli-fallback
+          path: ${{ env.AIT_BUILD_DIR }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install AIT Build Dependencies
+        # 시나리오 B가 ait-build/ 안에서 vite preview를 띄운다.
+        working-directory: ${{ env.AIT_BUILD_DIR }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Test Dependencies
+        working-directory: Tests~/E2E/tests
+        run: pnpm install --frozen-lockfile
+
+      - name: Log system Chrome version
+        run: google-chrome --version
+
+      - name: Run Playwright E2E
+        working-directory: Tests~/E2E/tests
+        env:
+          UNITY_PROJECT_PATH: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-6000.3
+          AIT_DEVELOPMENT_BUILD: "true"
+          AIT_COMPRESSION_FORMAT: "2"
+        run: pnpm test
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-macos-6000.3-brotli-fallback
+          path: |
+            Tests~/E2E/tests/playwright-report/
+            Tests~/E2E/tests/test-results/
+          if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 7
+
+  # =====================================================
   # Test Report Summary
   # =====================================================
   test-report:
     name: Test Report Summary
     runs-on: ubuntu-latest
-    needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows, editmode-oldest-sdk]
+    needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows, editmode-oldest-sdk, build-brotli-fallback, e2e-brotli-fallback]
     # setup이 건너뛴 포크 PR에서는 보고할 결과가 없다.
     if: always() && needs.setup.result != 'skipped'
 
@@ -600,13 +708,18 @@ jobs:
           # 버전 지정 실행에서는 건너뛰므로 skipped도 통과로 본다.
           OLDEST_RESULT="${{ needs.editmode-oldest-sdk.result }}"
           [ "$OLDEST_RESULT" = "skipped" ] && OLDEST_RESULT=success
+          # Brotli fallback 빌드: E2E가 건너뛰어졌으면 빌드 결과를 쓴다. 둘 다 건너뛰었으면(test_level 0) 통과로 본다.
+          BROTLI_BUILD_RESULT="${{ needs.build-brotli-fallback.result }}"
+          BROTLI_E2E_RESULT="${{ needs.e2e-brotli-fallback.result }}"
+          BROTLI_RESULT=$([ "$BROTLI_E2E_RESULT" = "skipped" ] && echo "$BROTLI_BUILD_RESULT" || echo "$BROTLI_E2E_RESULT")
+          [ "$BROTLI_RESULT" = "skipped" ] && BROTLI_RESULT=success
           MACOS_RESULT=$([ "$E2E_MACOS_RESULT" = "skipped" ] && echo "$BUILD_MACOS_RESULT" || echo "$E2E_MACOS_RESULT")
           WINDOWS_RESULT=$([ "$E2E_WINDOWS_RESULT" = "skipped" ] && echo "$BUILD_WINDOWS_RESULT" || echo "$E2E_WINDOWS_RESULT")
 
-          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ] && [ "$OLDEST_RESULT" = "success" ]; then
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ] && [ "$OLDEST_RESULT" = "success" ] && [ "$BROTLI_RESULT" = "success" ]; then
             STATUS_EMOJI="✅"
             STATUS_TEXT="All tests passed"
-          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ] || [ "$OLDEST_RESULT" = "cancelled" ]; then
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ] || [ "$OLDEST_RESULT" = "cancelled" ] || [ "$BROTLI_RESULT" = "cancelled" ]; then
             STATUS_EMOJI="⚠️"
             STATUS_TEXT="Tests cancelled"
           else
@@ -637,6 +750,7 @@ jobs:
           | SDK Generator | ${SDK_RESULT} |
           | E2E macOS | ${MACOS_RESULT} |
           | E2E Windows | ${WINDOWS_RESULT} |
+          | E2E Brotli fallback | ${BROTLI_RESULT} |
 
           **Status**: ${STATUS_TEXT}
 
@@ -667,7 +781,7 @@ jobs:
   report-status:
     name: Report Status
     runs-on: ubuntu-latest
-    needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows, editmode-oldest-sdk]
+    needs: [setup, sdk-generator-tests, build-macos, build-windows, e2e-macos, e2e-windows, editmode-oldest-sdk, build-brotli-fallback, e2e-brotli-fallback]
     if: always() && needs.setup.outputs.ref != ''
 
     steps:
@@ -682,19 +796,24 @@ jobs:
           # 버전 지정 실행에서는 건너뛰므로 skipped도 통과로 본다.
           OLDEST_RESULT="${{ needs.editmode-oldest-sdk.result }}"
           [ "$OLDEST_RESULT" = "skipped" ] && OLDEST_RESULT=success
+          # Brotli fallback 빌드: E2E가 건너뛰어졌으면 빌드 결과를 쓴다. 둘 다 건너뛰었으면(test_level 0) 통과로 본다.
+          BROTLI_BUILD_RESULT="${{ needs.build-brotli-fallback.result }}"
+          BROTLI_E2E_RESULT="${{ needs.e2e-brotli-fallback.result }}"
+          BROTLI_RESULT=$([ "$BROTLI_E2E_RESULT" = "skipped" ] && echo "$BROTLI_BUILD_RESULT" || echo "$BROTLI_E2E_RESULT")
+          [ "$BROTLI_RESULT" = "skipped" ] && BROTLI_RESULT=success
           # e2e-* skipped (test_level != 2)이면 build-* 결과를 OS 결과로 사용
           MACOS_RESULT=$([ "$E2E_MACOS_RESULT" = "skipped" ] && echo "$BUILD_MACOS_RESULT" || echo "$E2E_MACOS_RESULT")
           WINDOWS_RESULT=$([ "$E2E_WINDOWS_RESULT" = "skipped" ] && echo "$BUILD_WINDOWS_RESULT" || echo "$E2E_WINDOWS_RESULT")
 
-          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ] && [ "$OLDEST_RESULT" = "success" ]; then
+          if [ "$SDK_RESULT" = "success" ] && [ "$MACOS_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ] && [ "$OLDEST_RESULT" = "success" ] && [ "$BROTLI_RESULT" = "success" ]; then
             echo "state=success" >> $GITHUB_OUTPUT
             echo "description=All tests passed (SDK + E2E macOS + Windows)" >> $GITHUB_OUTPUT
-          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ] || [ "$OLDEST_RESULT" = "cancelled" ]; then
+          elif [ "$SDK_RESULT" = "cancelled" ] || [ "$MACOS_RESULT" = "cancelled" ] || [ "$WINDOWS_RESULT" = "cancelled" ] || [ "$OLDEST_RESULT" = "cancelled" ] || [ "$BROTLI_RESULT" = "cancelled" ]; then
             echo "state=error" >> $GITHUB_OUTPUT
             echo "description=Tests cancelled" >> $GITHUB_OUTPUT
           else
             echo "state=failure" >> $GITHUB_OUTPUT
-            echo "description=Tests failed (SDK: $SDK_RESULT, macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT, oldest SDK EditMode: $OLDEST_RESULT)" >> $GITHUB_OUTPUT
+            echo "description=Tests failed (SDK: $SDK_RESULT, macOS: $MACOS_RESULT, Windows: $WINDOWS_RESULT, oldest SDK EditMode: $OLDEST_RESULT, Brotli fallback: $BROTLI_RESULT)" >> $GITHUB_OUTPUT
           fi
 
       - name: Get Commit SHA

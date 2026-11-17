@@ -267,6 +267,11 @@ test_sdk_versions() {
         ok=false
     fi
 
+    echo "Running release-refs shell tests..."
+    if ! bash "$SCRIPT_DIR/.github/scripts/release/release-refs.test.sh"; then
+        ok=false
+    fi
+
     if [ "$ok" = true ]; then
         print_success "SDK Version Invariants"
         return 0

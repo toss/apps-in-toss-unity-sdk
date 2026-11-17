@@ -218,12 +218,9 @@ jobs:
 
       - name: actionlint 실행 (-shellcheck=)
         # shellcheck 통합은 끄고 별도 스텝에서 shellcheck를 직접 돈다.
-        # release.yml의 SENTRY_AUTH_TOKEN workflow_call secrets 오탐(bulk-release가
-        # secrets: inherit으로 호출해 런타임에는 전달됨)은 명시적으로 ignore한다.
-        # release.yml 자체는 이 PR에서 고치지 않는다.
         run: |
           set -euo pipefail
-          actionlint -shellcheck= -ignore 'property "sentry_auth_token" is not defined'
+          actionlint -shellcheck=
 
       - name: .github/scripts 셸 스크립트 검사 (bash -n, shellcheck)
         # shellcheck는 ubuntu-latest에 기본 탑재되어 있어 별도로 설치하지 않는다.

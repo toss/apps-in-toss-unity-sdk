@@ -997,6 +997,17 @@ ${nestedCallbacksCode}
   }
 
   /**
+   * 전면 광고를 띄우는 API의 onEvent 에 넣는 코드.
+   * Android WebView 는 광고가 오디오 포커스를 가져가면 재생 중인 HTMLMediaElement 를 멈추고 다시 틀지 않으므로,
+   * 광고가 닫혔을 때 ait-audio.js 의 복구를 부른다. 대상이 아니면 빈 문자열이다.
+   */
+  private adDismissedRecoverCode(api: ParsedAPI): string {
+    if (!/show\w*(Ad|AdMob)$/i.test(api.name)) return '';
+    return `                    if (data && data.type === 'dismissed' && window.AITAudio && window.AITAudio.recover) window.AITAudio.recover('ad');
+`;
+  }
+
+  /**
    * 콜백 기반 API 함수 생성 (JavaScript) - loadFullScreenAd, showFullScreenAd 패턴
    *
    * 두 가지 패턴 지원:
@@ -1048,7 +1059,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                 options: ${optionsObj},
                 onEvent: function(data) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} event:', data);
-                    var payload = JSON.stringify({
+${this.adDismissedRecoverCode(api)}                    var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
                         Result: JSON.stringify({
@@ -1123,7 +1134,7 @@ ${paramConversions ? '\n' + paramConversions + '\n' : ''}
                 options: optionsObj,
                 onEvent: function(data) {
                     if (window.__AIT_VERBOSE) console.log('[AIT jslib] ${api.name} event:', data);
-                    var payload = JSON.stringify({
+${this.adDismissedRecoverCode(api)}                    var payload = JSON.stringify({
                         CallbackId: subId,
                         TypeName: typeNameStr,
                         Result: JSON.stringify({

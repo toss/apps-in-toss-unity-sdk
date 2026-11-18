@@ -5,6 +5,8 @@
 //   core          : playerprefs를 뺀 나머지 전부 (결과 파일·벤치마크도 이 샤드만 의미 있다)
 //   playerprefs-1 : 9번대 일부
 //   playerprefs-2 : 9번대 나머지
+//   brotli-fallback : Brotli + Decompression Fallback 빌드 전용(brotli-fallback.test.js 한 파일만).
+//                     압축을 끈 일반 E2E 빌드로는 돌릴 수 없어 다른 샤드와 빌드 산출물이 다르다.
 //
 // playerprefs 케이스는 한 번 부팅한 뒤 같은 상태를 이어받는 묶음이 있어 묶음을 쪼개면 안 된다:
 //   9-1 → 9-2 (mockPage), 9-3 → 9-4 (failPage), 9-8 → 9-8b, 9-11 (pp8LegacySeed)
@@ -16,9 +18,11 @@ export const PLAYERPREFS_GROUPS = {
   'playerprefs-2': ['9-3', '9-4', '9-6', '9-7', '9-9', '9-10'],
 };
 
-const VALID = ['all', 'core', ...Object.keys(PLAYERPREFS_GROUPS)];
+export const BROTLI_FALLBACK_SHARD = 'brotli-fallback';
 
-/** @returns {string} 'all' | 'core' | 'playerprefs-N' */
+const VALID = ['all', 'core', BROTLI_FALLBACK_SHARD, ...Object.keys(PLAYERPREFS_GROUPS)];
+
+/** @returns {string} 'all' | 'core' | 'playerprefs-N' | 'brotli-fallback' */
 export function getShard() {
   const raw = (process.env.AIT_E2E_SHARD || '').trim();
   if (raw === '') return 'all';

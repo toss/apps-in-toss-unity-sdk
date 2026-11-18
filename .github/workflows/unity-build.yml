@@ -82,6 +82,11 @@ on:
         type: string
         required: false
         default: ''
+      artifact-suffix:
+        description: '빌드 아티팩트·빌드 로그 이름 뒤에 붙일 접미사(예: -brotli-fallback). 같은 run에서 같은 (os, unity-version)을 다른 설정으로 한 번 더 빌드할 때 이름 충돌을 피한다. 빈 값이면 기존 이름 그대로.'
+        type: string
+        required: false
+        default: ''
       fast-build:
         description: 'E2E 고속 빌드 프로필 (dev build + 압축 비활성화 + IL2CPP Debug, PR #551). 산출물을 ait deploy로 콘솔에 배포하는 호출자(preview 등)는 false 필수 — dev 빌드 wasm(6000.x 기준 ~134MiB)이 콘솔 번들 크기 제한을 초과해 서버측 BUILD_FAILED가 남. false면 env 오버라이드 없이 SDK 기본 프로필(release 빌드)로 빌드. perf 하네스도 false 를 넘겨 배포 동일 Release wasm 을 측정한다.'
         type: boolean
@@ -152,7 +157,7 @@ jobs:
     # 이중방어 락을 둔다. 같은 매트릭스 잡이 동시에 두 번 dispatch되는 케이스만
     # 차단하고, 다른 unity-version 잡끼리는 머신 핀(위)으로 분리된다.
     concurrency:
-      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}-${{ inputs.exception-support || 'default' }}
+      group: unity-build-${{ inputs.ref || github.sha }}-${{ inputs.os }}-${{ inputs.unity-version }}-${{ inputs.sdk-version-override || 'default' }}-${{ inputs.exception-support || 'default' }}-${{ inputs.artifact-suffix || 'default' }}
       cancel-in-progress: false
 
     outputs:
@@ -1002,10 +1007,11 @@ jobs:
           UNITY_VERSION: ${{ inputs.unity-version }}
           SDK_VERSION: ${{ inputs.sdk-version }}
           PROJECT_DIR_PREFIX: ${{ inputs.project-dir-prefix }}
+          ARTIFACT_SUFFIX: ${{ inputs.artifact-suffix }}
         run: |
           const fs = require('fs');
-          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX } = process.env;
-          const suffix = SDK_VERSION ? `-v${SDK_VERSION}` : '';
+          const { OS, UNITY_VERSION, SDK_VERSION, PROJECT_DIR_PREFIX, ARTIFACT_SUFFIX } = process.env;
+          const suffix = (SDK_VERSION ? `-v${SDK_VERSION}` : '') + (ARTIFACT_SUFFIX || '');
           // perf 하네스(HeavySampleUnityProject)는 'heavy-' 변형 이름으로 E2E 아티팩트와 충돌 회피.
           // 기본(SampleUnityProject)이면 variant='' → 기존 이름 'ait-build-${OS}-${VERSION}' 그대로.
           const variant = (PROJECT_DIR_PREFIX || '').startsWith('Heavy') ? 'heavy-' : '';
@@ -1059,7 +1065,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}${{ inputs.artifact-suffix }}
           path: /tmp/unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7
@@ -1070,7 +1076,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}
+          name: unity-log-build-${{ inputs.os }}-${{ inputs.unity-version }}${{ inputs.sdk-version && format('-v{0}', inputs.sdk-version) || '' }}${{ inputs.artifact-suffix }}
           path: ${{ runner.temp }}\unity-build-${{ inputs.unity-version }}.log
           if-no-files-found: ignore
           retention-days: 7

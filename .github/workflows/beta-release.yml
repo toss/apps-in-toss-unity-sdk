@@ -424,22 +424,26 @@ jobs:
   # 실 콘솔 배포를 1회 검증한다(게시 게이트) — 나머지 leg는 preview 검증만 수행.
   # =====================================================
   e2e-beta-macos:
-    name: 베타 E2E (macOS, Unity ${{ matrix.unity-version }})
+    name: 베타 E2E (macOS, Unity ${{ matrix.unity-version }}, ${{ matrix.shard }})
     needs: [beta-prepare, build-beta-macos]
     if: needs.beta-prepare.outputs.skip_build != 'true' && needs.build-beta-macos.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     concurrency:
-      group: beta-e2e-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-macos-${{ matrix.unity-version }}
+      group: beta-e2e-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-macos-${{ matrix.unity-version }}-${{ matrix.shard }}
       cancel-in-progress: true
 
     strategy:
       fail-fast: false
       matrix:
         unity-version: ${{ fromJSON(needs.beta-prepare.outputs.macos_versions) }}
+        # core: playerprefs를 뺀 전부. playerprefs-1/2: 9번대를 시간 기준으로 나눈 두 묶음.
+        # 묶음 정의와 이유는 Tests~/E2E/tests/lib/shard.js.
+        shard: [core, playerprefs-1, playerprefs-2]
 
     env:
+      AIT_E2E_SHARD: ${{ matrix.shard }}
       MOBILE_EMULATION: "true"
       TEST_LEVEL: "2"
       AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
@@ -503,7 +507,7 @@ jobs:
         #   - AIT_DEPLOY_KEY 미설정(로컬/포크) → 검증 건너뜀(exit 0).
         #   - 타임아웃(5분) → 콘솔측 지연으로 간주, 경고만 남기고 통과(exit 0, 재실행 권장).
         #   - 그 외 배포 실패 → 게이트 차단(exit 비0). 서버측 상태를 deployment GET으로 덤프해 진단.
-        if: matrix.unity-version == fromJSON(needs.beta-prepare.outputs.macos_versions)[0]
+        if: matrix.shard == 'core' && matrix.unity-version == fromJSON(needs.beta-prepare.outputs.macos_versions)[0]
         working-directory: ${{ env.AIT_BUILD_DIR }}
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
@@ -595,7 +599,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: beta-playwright-report-macos-${{ matrix.unity-version }}
+          name: beta-playwright-report-macos-${{ matrix.unity-version }}-${{ matrix.shard }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
           compression-level: 9
@@ -606,22 +610,26 @@ jobs:
   # skip_windows(예: minimal 전략)면 build-beta-windows가 스킵되고 이 잡도 스킵된다.
   # =====================================================
   e2e-beta-windows:
-    name: 베타 E2E (Windows, Unity ${{ matrix.unity-version }})
+    name: 베타 E2E (Windows, Unity ${{ matrix.unity-version }}, ${{ matrix.shard }})
     needs: [beta-prepare, build-beta-windows]
     if: needs.beta-prepare.outputs.skip_build != 'true' && needs.beta-prepare.outputs.skip_windows != 'true' && needs.build-beta-windows.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     concurrency:
-      group: beta-e2e-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-windows-${{ matrix.unity-version }}
+      group: beta-e2e-${{ github.workflow }}-${{ needs.beta-prepare.outputs.staging_ref }}-windows-${{ matrix.unity-version }}-${{ matrix.shard }}
       cancel-in-progress: true
 
     strategy:
       fail-fast: false
       matrix:
         unity-version: ${{ fromJSON(needs.beta-prepare.outputs.windows_versions) }}
+        # core: playerprefs를 뺀 전부. playerprefs-1/2: 9번대를 시간 기준으로 나눈 두 묶음.
+        # 묶음 정의와 이유는 Tests~/E2E/tests/lib/shard.js.
+        shard: [core, playerprefs-1, playerprefs-2]
 
     env:
+      AIT_E2E_SHARD: ${{ matrix.shard }}
       TEST_LEVEL: "2"
       AIT_BUILD_DIR: ${{ github.workspace }}/Tests~/E2E/SampleUnityProject-${{ matrix.unity-version }}/ait-build
 
@@ -665,7 +673,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: beta-playwright-report-windows-${{ matrix.unity-version }}
+          name: beta-playwright-report-windows-${{ matrix.unity-version }}-${{ matrix.shard }}
           path: Tests~/E2E/tests/playwright-report/
           if-no-files-found: ignore
           compression-level: 9

@@ -15,9 +15,8 @@
 | Validate | push, PR | SDK Generator 유닛 테스트, 불변식 검사, 버전 동기화·PR 정리 스크립트 테스트 |
 | Lint | push, PR | `.meta` 누락, GUID 위생, SDK 버전 기준 불변식 검사 |
 | String Check | push, PR | 내부 호스트명·자격증명·사설 식별자 유출 스캔 |
-| Release | 수동, push(main), `workflow_call` | 버전 결정, SDK 재생성, 빌드 검증, 릴리즈 태그 생성, 배포 |
+| Release | 수동(현재 `sdkVersion` 재시도만), push(main) | `sdkVersion` 변경 커밋이 main에 머지되면 SDK 재생성, 빌드·EditMode 검증 후 `release` environment 승인을 거쳐 고정 태그·Release·별칭 태그 생성, 배포 |
 | Beta Release | 수동 | 파일럿 채널 브랜치 갱신과 prerelease 태그 |
-| Bulk Release | 수동 | 여러 버전 일괄 릴리즈 |
 | SDK Update | 수동, 스케줄(평일 09시 KST) | 누락된 최신 `@apps-in-toss/web-framework` 버전 하나로 PR 생성, 낮은 버전 PR 정리 |
 | SDK Update Auto Rebase | push(main), 수동 | `update/` PR 충돌·기준 파일 불일치 자동 재생성 |
 | Update API Changelog | push(main), 수동 | API 변경 이력 갱신 |
@@ -45,7 +44,6 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows --paginate \
 | String Check | 275178129 |
 | Release | 214934317 |
 | Beta Release | 286845872 |
-| Bulk Release | 222574658 |
 | SDK Update | 214934319 |
 | SDK Update Auto Rebase | 256455113 |
 | Update API Changelog | 238481894 |
@@ -126,11 +124,20 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/214934317/dispatches 
 {
   "ref": "main",
   "inputs": {
-    "version": "1.6.0"
+    "version": "3.10.0+1"
   }
 }
 EOF
 ```
+
+릴리스 버전은 `<web-framework 버전>+<N>`이고(예: `3.10.0+1`), 기준은 `.github/sdk-versions.json`의 `sdkVersion`입니다. N은 web-framework 버전마다 1부터 시작하며 새 web-framework 버전의 첫 빌드가 `+1`입니다. `package.json`의 `version`은 `X.Y.Z`로 두고, N은 태그 이름과 릴리스 커밋 설명의 `(Released: <날짜시각>, <해시>, +<N>)`에만 남습니다.
+
+- 트리거: `sdkVersion`을 바꾼 커밋이 main에 머지되면 실행됩니다. 수동 dispatch는 현재 `sdkVersion`을 재시도하는 용도뿐이고 다른 버전을 지정할 수 없습니다(`version`은 비우거나 현재 `sdkVersion`과 같은 값만 받습니다). `sdkVersion`이 `X.Y.Z`만 있는 값이거나 같은 고정 태그가 이미 있으면 notice만 남기고 건너뜁니다.
+- 승인 게이트: 태그·Release·별칭을 만드는 스텝은 빌드와 EditMode 게이트 뒤의 GitHub environment `release` 승인을 받은 뒤에만 실행됩니다.
+- 고정 태그 `release/vX.Y.Z+N`: 한 번 만들고 옮기거나 지우지 않습니다. GitHub Release는 이 태그에만 붙습니다. 태그 보호 규칙(삭제·non-fast-forward 금지)과 Immutable Releases로 보호됩니다.
+- 별칭 태그 `release/vX.Y.Z`: 새 빌드의 Release를 게시한 뒤 워크플로가 그 빌드의 커밋으로 옮깁니다. Release는 붙지 않습니다. 그래서 `#release/vX.Y.Z`는 해당 web-framework 버전의 최신 빌드를, `#release/vX.Y.Z+N`은 정확히 그 빌드를 설치합니다.
+- Latest 표시: 번호 `(X.Y.Z, N)`이 가장 높은 stable Release에만 붙습니다. 번호 없는 옛 릴리스는 N=0으로 셉니다.
+- 같은 web-framework 버전의 수정 배포: `sync-sdk-versions.cjs`의 `bump-revision` 모드로 `+N`을 올린 커밋을 머지합니다. 태그를 옮겨서 다시 릴리스하는 방식은 없습니다. SDK Update는 새 web-framework 버전을 `<새 버전>+1`로 기록합니다.
 
 ### SDK Update
 
@@ -164,7 +171,7 @@ EOF
 
 ### Beta Release
 
-`channel_ref`가 제휴사에게 안내되는 브랜치 이름이고, `source_ref`는 빌드 베이스입니다. `build_strategy`로 검증 빌드 수를 고릅니다.
+`channel_ref`가 제휴사에게 안내되는 브랜치 이름이고, `source_ref`는 빌드 베이스입니다. `build_strategy`로 검증 빌드 수를 고릅니다. 스냅샷 태그와 Release는 한 번 만들면 지우거나 다시 만들지 않습니다. 같은 스냅샷 태그가 이미 있으면 빌드 전에 멈추고 새 버전을 요청하므로, 다시 내려면 버전을 바꿔 dispatch합니다.
 
 ```bash
 gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/286845872/dispatches \
@@ -179,25 +186,6 @@ gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/286845872/dispatches 
 }
 EOF
 ```
-
-### Bulk Release
-
-```bash
-gh api repos/toss/apps-in-toss-unity-sdk/actions/workflows/222574658/dispatches \
-  -X POST --input - <<'EOF'
-{
-  "ref": "main",
-  "inputs": {
-    "versions": "1.5.0,1.6.0,1.7.0",
-    "max_parallel": "2"
-  }
-}
-EOF
-```
-
-`versions`를 비우면 모든 `release/v*` 태그가 후보입니다. 어느 경우든 `min_version`보다 낮은 버전은 건너뛰고, 비워 둔 `min_version`은 `sdk-policy.json`의 `minVersion`과 하한 3.1.0 중 높은 쪽입니다. 3.1 미만을 다시 배포하려면 `min_version`을 낮춰 지정합니다.
-
-버전마다 `release.yml`의 EditMode 게이트(macOS Unity 2021.3)를 통과해야 태그를 만듭니다. 게이트에서 실패한 버전만 릴리즈되지 않고 나머지 버전은 그대로 진행합니다.
 
 ## 상태 확인
 
@@ -268,7 +256,7 @@ CI Unity 빌드의 `Library/Bee` 캐시 무효화 정책은 다음과 같습니�
 
 `lint.yml`의 `ci-scripts` 잡이 아래를 검사합니다.
 
-- actionlint(버전 고정, `-shellcheck=`)로 워크플로 YAML 전체를 검사합니다. `release.yml`의 `SENTRY_AUTH_TOKEN` workflow_call secrets 오탐(`bulk-release`가 `secrets: inherit`으로 호출해 런타임에는 전달됨)은 이 잡에서 명시적으로 `-ignore`합니다.
+- actionlint(버전 고정, `-shellcheck=`)로 워크플로 YAML 전체를 검사합니다.
 - `.github/scripts/**/*.sh`는 `bash -n`과 `shellcheck -S error`(ubuntu-latest 기본 탑재, 별도 설치 없음)를 통과해야 합니다.
 - `.github/scripts/**/*.ps1`은 ASCII 전용이어야 합니다. PowerShell 5.1이 BOM 없는 UTF-8을 CP949로 오독하기 때문입니다. 한국어 설명은 스크립트 안이 아니라 그 스크립트를 호출하는 YAML 스텝의 이름·주석에 둡니다.
 - `.github/scripts/**/*.{js,cjs}`는 `node --check`를 통과해야 합니다.
@@ -288,6 +276,7 @@ SDK·web-framework·동반 패키지·pnpm 버전의 기준은 `.github/sdk-vers
 | 모드 | 동작 |
 |------|------|
 | `resolve --version X.Y.Z` | npm에서 동반 패키지 버전을 정해 기준 파일을 갱신 (pnpm은 그대로) |
+| `bump-revision` | 같은 web-framework 버전의 `sdkVersion` 뒤 `+N`을 하나 올림 |
 | `apply` | 기준 파일을 `package.json` 3개와 `PNPM_VERSION`에 기록 |
 | `check` | 어긋난 파일·키·값을 출력하고 exit 1 |
 

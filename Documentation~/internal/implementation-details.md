@@ -74,7 +74,7 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 | SDK 이벤트 로깅 | `Runtime/Helpers/AIT.PerformanceLogger.cs` |
 | 포그라운드·백그라운드 전환 | `Runtime/Helpers/AIT.VisibilityHelper.cs` |
 | 배너 광고 | `Runtime/Helpers/AIT.BannerAd.cs`, `AITBannerAdView.cs` |
-| Sentry 태그·컨텍스트 | `Runtime/Sentry/AITSentryIntegration.cs` |
+| Sentry 태그·컨텍스트 | `Runtime/Sentry/AITSentryIntegration.cs`. release 이름은 빌드 번호를 알면 `apps-in-toss.unity@X.Y.Z+N`, 모르면 `@X.Y.Z`이고 번호는 태그 `ait.sdk_revision`에도 담깁니다 |
 | Sentry 화면·노출·클릭 추적 | `Runtime/Sentry/AITSentryAnalytics.cs` |
 | IL2CPP 스트리핑 방지 | `Runtime/Sentry/link.xml` |
 | PlayerPrefs 영속화(IDBFS syncfs 미러링) | `WebGLTemplates/AITTemplate/Runtime/ait-playerprefs.js`. 동작 설명은 [PlayerPrefs 영속화](https://developers-apps-in-toss.toss.im/documentation/unity/add-features/playerprefs) |
@@ -88,7 +88,10 @@ devtools(`@apps-in-toss/devtools`) 설정은 빌드 프로필이 아니라 `AITC
 |------|------|
 | `minVersion` | 미만이면 지원 종료. 빌드·배포 메뉴를 막고 시작 팝업을 반복합니다(`IsDeprecated`, `ShowDeprecationDialogPersistent`). |
 | `recommendedVersion` | 최소 버전 이상, 이 값 미만이면 업데이트 권장 대상입니다. |
+| `deniedVersions` | 에디터는 읽지 않습니다. Release·Beta Release·SDK Update 워크플로가 읽어 목록에 든 버전을 내지 않습니다. |
 | `enforceRecommendedVersion` | `true`면 권장 대상의 빌드·배포를 차단합니다. 필드가 없거나 파싱·조회에 실패하면 `false`(fail-open)이고, `minVersion`을 읽지 못한 정책에서도 켜지지 않습니다. `schemaVersion`은 1을 유지합니다. |
+
+`minVersion`, `recommendedVersion`, `deniedVersions`는 `X.Y.Z`와 `X.Y.Z+N` 두 형식을 받습니다. `X.Y.Z`는 그 버전의 모든 빌드를, `X.Y.Z+N`은 그 빌드만 가리킵니다. 빌드 번호를 알 수 없는 설치는 0으로 보므로 어떤 `+N`보다 낮습니다. 업데이트 확인은 계속 별칭 태그 `release/vX.Y.Z`를 대상으로 합니다.
 
 판단은 `EvaluateRecommendation(current, min, recommended, enforce)`가 `RecommendationLevel`(`None`/`Warn`/`Block`)로 정합니다. 최소 버전 미만은 `None`이라 기존 지원 종료 경로가 처리합니다.
 

@@ -3,6 +3,11 @@ import { defineConfig, devices } from '@playwright/test';
 // 모바일 에뮬레이션 활성화 여부 (macOS CI에서만 true)
 const isMobileEmulation = process.env.MOBILE_EMULATION === 'true';
 
+// Android UA 에뮬레이션 (MOBILE_EMULATION=true와 함께 쓴다). 기본 모바일 프로젝트는 iPhone UA라
+// UA로 분기하는 Android 전용 경로(AITTemplate 런타임 스크립트의 /Android/ 판별 등)를 한 번도 타지 않는다.
+// Pixel 7은 chromium 기반 프로필이라 시스템 Chrome 위에서 Android Chrome UA·뷰포트·터치를 그대로 재현한다.
+const isAndroidEmulation = isMobileEmulation && process.env.ANDROID_EMULATION === 'true';
+
 // AIT_E2E_SHARD=playerprefs-N job은 PlayerPrefs 케이스만 돌린다. 진입 파일 외의 독립 spec
 // (audio-resume, perf-ttff 등)은 core 샤드가 맡으므로 여기서 제외해 중복 실행을 막는다.
 // 값 검증은 lib/shard.js가 한다.
@@ -49,8 +54,14 @@ export default defineConfig({
 
   projects: [
     {
-      name: isMobileEmulation ? 'Mobile Chrome' : 'chromium',
-      use: isMobileEmulation
+      name: isAndroidEmulation ? 'Android Chrome' : isMobileEmulation ? 'Mobile Chrome' : 'chromium',
+      use: isAndroidEmulation
+        ? {
+            ...devices['Pixel 7'],
+            browserName: 'chromium',
+            channel: 'chrome',
+          }
+        : isMobileEmulation
         ? {
             // iPhone 8 뷰포트/터치 설정 + 시스템 Chrome (runner image 사전 설치)
             // iPhone 8 device 기본은 webkit이라 chromium으로 명시 후 channel 지정.

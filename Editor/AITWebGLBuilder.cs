@@ -282,7 +282,8 @@ namespace AppsInToss.Editor
                 string json = BuildVersionInfoJson(
                     existingJson, version, commitHash,
                     DateTime.UtcNow.ToString("yyyyMMdd_HHmm"),
-                    out bool changed);
+                    out bool changed,
+                    AITVersion.Revision);
 
                 if (!changed)
                 {
@@ -311,20 +312,22 @@ namespace AppsInToss.Editor
         /// 기록할 버전 정보 JSON(canonical 형태)을 만들고 기존 파일 내용과 비교해
         /// 재기록 필요 여부를 판단한다. 순수 함수 — 파일 IO 없음 (EditMode 테스트 대상).
         ///
-        /// version/commitHash가 기존 파일과 같으면 기존 releaseDateTime을 재사용한다.
+        /// version/commitHash/revision이 기존 파일과 같으면 기존 releaseDateTime을 재사용한다.
         /// releaseDateTime은 분 단위 wall-clock이라 이를 매 빌드 갱신하면 그것만으로
         /// 내용이 달라져 data 아카이브가 무효화된다. 소비처(<see cref="AITVersion.FullVersion"/>,
         /// Sentry 태그)는 표시용이므로 "이 버전/커밋 조합을 처음 빌드한 시각" 의미로 충분하다.
         /// </summary>
         /// <returns>기록할 canonical JSON. changed가 false면 기존 파일과 동일하므로 기록 불필요.</returns>
         internal static string BuildVersionInfoJson(
-            string existingJson, string version, string commitHash, string nowStamp, out bool changed)
+            string existingJson, string version, string commitHash, string nowStamp, out bool changed,
+            int revision = 0)
         {
             var payload = new AITVersion.VersionInfoPayload
             {
                 version = version,
                 releaseDateTime = nowStamp,
                 commitHash = commitHash,
+                revision = revision,
             };
 
             if (!string.IsNullOrEmpty(existingJson))
@@ -335,6 +338,7 @@ namespace AppsInToss.Editor
                     if (existing != null
                         && existing.version == version
                         && existing.commitHash == commitHash
+                        && existing.revision == revision
                         && !string.IsNullOrEmpty(existing.releaseDateTime))
                     {
                         payload.releaseDateTime = existing.releaseDateTime;

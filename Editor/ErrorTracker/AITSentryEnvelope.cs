@@ -136,7 +136,7 @@ namespace AppsInToss.Editor.ErrorTracker
 
             if (string.IsNullOrEmpty(release))
             {
-                release = $"{SdkName}@{AITVersion.Version}";
+                release = $"{SdkName}@{AITVersion.ReleaseVersion}";
             }
 
             var sb = new StringBuilder(4096);
@@ -279,7 +279,7 @@ namespace AppsInToss.Editor.ErrorTracker
 
             if (string.IsNullOrEmpty(release))
             {
-                release = $"{SdkName}@{AITVersion.Version}";
+                release = $"{SdkName}@{AITVersion.ReleaseVersion}";
             }
 
             var sb = new StringBuilder(2048);
@@ -412,7 +412,7 @@ namespace AppsInToss.Editor.ErrorTracker
 
             if (string.IsNullOrEmpty(release))
             {
-                release = $"{SdkName}@{AITVersion.Version}";
+                release = $"{SdkName}@{AITVersion.ReleaseVersion}";
             }
 
             var sb = new StringBuilder(1024);
@@ -490,7 +490,7 @@ namespace AppsInToss.Editor.ErrorTracker
 
             if (string.IsNullOrEmpty(release))
             {
-                release = $"{SdkName}@{AITVersion.Version}";
+                release = $"{SdkName}@{AITVersion.ReleaseVersion}";
             }
 
             var sb = new StringBuilder(4096);

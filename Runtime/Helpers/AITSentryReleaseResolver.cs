@@ -60,7 +60,7 @@ namespace AppsInToss
         /// 명시된 <paramref name="envOverride"/>가 있으면 그 값을 우선하고, 없으면 prerelease 빌드일 때만 "beta"를 반환합니다.
         /// stable 빌드는 <c>null</c>을 반환하여 environment를 설정하지 않으므로 Sentry 기본값("production")을 그대로 사용합니다(동작 불변).
         /// </summary>
-        /// <param name="sdkVersion">SDK 버전 문자열(<c>AITVersion.Version</c>).</param>
+        /// <param name="sdkVersion">SDK 버전 문자열(<c>AITVersion.Version</c> 또는 <c>AITVersion.ReleaseVersion</c>, 둘 다 가능).</param>
         /// <param name="envOverride">명시적 환경변수(<c>SENTRY_ENVIRONMENT</c>). 비어 있으면 무시됩니다.</param>
         /// <returns>설정할 environment 문자열. <c>null</c>이면 override 하지 않음.</returns>
         internal static string ResolveEnvironment(string sdkVersion, string envOverride)
@@ -78,7 +78,7 @@ namespace AppsInToss
         /// 명시된 <paramref name="releaseOverride"/>가 있으면 그 값을 우선하고, 없으면 버전을 알 때 "apps-in-toss.unity@{버전}"을 반환합니다.
         /// 이는 release.yml이 생성하는 Sentry release 식별자와 정합하여 release-health/auto-resolve 연결을 정확하게 합니다.
         /// </summary>
-        /// <param name="sdkVersion">SDK 버전 문자열(<c>AITVersion.Version</c>).</param>
+        /// <param name="sdkVersion">릴리스 버전 문자열(<c>AITVersion.ReleaseVersion</c>). 리비전이 있으면 "X.Y.Z+N"이고 그대로 release 이름이 됩니다.</param>
         /// <param name="releaseOverride">명시적 환경변수(<c>SENTRY_RELEASE</c>). 비어 있으면 무시됩니다.</param>
         /// <returns>설정할 release 문자열. <c>null</c>이면 override 하지 않음(Sentry 기본값 Application.version 사용).</returns>
         internal static string ResolveRelease(string sdkVersion, string releaseOverride)

@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Globalization;
 using Sentry;
 using Sentry.Unity;
 using UnityEngine;
@@ -61,6 +62,7 @@ namespace AppsInToss.Sentry
             SentrySdk.ConfigureScope(scope =>
             {
                 scope.SetTag("ait.sdk_version", AITVersion.FullVersion);
+                scope.SetTag("ait.sdk_revision", AITVersion.Revision.ToString(CultureInfo.InvariantCulture));
                 scope.SetTag("ait.unity_version", Application.unityVersion);
 
                 if (!string.IsNullOrEmpty(AITVersion.CommitHash))

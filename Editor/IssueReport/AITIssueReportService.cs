@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using AppsInToss.Editor.ErrorTracker;
 using UnityEditor;
 using UnityEngine;
@@ -124,6 +125,7 @@ namespace AppsInToss.Editor.IssueReport
             {
                 { "feedback.source", feedbackSource },
                 { "ait.sdk_version", AITVersion.Version },
+                { "ait.sdk_revision", AITVersion.Revision.ToString(CultureInfo.InvariantCulture) },
                 { "ait.unity_version", Application.unityVersion },
                 { "editor.platform", Application.platform.ToString() },
             };

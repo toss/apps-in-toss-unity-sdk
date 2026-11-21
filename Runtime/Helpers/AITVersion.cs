@@ -35,12 +35,22 @@ namespace AppsInToss
             public string version;
             public string releaseDateTime;
             public string commitHash;
+            // 필드가 없는 이전 JSON은 JsonUtility가 0으로 채운다 (0 = 리비전 없음)
+            public int revision;
         }
+
+        /// <summary>
+        /// package.json description의 릴리스 스탬프 정규식.
+        /// "(Released: 20260126_1204, e89a387, +2)" 형식이고 해시와 리비전은 생략될 수 있다.
+        /// </summary>
+        internal const string ReleaseStampPattern =
+            @"\(Released:\s*(\d{8}_\d{4})(?:,\s*([a-f0-9]+))?(?:,\s*\+([1-9]\d*))?\)";
 
         private static bool _loaded;
         private static string _version = "unknown";
         private static string _releaseDateTime;
         private static string _commitHash;
+        private static int _revision;
 
         /// <summary>
         /// SDK 버전 (예: "1.8.0")
@@ -70,12 +80,27 @@ namespace AppsInToss
         }
 
         /// <summary>
-        /// 전체 버전 문자열 (예: "1.8.0 (20260126_1803, e89a387)")
+        /// 같은 Version 안에서의 릴리스 리비전 (1부터). 알 수 없거나 리비전 없는 릴리스는 0.
+        /// </summary>
+        public static int Revision
+        {
+            get { EnsureLoaded(); return _revision; }
+            private set { _revision = value; }
+        }
+
+        /// <summary>
+        /// 릴리스 버전 (예: "1.8.0+2"). Revision이 0이면 Version과 같다.
+        /// </summary>
+        public static string ReleaseVersion =>
+            Revision > 0 ? $"{Version}+{Revision}" : Version;
+
+        /// <summary>
+        /// 전체 버전 문자열 (예: "1.8.0+2 (20260126_1803, e89a387)")
         /// </summary>
         public static string FullVersion =>
             string.IsNullOrEmpty(ReleaseDateTime)
-                ? Version
-                : $"{Version} ({ReleaseDateTime}" +
+                ? ReleaseVersion
+                : $"{ReleaseVersion} ({ReleaseDateTime}" +
                   (string.IsNullOrEmpty(CommitHash) ? ")" : $", {CommitHash})");
 
         private static void EnsureLoaded()
@@ -99,6 +124,37 @@ namespace AppsInToss
 #else
             LoadVersionInfoRuntime();
 #endif
+        }
+
+        /// <summary>
+        /// 릴리스 스탬프에서 일시·해시·리비전을 읽는다. 스탬프가 없거나 형식이 다르면 모두 비운다.
+        /// </summary>
+        internal static void ParseReleaseStamp(
+            string description, out string releaseDateTime, out string commitHash, out int revision)
+        {
+            releaseDateTime = null;
+            commitHash = null;
+            revision = 0;
+            if (string.IsNullOrEmpty(description)) return;
+
+            var match = Regex.Match(description, ReleaseStampPattern);
+            if (!match.Success) return;
+
+            releaseDateTime = match.Groups[1].Value;
+            commitHash = match.Groups[2].Success ? match.Groups[2].Value : null;
+            // 패턴이 [1-9]\d*만 받으므로 int 범위를 넘는 경우만 TryParse가 걸러낸다
+            if (match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out var parsed))
+            {
+                revision = parsed;
+            }
+        }
+
+        private static void ApplyReleaseStamp(string description)
+        {
+            ParseReleaseStamp(description, out var dateTime, out var hash, out var revision);
+            ReleaseDateTime = dateTime;
+            CommitHash = hash;
+            Revision = revision;
         }
 
 #if UNITY_EDITOR
@@ -127,13 +183,8 @@ namespace AppsInToss
             if (packageInfo != null)
             {
                 Version = packageInfo.version;
-                // description 형식: "... (Released: 20260126_1204, e89a387)"
-                var match = Regex.Match(
-                    packageInfo.description,
-                    @"\(Released:\s*(\d{8}_\d{4})(?:,\s*([a-f0-9]+))?\)"
-                );
-                ReleaseDateTime = match.Success ? match.Groups[1].Value : null;
-                CommitHash = match.Success && match.Groups[2].Success ? match.Groups[2].Value : null;
+                // description 형식: "... (Released: 20260126_1204, e89a387, +2)" (해시·리비전은 선택)
+                ApplyReleaseStamp(packageInfo.description);
             }
             else
             {
@@ -260,6 +311,7 @@ namespace AppsInToss
                 }
                 ReleaseDateTime = string.IsNullOrEmpty(payload.releaseDateTime) ? null : payload.releaseDateTime;
                 CommitHash = string.IsNullOrEmpty(payload.commitHash) ? null : payload.commitHash;
+                Revision = payload.revision > 0 ? payload.revision : 0;
             }
             catch (Exception)
             {

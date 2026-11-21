@@ -105,4 +105,36 @@ public class VersionInfoJsonStabilityTests
             rewritten, "1.9.0", "abc1234", "20260727_1500", out bool changedSecond);
         Assert.IsFalse(changedSecond);
     }
+
+    [Test]
+    public void Revision_IsWrittenAndRoundTrips()
+    {
+        string json = AITWebGLBuilder.BuildVersionInfoJson(
+            null, "1.9.0", "abc1234", "20260725_1200", out _, revision: 2);
+        StringAssert.Contains("\"revision\": 2", json);
+
+        var payload = UnityEngine.JsonUtility.FromJson<AppsInToss.AITVersion.VersionInfoPayload>(json);
+        Assert.AreEqual(2, payload.revision);
+    }
+
+    [Test]
+    public void JsonWithoutRevision_ReadsAsZero()
+    {
+        var payload = UnityEngine.JsonUtility.FromJson<AppsInToss.AITVersion.VersionInfoPayload>(
+            "{\"version\":\"1.9.0\",\"releaseDateTime\":\"20260725_1200\",\"commitHash\":\"abc1234\"}");
+        Assert.AreEqual(0, payload.revision);
+    }
+
+    [Test]
+    public void DifferentRevision_UsesFreshStamp_Changed()
+    {
+        string first = AITWebGLBuilder.BuildVersionInfoJson(
+            null, "1.9.0", "abc1234", "20260725_1200", out _, revision: 1);
+
+        string second = AITWebGLBuilder.BuildVersionInfoJson(
+            first, "1.9.0", "abc1234", "20260726_0900", out bool changed, revision: 2);
+
+        Assert.IsTrue(changed);
+        StringAssert.Contains("\"releaseDateTime\": \"20260726_0900\"", second);
+    }
 }

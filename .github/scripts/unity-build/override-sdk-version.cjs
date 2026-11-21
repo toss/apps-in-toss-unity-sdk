@@ -3,7 +3,10 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const overrideVersion = process.env.OVERRIDE_VERSION;
+// 입력은 `<wf>` 또는 `<wf>+<N>`(릴리스 버전)이다. `+N` 리비전은 npm 에 없는 값이라
+// web-framework 핀과 pnpm update 에는 core(`<wf>`)만 쓴다. package.json .version 도 core 다.
+const requestedVersion = process.env.OVERRIDE_VERSION;
+const overrideVersion = (requestedVersion || '').replace(/\+[1-9]\d*$/, '');
 const onWindows = process.platform === 'win32';
 // Windows에서 npx/pnpm은 .cmd 래퍼라 shell:true 필요. POSIX는 그대로.
 const run = (cmd, args, opts = {}) =>
@@ -11,13 +14,13 @@ const run = (cmd, args, opts = {}) =>
 
 // 생성기는 web-framework 3.x의 dist/index.d.ts 하나만 입력으로 받는다. 1.x/2.x로 재생성하면
 // 생성기가 번들 구조를 해석하지 못하고 실패하므로, 시작하기 전에 분명한 메시지로 막는다.
-if (!/^3\.\d+\.\d+/.test(overrideVersion || '')) {
-  console.error(`::error::sdk_version_override는 3.x 버전만 쓸 수 있습니다: '${overrideVersion}'`);
+if (!/^3\.\d+\.\d+/.test(overrideVersion) || overrideVersion.includes('+')) {
+  console.error(`::error::sdk_version_override는 3.x 버전만 쓸 수 있습니다: '${requestedVersion}'`);
   process.exit(1);
 }
 
 console.log('=== SDK Version Override ===');
-console.log(`Target SDK version: ${overrideVersion}`);
+console.log(`Target SDK version: ${requestedVersion} (web-framework core: ${overrideVersion})`);
 console.log('');
 
 // 1. package.json 버전 변경 (메타데이터용 — AITVersion.Version의 소스)

@@ -89,7 +89,7 @@ jobs:
       oldest_sdk_version: ${{ steps.oldest.outputs.version }}
 
     steps:
-      # bulk release가 다시 배포하는 가장 낮은 버전. bulk-release.yml의 하한 규칙과 같다:
+      # 지원 범위에서 가장 낮은 배포 대상 버전. 하한 규칙:
       # sdk-policy.json minVersion과 3.1.0 중 높은 쪽(3.0.x 이하는 기본 재배포 대상이 아니다).
       - name: Checkout sdk-policy.json
         uses: actions/checkout@v7

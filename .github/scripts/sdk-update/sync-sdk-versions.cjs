@@ -6,12 +6,21 @@
  * Editor/AITPackageManagerHelper.cs 에 흩어져 있다. 이 값들의 기준(SSOT)은
  * .github/sdk-versions.json 한 곳이고, 나머지 파일은 이 스크립트가 쓰고 검사한다.
  *
+ * 릴리스 버전(sdkVersion)은 `<wf>` 또는 `<wf>+<N>` 이다 (N 은 1 이상, 앞자리 0 없음).
+ * `<wf>` 만 있는 값은 과거 릴리스를 가리키는 값으로만 받아 주고, 새 릴리스는 항상 `+<N>` 을 쓴다.
+ * 루트 package.json 의 .version 에는 리비전 없이 core(`<wf>`)만 쓴다. 리비전은 태그 이름
+ * (release/v<wf>+<N>)과 릴리스 시점에 쓰는 description 에만 실린다.
+ *
  * 모드
  *   resolve --version X.Y.Z [--registry URL] [--dry-run]
  *       목표 web-framework 버전을 받아 npm 에서 동반 패키지 버전을 결정하고 기준 파일을 갱신한다.
+ *       sdkVersion 은 `X.Y.Z+1` 로 쓴다 (그 web-framework 버전의 첫 릴리스).
  *       동반 패키지는 "같은 번호가 npm 에 있으면 그 번호, 없으면 latest" 규칙을 따른다
  *       (3.0 부터 web-framework 와 자매 패키지는 lockstep publish 가 아니다).
  *       기준 파일의 pnpm 은 건드리지 않는다.
+ *   bump-revision
+ *       sdkVersion 의 리비전을 하나 올린다 (`X.Y.Z+N` → `X.Y.Z+(N+1)`, `X.Y.Z` → `X.Y.Z+1`).
+ *       기준 파일만 고친다. 이어서 apply 를 실행한다.
  *   apply
  *       기준 파일을 읽어 모든 대상 파일에 쓴다. 선택(optional) 대상 키는 이미 있을 때만 갱신한다
  *       (직접 핀이 제거돼도 phantom 키를 다시 만들지 않는다).
@@ -44,6 +53,8 @@ const WEB_FRAMEWORK = '@apps-in-toss/web-framework';
 const DEVTOOLS = '@apps-in-toss/devtools';
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+// 릴리스 버전: SEMVER 뒤에 선택적으로 `+<N>` (N >= 1, 앞자리 0 없음)
+const RELEASE_VERSION = /^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+([1-9]\d*))?$/;
 const PNPM_CONST = /(public const string PNPM_VERSION = ")([^"]*)(";)/;
 
 // ---------------------------------------------------------------------------
@@ -60,7 +71,7 @@ const PNPM_CONST = /(public const string PNPM_VERSION = ")([^"]*)(";)/;
  *   format:   값을 대상 파일 표기로 바꾸는 함수 (기본: 그대로)
  */
 const JSON_SITES = [
-  { ssot: { kind: 'sdk' }, file: ROOT_PKG, key: 'version' },
+  { ssot: { kind: 'sdk' }, file: ROOT_PKG, key: 'version', format: coreOf },
   { ssot: { kind: 'pnpm' }, file: ROOT_PKG, key: 'packageManager', format: (v) => `pnpm@${v}` },
 
   { ssot: { kind: 'webFramework' }, file: GENERATOR_PKG, section: 'dependencies', key: WEB_FRAMEWORK },
@@ -72,6 +83,17 @@ const JSON_SITES = [
 ];
 
 class UsageError extends Error {}
+
+/** `<wf>+<N>` 에서 `<wf>` 를 돌려준다. 리비전이 없으면 그대로. */
+function coreOf(version) {
+  return String(version).replace(/\+.*$/, '');
+}
+
+/** 릴리스 버전을 {core, revision} 으로 나눈다. 형식이 틀리면 null. revision 은 없으면 0. */
+function parseReleaseVersion(version) {
+  const m = RELEASE_VERSION.exec(typeof version === 'string' ? version : '');
+  return m ? { core: m[1], revision: m[2] ? Number(m[2]) : 0 } : null;
+}
 
 // ---------------------------------------------------------------------------
 // 기준 파일
@@ -103,8 +125,11 @@ function validateSsot(ssot) {
   const isVersion = (v) => typeof v === 'string' && SEMVER.test(v);
 
   if (ssot.schemaVersion !== 1) errors.push(`schemaVersion 은 1 이어야 합니다 (현재: ${JSON.stringify(ssot.schemaVersion)})`);
-  for (const key of ['sdkVersion', 'webFramework', 'pnpm']) {
+  for (const key of ['webFramework', 'pnpm']) {
     if (!isVersion(ssot[key])) errors.push(`${key} 는 X.Y.Z 형식이어야 합니다 (현재: ${JSON.stringify(ssot[key])})`);
+  }
+  if (parseReleaseVersion(ssot.sdkVersion) === null) {
+    errors.push(`sdkVersion 은 X.Y.Z 또는 X.Y.Z+N (N 은 1 이상) 형식이어야 합니다 (현재: ${JSON.stringify(ssot.sdkVersion)})`);
   }
   const companions = ssot.companions;
   if (companions === null || typeof companions !== 'object' || Array.isArray(companions)) {
@@ -114,8 +139,8 @@ function validateSsot(ssot) {
       if (!isVersion(v)) errors.push(`companions["${name}"] 는 X.Y.Z 형식이어야 합니다 (현재: ${JSON.stringify(v)})`);
     }
   }
-  if (isVersion(ssot.sdkVersion) && isVersion(ssot.webFramework) && ssot.sdkVersion !== ssot.webFramework) {
-    errors.push(`sdkVersion(${ssot.sdkVersion}) 과 webFramework(${ssot.webFramework}) 는 같아야 합니다 (release.yml 이 같은 값을 요구합니다)`);
+  if (parseReleaseVersion(ssot.sdkVersion) !== null && isVersion(ssot.webFramework) && coreOf(ssot.sdkVersion) !== ssot.webFramework) {
+    errors.push(`sdkVersion(${ssot.sdkVersion}) 의 core 와 webFramework(${ssot.webFramework}) 는 같아야 합니다 (리비전 +N 은 제외하고 비교합니다)`);
   }
 
   // 기준 파일의 항목은 반드시 쓰이는 곳이 있어야 한다. 이름만 있고 대상이 없으면 조용히 무시된다.
@@ -376,7 +401,7 @@ function runResolve(root, { version, registry = DEFAULT_REGISTRY, dryRun = false
   }
   const companions = resolveCompanions(version, Object.keys(ssot.companions), source);
 
-  const next = { ...ssot, sdkVersion: version, webFramework: version, companions };
+  const next = { ...ssot, sdkVersion: `${version}+1`, webFramework: version, companions };
   log(`web-framework: ${version}`);
   for (const [name, v] of Object.entries(companions)) {
     log(`${name}: ${v}${v === version ? '' : ` (v${version} 미존재 → latest)`}`);
@@ -386,6 +411,29 @@ function runResolve(root, { version, registry = DEFAULT_REGISTRY, dryRun = false
   } else {
     writeSsot(root, next);
     log(`${SSOT_REL} 갱신 완료. 이어서 apply 로 대상 파일에 쓰세요.`);
+  }
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// bump-revision
+// ---------------------------------------------------------------------------
+
+/** sdkVersion 의 리비전을 하나 올린다. 기준 파일만 고친다. */
+function runBumpRevision(root, { dryRun = false } = {}, log = console.log) {
+  const ssot = readSsot(root);
+  const ssotErrors = validateSsot(ssot);
+  if (ssotErrors.length) {
+    throw new UsageError(`기준 파일(${SSOT_REL})이 올바르지 않습니다:\n  - ${ssotErrors.join('\n  - ')}`);
+  }
+  const { core, revision } = parseReleaseVersion(ssot.sdkVersion);
+  const next = { ...ssot, sdkVersion: `${core}+${revision + 1}` };
+  log(`sdkVersion: ${ssot.sdkVersion} → ${next.sdkVersion}`);
+  if (dryRun) {
+    log('(--dry-run: 기준 파일을 쓰지 않았습니다)');
+  } else {
+    writeSsot(root, next);
+    log(`${SSOT_REL} 갱신 완료. 이어서 apply 로 대상 파일에 쓰세요 (package.json 의 version 은 ${core} 그대로입니다).`);
   }
   return next;
 }
@@ -416,6 +464,7 @@ const USAGE = `사용법:
   node ${SCRIPT_REL} check
   node ${SCRIPT_REL} apply
   node ${SCRIPT_REL} resolve --version X.Y.Z [--registry URL] [--dry-run]
+  node ${SCRIPT_REL} bump-revision [--dry-run]
 공통: --root DIR (테스트용)`;
 
 function main(argv) {
@@ -425,7 +474,8 @@ function main(argv) {
       case 'check': return runCheck(opts.root);
       case 'apply': runApply(opts.root); return 0;
       case 'resolve': runResolve(opts.root, opts); return 0;
-      default: throw new UsageError(`모드를 지정하세요 (check | apply | resolve): ${opts.mode || '(없음)'}`);
+      case 'bump-revision': runBumpRevision(opts.root, opts); return 0;
+      default: throw new UsageError(`모드를 지정하세요 (check | apply | resolve | bump-revision): ${opts.mode || '(없음)'}`);
     }
   } catch (e) {
     const annotate = process.env.GITHUB_ACTIONS === 'true';
@@ -449,11 +499,14 @@ module.exports = {
   SSOT_REL,
   SCRIPT_REL,
   JSON_SITES,
+  coreOf,
+  parseReleaseVersion,
   validateSsot,
   collectMismatches,
   resolveCompanions,
   runCheck,
   runApply,
   runResolve,
+  runBumpRevision,
   main,
 };

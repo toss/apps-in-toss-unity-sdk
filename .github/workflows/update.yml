@@ -85,16 +85,17 @@ jobs:
           echo "npm 버전 목록:"
           echo "$ALL_NPM_VERSIONS"
 
-          # 현재 SDK 버전 확인
+          # 현재 SDK 버전 확인 (core 기준. 릴리스 버전의 리비전 +N 은 비교에서 뺀다)
           CURRENT_VERSION=$(jq -r '.version' package.json)
+          CURRENT_VERSION="${CURRENT_VERSION%%+*}"
           CURRENT_MAJOR="${CURRENT_VERSION%%.*}"
           echo ""
           echo "현재 SDK 버전: ${CURRENT_VERSION} (메이저: ${CURRENT_MAJOR})"
 
-          # 기존 릴리즈 태그 목록
+          # 기존 릴리즈 태그 목록. release/v<wf> 와 release/v<wf>+<N> 을 모두 web-framework 버전(core)으로 모은다.
           echo ""
           echo "=== 기존 릴리즈 태그 확인 ==="
-          EXISTING_TAGS=$(git tag -l 'release/v*' | sed 's/release\/v//' | sort -V)
+          EXISTING_TAGS=$(git tag -l 'release/v*' | sed -e 's/release\/v//' -e 's/+.*$//' | sort -Vu)
           echo "기존 태그:"
           echo "$EXISTING_TAGS"
 
@@ -129,7 +130,7 @@ jobs:
               continue
             fi
 
-            # 이미 릴리즈 태그가 있으면 스킵
+            # 이미 릴리즈 태그(release/v<wf> 또는 release/v<wf>+<N>)가 있으면 스킵
             if echo "$EXISTING_TAGS" | grep -qx "$VERSION"; then
               echo "  ${VERSION}: 이미 릴리즈됨 (스킵)"
               continue
@@ -299,6 +300,7 @@ jobs:
 
       # 동반 패키지(devtools) 버전을 npm에서 결정해 기준 파일
       # (.github/sdk-versions.json)에 기록한다. 규칙과 근거는 스크립트 머리말 참고.
+      # sdkVersion 은 새 web-framework 버전의 첫 릴리스인 `<버전>+1` 로 기록된다.
       # 다음 단계(SDK 재생성)와 "버전 파일 동기화" 단계가 이 기준 파일을 읽는다.
       - name: 동반 패키지 버전 결정
         if: steps.check.outputs.skip != 'true'
@@ -496,11 +498,17 @@ jobs:
           - [ ] 생성된 SDK 코드 검토
 
           ### 머지 후 자동 처리
-          이 PR이 머지되면 자동으로 릴리즈가 생성됩니다:
-          - 릴리즈 태그: \`release/v${VERSION}\`
-          - GitHub Release: https://github.com/${{ github.repository }}/releases/tag/release/v${VERSION}
+          이 PR이 머지되면 \`release\` environment 승인을 거쳐 릴리즈가 생성됩니다:
+          - 고정 태그: \`release/v${VERSION}+1\` (이 리비전에 고정, 옮기지 않음)
+          - 별칭 태그: \`release/v${VERSION}\` (이 버전의 가장 최근 리비전을 따라감)
+          - GitHub Release: https://github.com/${{ github.repository }}/releases/tag/release/v${VERSION}+1
 
           ### UPM 설치 (머지 후)
+          이 리비전에 고정:
+          \`\`\`
+          https://github.com/${{ github.repository }}.git#release/v${VERSION}+1
+          \`\`\`
+          최신 리비전을 따라감:
           \`\`\`
           https://github.com/${{ github.repository }}.git#release/v${VERSION}
           \`\`\`" \

@@ -234,6 +234,82 @@ test('기준 파일의 sdkVersion 과 webFramework 가 다르면 형식 오류�
   assert.match(errors[0], /sdkVersion\(3\.6\.0\).*webFramework\(3\.5\.0\)/);
 });
 
+test('sdkVersion 은 X.Y.Z 와 X.Y.Z+N(N>=1, 앞자리 0 없음)을 받고, core 가 webFramework 와 같아야 한다', () => {
+  for (const ok of ['3.5.0', '3.5.0+1', '3.5.0+12']) {
+    assert.deepEqual(sync.validateSsot({ ...SSOT, sdkVersion: ok }), [], ok);
+  }
+  for (const bad of ['3.5.0+0', '3.5.0+01', '3.5.0+', '3.5.0+1+2', '3.5.0+abc', '3.5.0+1.2', '', undefined]) {
+    assert.ok(sync.validateSsot({ ...SSOT, sdkVersion: bad }).some((e) => e.startsWith('sdkVersion')), String(bad));
+  }
+  const mismatch = sync.validateSsot({ ...SSOT, sdkVersion: '3.6.0+1' });
+  assert.equal(mismatch.length, 1);
+  assert.match(mismatch[0], /3\.6\.0\+1.*3\.5\.0/);
+});
+
+test('prerelease 는 그대로 받고 +N 도 붙일 수 있다', () => {
+  const pre = { ...SSOT, sdkVersion: '3.5.0-beta.1+2', webFramework: '3.5.0-beta.1' };
+  assert.deepEqual(sync.validateSsot(pre), []);
+  assert.equal(sync.coreOf('3.5.0-beta.1+2'), '3.5.0-beta.1');
+  assert.deepEqual(sync.parseReleaseVersion('3.5.0+7'), { core: '3.5.0', revision: 7 });
+  assert.deepEqual(sync.parseReleaseVersion('3.5.0'), { core: '3.5.0', revision: 0 });
+  assert.equal(sync.parseReleaseVersion('3.5'), null);
+});
+
+test('sdkVersion 이 X.Y.Z+N 이어도 package.json version 은 core 만 쓰고 check 가 통과한다', () => {
+  const root = makeRepo({ ssot: { ...SSOT, sdkVersion: '3.5.0+2' } });
+  assert.equal(sync.runCheck(root, () => {}), 0);
+
+  const pkg = readJson(root, 'package.json');
+  pkg.version = '3.4.0';
+  writeJson(root, 'package.json', pkg);
+  const out = capture();
+  assert.equal(sync.runCheck(root, out.log), 1);
+  assert.match(out.text(), /version = 3\.4\.0 \(기준 sdkVersion = 3\.5\.0\)/);
+
+  sync.runApply(root, () => {});
+  assert.equal(readJson(root, 'package.json').version, '3.5.0');
+  assert.equal(readJson(root, sync.SSOT_REL).sdkVersion, '3.5.0+2');
+  assert.equal(sync.runCheck(root, () => {}), 0);
+});
+
+test('package.json version 에 +N 이 들어 있으면 check 가 잡고 apply 가 core 로 고친다', () => {
+  const root = makeRepo({ ssot: { ...SSOT, sdkVersion: '3.5.0+1' } });
+  const pkg = readJson(root, 'package.json');
+  pkg.version = '3.5.0+1';
+  writeJson(root, 'package.json', pkg);
+  assert.equal(sync.runCheck(root, () => {}), 1);
+  sync.runApply(root, () => {});
+  assert.equal(readJson(root, 'package.json').version, '3.5.0');
+});
+
+test('bump-revision: +N 은 +(N+1), 맨 버전은 +1, 기준 파일만 고친다', () => {
+  const root = makeRepo({ ssot: { ...SSOT, sdkVersion: '3.5.0+1' } });
+  assert.equal(sync.runBumpRevision(root, {}, () => {}).sdkVersion, '3.5.0+2');
+  assert.equal(readJson(root, sync.SSOT_REL).sdkVersion, '3.5.0+2');
+  assert.equal(readJson(root, 'package.json').version, '3.5.0');
+
+  const bare = makeRepo();
+  assert.equal(sync.runBumpRevision(bare, {}, () => {}).sdkVersion, '3.5.0+1');
+
+  const ten = makeRepo({ ssot: { ...SSOT, sdkVersion: '3.5.0+9' } });
+  assert.equal(sync.runBumpRevision(ten, {}, () => {}).sdkVersion, '3.5.0+10');
+});
+
+test('bump-revision --dry-run 은 기준 파일을 쓰지 않는다', () => {
+  const root = makeRepo();
+  sync.runBumpRevision(root, { dryRun: true }, () => {});
+  assert.deepEqual(readJson(root, sync.SSOT_REL), SSOT);
+});
+
+test('CLI: bump-revision 후 apply, check 가 통과한다', () => {
+  const root = makeRepo({ ssot: { ...SSOT, sdkVersion: '3.5.0+3' } });
+  const run = (...args) => spawnSync(process.execPath, [SCRIPT, ...args, '--root', root], { encoding: 'utf8' });
+  assert.equal(run('bump-revision').status, 0);
+  assert.equal(readJson(root, sync.SSOT_REL).sdkVersion, '3.5.0+4');
+  assert.equal(run('apply').status, 0);
+  assert.equal(run('check').status, 0);
+});
+
 test('기준 파일 형식 오류: 버전 형식, schemaVersion, 쓰이는 곳 없는 항목', () => {
   assert.ok(sync.validateSsot({ ...SSOT, pnpm: '^11.6.0' }).some((e) => e.startsWith('pnpm')));
   assert.ok(sync.validateSsot({ ...SSOT, schemaVersion: 2 }).some((e) => e.startsWith('schemaVersion')));
@@ -261,7 +337,7 @@ test('resolve: 같은 번호가 있는 패키지는 그 번호, 없으면 latest
   const root = makeRepo();
   const next = sync.runResolve(root, { version: '3.8.0', lookup }, () => {});
 
-  assert.equal(next.sdkVersion, '3.8.0');
+  assert.equal(next.sdkVersion, '3.8.0+1');
   assert.equal(next.webFramework, '3.8.0');
   assert.deepEqual(next.companions, {
     '@apps-in-toss/devtools': '3.8.0',

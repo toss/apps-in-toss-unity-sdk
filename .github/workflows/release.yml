@@ -1,12 +1,19 @@
 name: Release
 run-name: "Release${{ inputs.version && format(' - v{0}', inputs.version) || '' }}"
 
+# 릴리스 버전은 .github/sdk-versions.json 의 sdkVersion 이다 (`<wf>+<N>`).
+#   고정 태그  release/v<wf>+<N>  한 번 만들면 옮기거나 지우지 않는다. GitHub Release 는 이 태그에만 붙는다.
+#   별칭 태그  release/v<wf>      Release 를 게시한 뒤 새 리비전 커밋으로 옮긴다. Release 는 붙이지 않는다.
+# 새 리비전은 sdkVersion 의 +N 을 올려 main 에 머지하면 만들어진다.
+# 공개되는 단계(태그·Release·별칭)는 GitHub environment `release` 의 승인을 받은 뒤에만 실행한다.
+
 on:
+  # 현재 기준 파일의 sdkVersion 게시를 다시 시도할 때만 쓴다. version 은 비워 두거나 기준 파일 값과 같아야 한다.
   workflow_dispatch:
     inputs:
       version:
-        description: '릴리즈 버전 (예: 1.6.0) - 필수'
-        required: true
+        description: '선택. 비우면 기준 파일의 sdkVersion을 쓴다. 입력하면 기준 파일 값(예: 3.10.0+1)과 같아야 한다'
+        required: false
         type: string
       build_strategy:
         description: '빌드 전략: full (10빌드), standard (5빌드), minimal (1빌드), skip-build (0빌드)'
@@ -19,43 +26,21 @@ on:
           - skip-build
         default: minimal
 
-  # update/ 브랜치가 main에 머지되면 자동 릴리즈
+  # sdkVersion(기준 파일)이 바뀌어 main 에 머지되면 자동 릴리즈
   push:
     branches:
       - main
     paths:
       - 'package.json'
+      - '.github/sdk-versions.json'
 
-  # bulk-release.yml에서 호출용
-  workflow_call:
-    inputs:
-      version:
-        description: '릴리즈 버전'
-        required: true
-        type: string
-      skip_notification:
-        description: 'bulk-release에서 호출 시 개별 알림 스킵'
-        required: false
-        type: boolean
-        default: false
-      build_strategy:
-        description: '빌드 전략: full, standard, minimal, skip-build'
-        required: false
-        type: string
-        default: minimal
-    secrets:
-      AIT_DEPLOY_KEY:
-        required: true
-      AIT_AD_INTERSTITIAL_ID:
-        required: false
-      AIT_AD_REWARDED_ID:
-        required: false
-      AIT_AD_BANNER_TEXT_ID:
-        required: false
-      AIT_AD_BANNER_IMAGE_ID:
-        required: false
-      KEYCHAIN_PASSWORD:
-        required: false
+permissions:
+  contents: read
+
+# 릴리스는 한 번에 하나만. 진행 중인 실행은 취소하지 않는다.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   # =====================================================
@@ -67,57 +52,96 @@ jobs:
 
     outputs:
       version: ${{ steps.version.outputs.version }}
+      core: ${{ steps.version.outputs.core }}
+      revision: ${{ steps.version.outputs.revision }}
       tag_name: ${{ steps.version.outputs.tag_name }}
+      alias_name: ${{ steps.version.outputs.alias_name }}
       skip: ${{ steps.version.outputs.skip }}
+      source_sha: ${{ steps.version.outputs.source_sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: 버전 결정
         id: version
         env:
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          # push 이벤트: package.json에서 버전 읽기
-          # workflow_dispatch/workflow_call: inputs에서 버전 받기
-          if [ "${{ github.event_name }}" = "push" ]; then
-            VERSION=$(cat package.json | jq -r '.version')
-            echo "package.json에서 버전 읽기: ${VERSION}"
-
-            # 이미 릴리즈 태그가 존재하면 스킵
-            TAG_NAME="release/v${VERSION}"
-            if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
-              echo "이미 릴리즈 태그가 존재합니다: ${TAG_NAME}"
-              echo "skip=true" >> $GITHUB_OUTPUT
-              echo "version=${VERSION}" >> $GITHUB_OUTPUT
-              echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          else
-            VERSION="${{ inputs.version }}"
-            echo "입력된 버전: ${VERSION}"
+          # 릴리스 버전은 기준 파일(.github/sdk-versions.json)의 sdkVersion 이다.
+          # 수동 실행의 version 입력은 같은 값을 확인하는 용도일 뿐 다른 버전을 고르지 못한다.
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::main 브랜치에서만 릴리스할 수 있습니다 (현재: ${REF})"
+            exit 1
           fi
 
-          # Semver 형식 검증
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?$'; then
+          SOURCE_SHA=$(git rev-parse HEAD)
+          VERSION=$(jq -r '.sdkVersion' .github/sdk-versions.json)
+          echo "기준 파일 sdkVersion: ${VERSION} (커밋 ${SOURCE_SHA})"
+
+          # 아래에서 skip=false 로 덮어쓰기 전까지는 건너뛴다 (GITHUB_OUTPUT 은 마지막 값이 이긴다)
+          {
+            echo "source_sha=${SOURCE_SHA}"
+            echo "version=${VERSION}"
+            echo "skip=true"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$VERSION" ]; then
+            echo "::error::입력한 버전(${INPUT_VERSION})이 기준 파일의 sdkVersion(${VERSION})과 다릅니다. 수동 실행은 현재 기준 파일의 버전 게시를 다시 시도할 때만 씁니다."
+            exit 1
+          fi
+
+          # 형식 검증: <wf>+<N> (N >= 1, 앞자리 0 없음), <wf> 는 X.Y.Z 또는 X.Y.Z-prerelease
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.]*)?(\+[1-9][0-9]*)?$ ]]; then
             echo "::error::올바른 버전 형식이 아닙니다: ${VERSION}"
             exit 1
           fi
 
+          CORE="${VERSION%%+*}"
+          echo "core=${CORE}" >> "$GITHUB_OUTPUT"
+
+          # 리비전 없는 값은 과거 릴리스를 가리키는 값으로만 남겨 둔다. 새로 릴리스하지 않는다.
+          if [[ "$VERSION" != *"+"* ]]; then
+            echo "::notice::sdkVersion(${VERSION})에 리비전(+N)이 없어 릴리스하지 않습니다. 새 릴리스는 <버전>+<N> 형식만 만듭니다."
+            exit 0
+          fi
+
+          REVISION="${VERSION##*+}"
+          TAG_NAME="release/v${VERSION}"
+          ALIAS_NAME="release/v${CORE}"
+          {
+            echo "revision=${REVISION}"
+            echo "tag_name=${TAG_NAME}"
+            echo "alias_name=${ALIAS_NAME}"
+          } >> "$GITHUB_OUTPUT"
+
+          # 고정 태그가 이미 있으면 이미 릴리스한 리비전이다 (고정 태그는 옮기지 않는다)
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" > /dev/null 2>&1; then
+            echo "::notice::이미 릴리스한 리비전입니다 (${TAG_NAME}). 새 릴리스가 필요하면 sdkVersion 의 +N 을 올리세요."
+            exit 0
+          fi
+
           # 배포 제외 버전(denylist) 검사 — 건너뛴 버전의 실수 재배포 방지
+          # 맨 버전(X.Y.Z)은 그 core 의 모든 리비전을, X.Y.Z+N 은 그 리비전 하나를 막는다
           DENIED_VERSIONS=$(jq -r '(.deniedVersions // [])[]' sdk-policy.json)
           for DENIED in $DENIED_VERSIONS; do
-            if [ "$VERSION" = "$DENIED" ] || [[ "$VERSION" == "$DENIED"-* ]]; then
+            if [ "$VERSION" = "$DENIED" ] || [ "$CORE" = "$DENIED" ] || [[ "$CORE" == "$DENIED"-* ]]; then
               echo "::error::배포가 제외된 버전입니다: ${VERSION} (거부 목록: ${DENIED})"
               exit 1
             fi
           done
 
-          echo "버전 검증 통과: ${VERSION}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag_name=release/v${VERSION}" >> $GITHUB_OUTPUT
-          echo "skip=false" >> $GITHUB_OUTPUT
+          # 별칭(release/v<core>)에 옛 GitHub Release 가 붙어 있으면 옮길 수 없다. 빌드를 돌리기 전에 알린다.
+          bash .github/scripts/release/release-refs.sh check-alias "$ALIAS_NAME"
+
+          echo "버전 검증 통과: ${VERSION} (core ${CORE}, 리비전 +${REVISION})"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
   # =====================================================
   # SDK Runtime 재생성 (Orphan Commit)
@@ -128,6 +152,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     if: needs.release.outputs.skip != 'true'
+    # _build/ 임시 브랜치를 push 한다
+    permissions:
+      contents: write
 
     outputs:
       ref: ${{ steps.commit.outputs.ref }}
@@ -137,7 +164,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: main
+          # 버전을 결정한 커밋 그대로 쓴다 (그 사이 main 이 움직여도 다른 버전이 섞이지 않는다)
+          ref: ${{ needs.release.outputs.source_sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
@@ -148,28 +176,26 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 
-      # 릴리즈할 버전의 동반 패키지(devtools) 버전을 기준 파일
-      # (.github/sdk-versions.json)에 정한다. 이 잡은 `ref: main`을 체크아웃하므로, 대상 버전이
-      # main 기준 파일의 sdkVersion과 같으면(정상 릴리즈) 리뷰를 거쳐 머지된 값을 그대로 쓴다.
-      # 다르면(bulk-release 백필 등) update.yml과 같은 규칙으로 npm에서 다시 결정한다.
-      - name: 동반 패키지 버전 결정
+      # 동반 패키지(devtools) 버전은 기준 파일(.github/sdk-versions.json)에 이미 정해져 있다.
+      # 리뷰를 거쳐 머지된 값을 그대로 쓰고, 이 실행이 릴리스하려는 버전과 같은지만 확인한다.
+      - name: 기준 파일 확인
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          CORE: ${{ needs.release.outputs.core }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
           CURRENT=$(jq -r '.sdkVersion' .github/sdk-versions.json)
-          if [ "$VERSION" = "$CURRENT" ]; then
-            echo "main 기준 파일(v${CURRENT})을 그대로 사용"
-          else
-            echo "대상 v${VERSION} ≠ main 기준 파일 v${CURRENT} → npm에서 동반 패키지 버전 결정"
-            node .github/scripts/sdk-update/sync-sdk-versions.cjs resolve \
-              --version "$VERSION" \
-              --registry https://registry.npmjs.org
+          WF=$(jq -r '.webFramework' .github/sdk-versions.json)
+          if [ "$VERSION" != "$CURRENT" ] || [ "$CORE" != "$WF" ]; then
+            echo "::error::기준 파일(sdkVersion ${CURRENT}, webFramework ${WF})이 릴리스 대상(${VERSION}, core ${CORE})과 다릅니다."
+            exit 1
           fi
           cat .github/sdk-versions.json
 
       - name: web-framework 버전 업데이트 및 SDK 재생성
         working-directory: sdk-runtime-generator~
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
+          # web-framework 버전은 core 다 (리비전 +N 은 npm 에 없다)
+          VERSION="${{ needs.release.outputs.core }}"
           echo "=== web-framework v${VERSION} 업데이트 ==="
 
           # 캐시 정리 후 강제 업데이트 (캐시로 인한 오래된 버전 문제 방지)
@@ -279,6 +305,7 @@ jobs:
         id: commit
         run: |
           VERSION="${{ needs.release.outputs.version }}"
+          CORE="${{ needs.release.outputs.core }}"
           # refs/heads/ 경로 사용 (refs/builds/는 GitHub GC에 의해 삭제될 수 있음)
           BUILD_REF="refs/heads/_build/release-v${VERSION}"
 
@@ -291,7 +318,7 @@ jobs:
           TREE=$(git write-tree)
           COMMIT=$(git commit-tree "$TREE" -m "빌드: SDK v${VERSION} 재생성
 
-          - @apps-in-toss/web-framework v${VERSION} 기반 SDK 코드 재생성
+          - @apps-in-toss/web-framework v${CORE} 기반 SDK 코드 재생성
           - package.json 버전 동기화
 
           Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)")
@@ -398,7 +425,7 @@ jobs:
     # ref-cancel: 같은 ref의 이전 호출만 정리. 머신 분배는 GH Actions 자체가 담당.
     concurrency:
       group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-macos-${{ matrix.unity-version }}
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -413,7 +440,7 @@ jobs:
       # 해결됐고, beta-release/preview는 이미 macOS 러너에서 정상 빌드 중.
       os: macos
       unity-version: ${{ matrix.unity-version }}
-      web-framework-version: ${{ needs.release.outputs.version }}
+      web-framework-version: ${{ needs.release.outputs.core }}
       sdk-version: ${{ needs.release.outputs.version }}
       run-build: true
       # 이 산출물은 deploy-ait에서 ait deploy로 실 릴리즈 콘솔에 배포되므로
@@ -438,7 +465,7 @@ jobs:
 
     concurrency:
       group: release-${{ github.workflow }}-${{ needs.regenerate-sdk.outputs.ref }}-windows-${{ matrix.unity-version }}
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     strategy:
       fail-fast: false
@@ -450,7 +477,7 @@ jobs:
       ref: ${{ needs.regenerate-sdk.outputs.ref }}
       os: windows
       unity-version: ${{ matrix.unity-version }}
-      web-framework-version: ${{ needs.release.outputs.version }}
+      web-framework-version: ${{ needs.release.outputs.core }}
       sdk-version: ${{ needs.release.outputs.version }}
       run-build: true
       # macOS 빌드와 동일한 release 프로필 — 배포 대상 산출물은 dev 프로필 금지.
@@ -472,43 +499,54 @@ jobs:
   editmode-gate:
     name: EditMode 게이트
     needs: release
-    if: needs.release.outputs.skip != 'true' && startsWith(needs.release.outputs.version, '3.')
+    if: needs.release.outputs.skip != 'true' && startsWith(needs.release.outputs.core, '3.')
 
     concurrency:
       group: release-${{ github.workflow }}-editmode-gate-${{ needs.release.outputs.version }}
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     uses: ./.github/workflows/unity-build.yml
     with:
-      ref: main
+      ref: ${{ needs.release.outputs.source_sha }}
       os: macos
       # 지원 범위의 가장 오래된 Unity. 버전별 API 차이는 C# 컴파일 단계에서 드러나므로 한 버전으로 충분하다.
       unity-version: '2021.3'
       run-build: false
       run-editmode-test: true
       test-level: '0'
-      sdk-version-override: ${{ needs.release.outputs.version }}
-      # bulk release는 한 run에서 여러 버전을 돌리므로 EditMode 아티팩트 이름에 버전을 붙인다.
+      # 생성기 재생성과 BuildConfig 핀은 web-framework 버전(core)을 쓴다
+      sdk-version-override: ${{ needs.release.outputs.core }}
+      # EditMode 아티팩트 이름에 릴리스 버전을 붙인다.
       sdk-version: ${{ needs.release.outputs.version }}
     secrets:
       KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
   # =====================================================
-  # 릴리즈 태그 생성 (UPM 패키지 정리 포함)
+  # 릴리즈 커밋 준비 (UPM 패키지 정리 포함)
   # EditMode 게이트와 AIT 빌드가 성공한 뒤에만 실행 → 테스트·빌드 실패 시 릴리즈 방지
-  # main branch는 건드리지 않고 orphan commit에서 태그 생성
+  # main branch는 건드리지 않고 orphan commit 을 임시 _build/ 브랜치에만 올린다.
+  # 태그·Release 같은 공개 ref 는 여기서 만들지 않는다 (publish-release 가 승인 뒤에 만든다).
   # =====================================================
-  create-release-tag:
-    name: 릴리즈 태그 생성
+  prepare-release-commit:
+    name: 릴리즈 커밋 준비
     runs-on: ubuntu-latest
     needs: [release, regenerate-sdk, editmode-gate, build-ait-macos, build-ait-windows]
     if: |
       always() &&
       needs.release.outputs.skip != 'true' &&
       needs.regenerate-sdk.result == 'success' &&
-      (needs.editmode-gate.result == 'success' || (needs.editmode-gate.result == 'skipped' && !startsWith(needs.release.outputs.version, '3.'))) &&
+      (needs.editmode-gate.result == 'success' || (needs.editmode-gate.result == 'skipped' && !startsWith(needs.release.outputs.core, '3.'))) &&
       (needs.build-ait-macos.result == 'success' || needs.build-ait-macos.result == 'skipped') &&
       (needs.build-ait-windows.result == 'success' || needs.build-ait-windows.result == 'skipped')
+    # _build/ 임시 브랜치를 push 한다
+    permissions:
+      contents: write
+
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      ref: ${{ steps.commit.outputs.ref }}
+      release_datetime: ${{ steps.release-info.outputs.release_datetime }}
+      commit_hash: ${{ steps.release-info.outputs.commit_hash }}
 
     steps:
       - name: Checkout (Orphan Ref)
@@ -519,33 +557,32 @@ jobs:
 
       - name: 릴리즈 정보 주입
         id: release-info
+        env:
+          REVISION: ${{ needs.release.outputs.revision }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
           RELEASE_DATETIME=$(date -u +"%Y%m%d_%H%M")
           COMMIT_HASH=$(git rev-parse --short=7 HEAD)
-          FULL_COMMIT_HASH=$(git rev-parse HEAD)
 
           echo "=== 릴리즈 정보 주입 ==="
-          echo "버전: ${VERSION}"
           echo "릴리즈 일시: ${RELEASE_DATETIME}"
           echo "커밋 해시: ${COMMIT_HASH}"
+          echo "리비전: +${REVISION}"
 
-          # outputs로 내보내기
-          echo "release_datetime=${RELEASE_DATETIME}" >> $GITHUB_OUTPUT
-          echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
-          echo "full_commit_hash=${FULL_COMMIT_HASH}" >> $GITHUB_OUTPUT
+          echo "release_datetime=${RELEASE_DATETIME}" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=${COMMIT_HASH}" >> "$GITHUB_OUTPUT"
 
           # package.json description 업데이트
           # 런타임은 AITVersion.LoadVersionInfoEditor 가 이 description 을 정규식으로
-          # 파싱해 ReleaseDateTime/CommitHash 를 읽는다 (UPM 설치 환경에서의 채널).
+          # 파싱해 ReleaseDateTime/CommitHash/리비전을 읽는다 (UPM 설치 환경에서의 채널).
+          # package.json 의 version 은 core 그대로 두고, 리비전(+N)은 여기와 태그 이름에만 싣는다.
           # 로컬/임베디드/플레이어 경로는 빌드 시 Editor 가 Assets/Resources/AITVersionInfo.json
           # 을 생성하는 방식(Resources) 으로 분리되어 있어 이 워크플로우는 .cs 를 건드리지 않는다.
-          jq --arg dt "$RELEASE_DATETIME" --arg hash "$COMMIT_HASH" \
-             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ", " + $hash + ")"' \
+          jq --arg dt "$RELEASE_DATETIME" --arg hash "$COMMIT_HASH" --arg rev "+${REVISION}" \
+             '.description = "Apps in Toss Mini App Unity Engine Adapter SDK Package. (Released: " + $dt + ", " + $hash + ", " + $rev + ")"' \
              package.json > tmp.json && mv tmp.json package.json
 
           echo "package.json description:"
-          cat package.json | jq '.description'
+          jq -r '.description' package.json
 
       - name: UPM 패키지 정리
         run: |
@@ -582,36 +619,46 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: 버전 정합성 검증 (태그 생성 전 게이트)
+      - name: 버전 정합성 검증 (릴리즈 커밋 생성 전 게이트)
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          CORE: ${{ needs.release.outputs.core }}
+          REVISION: ${{ needs.release.outputs.revision }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
           BUILDCONFIG_PKG="WebGLTemplates/AITTemplate/BuildConfig~/package.json"
 
-          # 릴리즈 태그의 불변식: 루트 package.json의 version 과
-          # BuildConfig~ 의 @apps-in-toss/web-framework 핀이 반드시 같아야 한다.
+          # 릴리즈의 불변식: 루트 package.json의 version 은 web-framework 버전(core)이고,
+          # BuildConfig~ 의 @apps-in-toss/web-framework 핀과 반드시 같아야 한다.
           # BuildConfig~ 는 빌드 시 ait-build/ 로 복사되어 실제 번들되는 웹 런타임을 결정하므로,
           # 이 둘이 갈리면 "vX.Y.Z 태그인데 다른 버전의 웹 런타임이 설치되는" 태그가 출하된다.
-          # 이 검증이 없어 과거 백필 실행들이 태그를 오염시켰다 — 태그를 만들기 전에 여기서 막는다.
+          # 리비전(+N)은 package.json version 에 넣지 않으므로 core 와 비교한다.
           PKG_VERSION=$(jq -r '.version' package.json)
           WF_PIN=$(jq -r '.dependencies["@apps-in-toss/web-framework"]' "$BUILDCONFIG_PKG")
+          DESCRIPTION=$(jq -r '.description' package.json)
 
           echo "루트 package.json version : ${PKG_VERSION}"
           echo "BuildConfig web-framework : ${WF_PIN}"
-          echo "릴리즈 대상 버전          : ${VERSION}"
+          echo "릴리즈 대상 버전          : ${VERSION} (core ${CORE})"
+          echo "package.json description  : ${DESCRIPTION}"
 
-          if [ "$PKG_VERSION" != "$VERSION" ]; then
-            echo "::error::루트 package.json version(${PKG_VERSION})이 릴리즈 대상 버전(${VERSION})과 다릅니다."
+          if [ "$PKG_VERSION" != "$CORE" ]; then
+            echo "::error::루트 package.json version(${PKG_VERSION})이 릴리즈 대상 web-framework 버전(${CORE})과 다릅니다. package.json 의 version 에는 리비전(+N)을 넣지 않습니다."
             exit 1
           fi
 
-          if [ "$WF_PIN" != "$VERSION" ]; then
-            echo "::error::BuildConfig~ 의 @apps-in-toss/web-framework 핀(${WF_PIN})이 릴리즈 대상 버전(${VERSION})과 다릅니다. 이 상태로 태그를 만들면 잘못된 웹 런타임이 번들됩니다."
+          if [ "$WF_PIN" != "$CORE" ]; then
+            echo "::error::BuildConfig~ 의 @apps-in-toss/web-framework 핀(${WF_PIN})이 릴리즈 대상 버전(${CORE})과 다릅니다. 이 상태로 릴리즈하면 잘못된 웹 런타임이 번들됩니다."
+            exit 1
+          fi
+
+          if ! [[ "$DESCRIPTION" =~ \(Released:\ [0-9]{8}_[0-9]{4},\ [0-9a-f]{7},\ \+${REVISION}\)$ ]]; then
+            echo "::error::package.json description 의 릴리즈 표기가 예상과 다릅니다 (기대: 끝이 ', +${REVISION})'): ${DESCRIPTION}"
             exit 1
           fi
 
           # web-framework 외 @apps-in-toss 핀도 함께 본다.
           #
-          # 기준 파일의 동반 패키지 버전은 "@apps-in-toss/<pkg>@VERSION 이 npm에 있으면 VERSION,
+          # 기준 파일의 동반 패키지 버전은 "@apps-in-toss/<pkg>@CORE 이 npm에 있으면 CORE,
           # 없으면 그 패키지의 latest"로 정해진다(sync-sdk-versions.cjs resolve). 여기서 그 대우를 검사한다 —
           # 해당 버전이 npm에 존재하는데 핀이 다르면 동기화가 누락된 것이므로 막는다.
           # (존재하지 않으면 핀이 달라도 정상이다. 구버전 백필에서 흔하다.)
@@ -619,15 +666,15 @@ jobs:
           for PKG in devtools; do
             PIN=$(jq -r --arg k "@apps-in-toss/${PKG}" '.dependencies[$k] // .devDependencies[$k] // "none"' "$BUILDCONFIG_PKG")
             [ "$PIN" = "none" ] && continue
-            if npm view "@apps-in-toss/${PKG}@${VERSION}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-              if [ "$PIN" != "$VERSION" ]; then
-                echo "::error::@apps-in-toss/${PKG}@${VERSION} 이 npm에 존재하는데 BuildConfig 핀은 ${PIN} 입니다 — 동기화 누락."
+            if npm view "@apps-in-toss/${PKG}@${CORE}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+              if [ "$PIN" != "$CORE" ]; then
+                echo "::error::@apps-in-toss/${PKG}@${CORE} 이 npm에 존재하는데 BuildConfig 핀은 ${PIN} 입니다 — 동기화 누락."
                 FAILED=1
               else
                 echo "  ${PKG}: ${PIN} (일치)"
               fi
             else
-              echo "  ${PKG}: ${PIN} (npm에 ${VERSION} 없음 — 검사 생략)"
+              echo "  ${PKG}: ${PIN} (npm에 ${CORE} 없음 — 검사 생략)"
             fi
           done
 
@@ -643,7 +690,7 @@ jobs:
           for PKG in $(jq -r '.dependencies | keys[] | select(startswith("@apps-in-toss/"))' "$BUILDCONFIG_PKG"); do
             PIN=$(jq -r --arg k "$PKG" '.dependencies[$k]' "$BUILDCONFIG_PKG")
             if ! npm view "${PKG}@${PIN}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
-              echo "::error::${PKG}@${PIN} 을 npm에서 찾을 수 없습니다 — 존재하지 않는 버전을 핀한 채로 태그를 만들 수 없습니다."
+              echo "::error::${PKG}@${PIN} 을 npm에서 찾을 수 없습니다 — 존재하지 않는 버전을 핀한 채로 릴리즈할 수 없습니다."
               FAILED=1
             fi
           done
@@ -654,13 +701,16 @@ jobs:
 
           echo "✅ 버전 정합성 검증 통과: ${VERSION}"
 
-      - name: 릴리즈 태그 생성 (Orphan Commit)
+      - name: 릴리즈 커밋 생성 (Orphan Commit)
+        id: commit
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          CORE: ${{ needs.release.outputs.core }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
-          TAG_NAME="${{ needs.release.outputs.tag_name }}"
-          BUILD_REF="${{ needs.regenerate-sdk.outputs.ref }}"
+          # 태그와 Release 는 publish-release 가 승인 뒤에 만든다. 여기서는 커밋만 만들어 임시 브랜치에 올린다.
+          PACKAGE_REF="refs/heads/_build/release-v${VERSION}-package"
 
-          echo "=== 릴리즈 태그 생성: ${TAG_NAME} ==="
+          echo "=== 릴리즈 커밋 생성: v${VERSION} ==="
 
           # 정리된 상태로 새 orphan commit 생성
           git add -A
@@ -668,7 +718,7 @@ jobs:
           RELEASE_COMMIT=$(git commit-tree "$TREE" -m "릴리즈: v${VERSION} (UPM 패키지)
 
           Apps in Toss Unity SDK v${VERSION}
-          - @apps-in-toss/web-framework v${VERSION} 기반
+          - @apps-in-toss/web-framework v${CORE} 기반
           - UPM 패키지용 정리된 릴리즈
           - 개발/테스트 파일 제외
 
@@ -676,53 +726,98 @@ jobs:
 
           echo "릴리즈 commit SHA: ${RELEASE_COMMIT}"
 
-          # 주의: 여기서 `git push origin --delete "${TAG_NAME}"` 로 선삭제하지 않는다.
-          # 아래 `git push -f` 만으로 upsert가 성립하며, 선삭제는 태그가 잠시 사라지는 창을 만들어
-          # 해당 태그를 참조하던 GitHub Release가 untagged draft로 강등된다 (release/v2.4.3 실측).
+          # 재실행해도 같은 이름의 임시 브랜치를 새 커밋으로 덮어쓴다 (공개 ref 가 아니다)
+          git push origin "${RELEASE_COMMIT}:${PACKAGE_REF}" --force
 
-          # 태그 생성 및 푸시
-          git tag -f "${TAG_NAME}" "${RELEASE_COMMIT}" -m "릴리즈: v${VERSION}
+          echo "sha=${RELEASE_COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "ref=${PACKAGE_REF}" >> "$GITHUB_OUTPUT"
 
-          Apps in Toss Unity SDK v${VERSION}
-          - @apps-in-toss/web-framework v${VERSION} 기반
+  # =====================================================
+  # 릴리즈 게시 (고정 태그 → GitHub Release → 별칭 이동)
+  # environment `release` 의 승인을 받은 뒤에만 실행한다. 빌드와 테스트 게이트가 모두 끝난 다음,
+  # 공개 ref 를 만들기 직전이 승인 지점이다.
+  # =====================================================
+  publish-release:
+    name: 릴리즈 게시
+    runs-on: ubuntu-latest
+    needs: [release, regenerate-sdk, prepare-release-commit]
+    environment:
+      name: release
+      url: https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag_name }}
+    permissions:
+      contents: write
 
-          Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    outputs:
+      version: ${{ needs.release.outputs.version }}
+      core: ${{ needs.release.outputs.core }}
+      tag_name: ${{ needs.release.outputs.tag_name }}
+      alias_name: ${{ needs.release.outputs.alias_name }}
 
-          git push -f origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
-          echo "태그 푸시 완료: ${TAG_NAME}"
+    steps:
+      # 스크립트는 워크플로 실행 커밋에서 읽는다 (릴리즈 커밋은 .github/ 가 지워진 orphan 커밋이다)
+      - name: Checkout (릴리즈 스크립트)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.source_sha }}
+          sparse-checkout: |
+            .github/scripts/release
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
-          # 임시 빌드 ref 정리
-          git push origin --delete "${BUILD_REF}" 2>/dev/null || echo "빌드 ref 정리 스킵 (이미 없거나 권한 없음)"
-
-      - name: GitHub Release 생성/업데이트
+      - name: 별칭 사전 검사
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ALIAS_NAME: ${{ needs.release.outputs.alias_name }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
-          TAG_NAME="${{ needs.release.outputs.tag_name }}"
-          RELEASE_DATETIME="${{ steps.release-info.outputs.release_datetime }}"
-          COMMIT_HASH="${{ steps.release-info.outputs.commit_hash }}"
-          FULL_COMMIT_HASH="${{ steps.release-info.outputs.full_commit_hash }}"
+          # 승인을 기다리는 동안 상태가 바뀌었을 수 있으니 공개 ref 를 만들기 전에 한 번 더 본다
+          bash .github/scripts/release/release-refs.sh check-alias "$ALIAS_NAME"
+
+      - name: 고정 태그 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.prepare-release-commit.outputs.sha }}
+        run: |
+          # 이미 있으면 실패한다. 고정 태그는 옮기거나 지우지 않는다.
+          bash .github/scripts/release/release-refs.sh create-tag "$TAG_NAME" "$RELEASE_SHA"
+
+      - name: GitHub Release 생성 (draft)
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.release.outputs.version }}
+          CORE: ${{ needs.release.outputs.core }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          ALIAS_NAME: ${{ needs.release.outputs.alias_name }}
+          RELEASE_SHA: ${{ needs.prepare-release-commit.outputs.sha }}
+          RELEASE_DATETIME: ${{ needs.prepare-release-commit.outputs.release_datetime }}
+        run: |
+          SHORT_SHA="${RELEASE_SHA:0:7}"
 
           RELEASE_BODY=$(cat <<EOF
           ## Apps in Toss Unity SDK v${VERSION}
 
           📅 **Released**: ${RELEASE_DATETIME} (UTC)
-          🔗 **Commit**: [\`${COMMIT_HASH}\`](https://github.com/${{ github.repository }}/commit/${FULL_COMMIT_HASH})
+          🔗 **Commit**: [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${RELEASE_SHA})
 
-          \`@apps-in-toss/web-framework\` v${VERSION} 기반으로 생성된 Unity SDK입니다.
+          \`@apps-in-toss/web-framework\` v${CORE} 기반으로 생성된 Unity SDK입니다.
 
           ### 설치 방법
 
-          \`Packages/manifest.json\`에 다음을 추가하세요:
+          \`Packages/manifest.json\`에 다음을 추가하세요. 이 리비전에 고정됩니다.
 
           \`\`\`json
           {
             "dependencies": {
-              "im.toss.apps-in-toss-unity-sdk": "https://github.com/${{ github.repository }}.git#${TAG_NAME}"
+              "im.toss.apps-in-toss-unity-sdk": "https://github.com/${REPO}.git#${TAG_NAME}"
             }
           }
           \`\`\`
+
+          \`#${ALIAS_NAME}\`을 쓰면 v${CORE}의 가장 최근 리비전을 따라갑니다.
 
           ### 지원 Unity 버전
 
@@ -744,70 +839,111 @@ jobs:
 
           ### 문서
 
-          - [Unity Editor 설정](https://github.com/${{ github.repository }}#readme)
+          - [Unity Editor 설정](https://github.com/${REPO}#readme)
           EOF
           )
 
-          # 기존 릴리즈가 있으면 삭제 (upsert) - 태그는 유지 (이미 푸시됨)
-          gh release delete "${TAG_NAME}" --yes 2>/dev/null || true
-
-          # 태그 전파 대기 (GitHub API 동기화)
-          echo "태그 전파 대기 중 (5초)..."
-          sleep 5
-
-          # prerelease 버전(예: 3.0.0-beta)이면 Latest로 표시되지 않도록 방어
-          # stable 자동 승격은 update.yml의 메이저 ceiling 가드가 1차 차단하지만,
-          # release.yml을 prerelease 버전으로 직접 디스패치하는 경우의 안전망.
-          PRERELEASE_FLAGS=""
-          if echo "$VERSION" | grep -q '-'; then
-            PRERELEASE_FLAGS="--prerelease --latest=false"
+          # prerelease 버전(예: 3.0.0-beta)이면 Latest로 표시되지 않게 한다 (게시 단계에서 make_latest=false)
+          PRERELEASE=false
+          if [[ "$CORE" == *-* ]]; then
+            PRERELEASE=true
             echo "prerelease 버전 감지: ${VERSION} → Latest 표시 안 함"
           fi
 
-          # 백필(bulk-release 등)로 더 낮은 버전을 나중에 릴리즈하면 gh의 자동 판정이 생성 시각을 따라
-          # 그 버전을 Latest로 표시한다(2026-10 v3.6.0·v3.7.0 백필 때 v3.8.0에서 Latest가 넘어감).
-          # 이미 더 높은 stable 릴리즈 태그가 있으면 Latest로 표시하지 않는다.
-          if [ -z "$PRERELEASE_FLAGS" ]; then
-            HIGHEST=$(git ls-remote --tags origin "refs/tags/release/v*" \
-              | sed -n 's#.*refs/tags/release/v\([0-9]*\.[0-9]*\.[0-9]*\)$#\1#p' \
-              | sort -V | tail -1)
-            if [ -n "$HIGHEST" ] && [ "$(printf "%s\n%s\n" "$VERSION" "$HIGHEST" | sort -V | tail -1)" != "$VERSION" ]; then
-              PRERELEASE_FLAGS="--latest=false"
-              echo "더 높은 릴리즈(v${HIGHEST})가 있음 → v${VERSION}은 Latest로 표시하지 않음"
-            fi
+          # 태그는 앞 단계에서 만들었다. draft 로 만들어 두고 아래에서 게시한다.
+          RELEASE_ID=$(gh api "repos/${REPO}/releases" -X POST \
+            -f "tag_name=${TAG_NAME}" \
+            -f "name=v${VERSION}" \
+            -f "body=${RELEASE_BODY}" \
+            -F draft=true \
+            -F "prerelease=${PRERELEASE}" \
+            --jq '.id')
+          echo "draft Release id: ${RELEASE_ID}"
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+      - name: GitHub Release 게시
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          RELEASE_ID: ${{ steps.draft.outputs.release_id }}
+          PRERELEASE: ${{ steps.draft.outputs.prerelease }}
+        run: |
+          # 안정 릴리스 중 (core, N) 이 가장 높을 때만 Latest 로 표시한다.
+          # 리비전 없는 옛 릴리스는 N=0 으로 센다. 낮은 버전을 나중에 릴리즈해도 Latest 가 넘어가지 않는다.
+          LATEST=false
+          if [ "$PRERELEASE" != "true" ]; then
+            LATEST=$(bash .github/scripts/release/release-refs.sh is-latest "$TAG_NAME")
           fi
+          echo "make_latest=${LATEST}"
 
-          # 태그 기반으로 릴리즈 생성 (--verify-tag로 태그 확인)
-          gh release create "${TAG_NAME}" \
-            --title "v${VERSION}" \
-            --notes "$RELEASE_BODY" \
-            --verify-tag \
-            $PRERELEASE_FLAGS
+          gh api "repos/${REPO}/releases/${RELEASE_ID}" -X PATCH \
+            -F draft=false \
+            -f "make_latest=${LATEST}" \
+            --silent
 
-          echo "GitHub Release 생성 완료"
-          echo "URL: https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}"
+          echo "GitHub Release 게시 완료"
+          echo "URL: https://github.com/${REPO}/releases/tag/${TAG_NAME}"
+
+      - name: 별칭 이동
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          ALIAS_NAME: ${{ needs.release.outputs.alias_name }}
+          RELEASE_SHA: ${{ needs.prepare-release-commit.outputs.sha }}
+        run: |
+          # Release 를 게시한 뒤에 옮긴다. 별칭에는 Release 를 붙이지 않는다.
+          bash .github/scripts/release/release-refs.sh move-alias "$ALIAS_NAME" "$RELEASE_SHA" "$TAG_NAME"
+
+      - name: 임시 빌드 ref 정리
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BUILD_REF: ${{ needs.regenerate-sdk.outputs.ref }}
+          PACKAGE_REF: ${{ needs.prepare-release-commit.outputs.ref }}
+        run: |
+          for REF in "$BUILD_REF" "$PACKAGE_REF"; do
+            [ -n "$REF" ] || continue
+            gh api "repos/${REPO}/git/${REF}" -X DELETE --silent 2>/dev/null \
+              && echo "삭제: ${REF}" || echo "빌드 ref 정리 스킵 (이미 없거나 권한 없음): ${REF}"
+          done
 
       - name: 릴리즈 요약
+        env:
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.release.outputs.version }}
+          CORE: ${{ needs.release.outputs.core }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          ALIAS_NAME: ${{ needs.release.outputs.alias_name }}
         run: |
-          VERSION="${{ needs.release.outputs.version }}"
-          TAG_NAME="${{ needs.release.outputs.tag_name }}"
-
-          echo "## 릴리즈 완료" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| 버전 | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 태그 | \`${TAG_NAME}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 릴리즈 | [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${TAG_NAME}) |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### UPM 설치" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "https://github.com/${{ github.repository }}.git#${TAG_NAME}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-    outputs:
-      version: ${{ needs.release.outputs.version }}
-      tag_name: ${{ needs.release.outputs.tag_name }}
+          {
+            echo "## 릴리즈 완료"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|------|-----|"
+            echo "| 버전 | v${VERSION} |"
+            echo "| 고정 태그 | \`${TAG_NAME}\` |"
+            echo "| 별칭 | \`${ALIAS_NAME}\` (v${CORE}의 최신 리비전을 따라감) |"
+            echo "| 릴리즈 | [GitHub Release](https://github.com/${REPO}/releases/tag/${TAG_NAME}) |"
+            echo ""
+            echo "### UPM 설치"
+            echo ""
+            echo "이 리비전에 고정:"
+            echo ""
+            echo "\`\`\`"
+            echo "https://github.com/${REPO}.git#${TAG_NAME}"
+            echo "\`\`\`"
+            echo ""
+            echo "v${CORE}의 최신 리비전을 따라감:"
+            echo ""
+            echo "\`\`\`"
+            echo "https://github.com/${REPO}.git#${ALIAS_NAME}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # =====================================================
   # Sentry 릴리즈 등록 + 커밋 연동
@@ -820,13 +956,16 @@ jobs:
   sentry-release:
     name: Sentry 릴리즈 등록
     runs-on: ubuntu-latest
-    needs: [create-release-tag]
-    if: always() && needs.create-release-tag.result == 'success' && needs.create-release-tag.outputs.version != ''
+    needs: [publish-release]
+    permissions:
+      contents: read
+    if: always() && needs.publish-release.result == 'success' && needs.publish-release.outputs.version != ''
     steps:
       - name: Checkout (main 커밋 히스토리)
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Sentry Release 생성 + 커밋 연동
         uses: getsentry/action-release@v3
@@ -836,7 +975,7 @@ jobs:
           SENTRY_PROJECT: apps-in-toss-unity-sdk
         with:
           # action-release@v3에서 `version`은 deprecated이고 `release`로 대체됨(동작 동일).
-          release: apps-in-toss.unity@${{ needs.create-release-tag.outputs.version }}
+          release: apps-in-toss.unity@${{ needs.publish-release.outputs.version }}
           set_commits: auto
           finalize: true
 
@@ -846,10 +985,12 @@ jobs:
   deploy-ait:
     name: AIT 패키지 배포
     runs-on: ubuntu-latest
-    needs: [build-ait-macos, build-ait-windows, create-release-tag]
+    needs: [build-ait-macos, build-ait-windows, publish-release]
+    permissions:
+      contents: read
     if: |
       always() &&
-      needs.create-release-tag.result == 'success' &&
+      needs.publish-release.result == 'success' &&
       (needs.build-ait-macos.result == 'success' || needs.build-ait-windows.result == 'success')
     timeout-minutes: 30
 
@@ -857,14 +998,15 @@ jobs:
       - name: Checkout (버전 참조용)
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.create-release-tag.outputs.tag_name }}
+          ref: ${{ needs.publish-release.outputs.tag_name }}
           sparse-checkout: |
             WebGLTemplates/AITTemplate/BuildConfig~/package.json
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Checkout .ci scripts
         # ref를 지정하지 않아 워크플로 YAML과 같은 커밋에서 스크립트를 읽는다.
-        # 위 체크아웃은 릴리즈 태그(create-release-tag.outputs.tag_name)이고, 그
+        # 위 체크아웃은 릴리즈 태그(publish-release.outputs.tag_name)이고, 그
         # 태그는 .github/가 지워진 orphan 커밋이라 스크립트가 없다 — 배포 URL
         # 추출 헬퍼는 항상 이 워크플로 실행 커밋에서 읽는다.
         uses: actions/checkout@v7
@@ -873,6 +1015,7 @@ jobs:
             .github/scripts/deploy
           sparse-checkout-cone-mode: false
           path: .ci
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -889,9 +1032,10 @@ jobs:
           # 설치 버전은 "릴리즈 대상 버전"을 기준으로 삼는다.
           # 과거에는 태그에 실린 BuildConfig~ 핀을 그대로 읽었는데, 그 핀 자체가 오염 대상이라
           # 배포 검증이 오염된 값을 검증하는 자기참조 루프가 되어 결함을 영원히 통과시켰다.
-          WF_VERSION="${{ needs.create-release-tag.outputs.version }}"
+          # web-framework 버전은 core 다 (릴리스 버전의 리비전 +N 은 npm 에 없다)
+          WF_VERSION="${{ needs.publish-release.outputs.core }}"
 
-          # 태그에 실린 핀이 대상 버전과 일치하는지 교차 확인 (create-release-tag 게이트의 이중 안전망)
+          # 태그에 실린 핀이 대상 버전과 일치하는지 교차 확인 (prepare-release-commit 게이트의 이중 안전망)
           TAG_PIN=$(node -p "require('./WebGLTemplates/AITTemplate/BuildConfig~/package.json').dependencies['@apps-in-toss/web-framework']")
           if [ "$TAG_PIN" != "$WF_VERSION" ]; then
             echo "::error::태그의 web-framework 핀(${TAG_PIN})이 릴리즈 대상 버전(${WF_VERSION})과 다릅니다."
@@ -905,7 +1049,7 @@ jobs:
       - name: AIT 빌드 결과물 다운로드
         uses: actions/download-artifact@v8
         with:
-          pattern: ait-build-*-v${{ needs.create-release-tag.outputs.version }}
+          pattern: ait-build-*-v${{ needs.publish-release.outputs.version }}
           path: ait-builds/
 
       - name: 다운로드된 빌드 확인
@@ -949,7 +1093,7 @@ jobs:
         env:
           AIT_DEPLOY_KEY: ${{ secrets.AIT_DEPLOY_KEY }}
         run: |
-          VERSION="${{ needs.create-release-tag.outputs.version }}"
+          VERSION="${{ needs.publish-release.outputs.version }}"
 
           echo "=== AIT 빌드 배포 ==="
           echo "버전: ${VERSION}"
@@ -1064,7 +1208,7 @@ jobs:
       - name: 배포 결과 아티팩트 저장
         if: always() && steps.check-packages.outputs.package_count > 0
         env:
-          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          VERSION: ${{ needs.publish-release.outputs.version }}
           DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
           HAS_FAILURE: ${{ steps.deploy.outputs.has_failure }}
         run: |
@@ -1080,15 +1224,15 @@ jobs:
         if: always() && steps.check-packages.outputs.package_count > 0
         uses: actions/upload-artifact@v7
         with:
-          name: deploy-results-${{ needs.create-release-tag.outputs.version }}
+          name: deploy-results-${{ needs.publish-release.outputs.version }}
           path: deploy-results.txt
           retention-days: 1
 
       - name: 배포 알림 전송
-        if: always() && steps.check-packages.outputs.package_count > 0 && inputs.skip_notification != true
+        if: always() && steps.check-packages.outputs.package_count > 0
         env:
           DEPLOY_WEBHOOK_URL: "https://ipd-public-gateway.core.toss-internal.com/api-public/v3/ipd-public-gateway/webhooks/ipd-corp-core-automation-webhook/8b6db539-6cb4-4b99-b2a8-8981c43b2592"
-          VERSION: ${{ needs.create-release-tag.outputs.version }}
+          VERSION: ${{ needs.publish-release.outputs.version }}
           DEPLOY_RESULTS: ${{ steps.deploy.outputs.deploy_results }}
         run: |
 

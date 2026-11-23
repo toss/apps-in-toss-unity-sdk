@@ -75,15 +75,17 @@ jobs:
           echo "최소 버전: ${MIN_VERSION}"
           echo "min_version=${MIN_VERSION}" >> $GITHUB_OUTPUT
 
+          # 최신 버전부터 배포한다. matrix는 이 순서대로 max-parallel 슬롯을 채우므로
+          # 대부분의 게임이 쓰는 최신 버전이 먼저 태그된다.
           if [ -n "$INPUT_VERSIONS" ]; then
             echo "=== 입력된 버전 사용 ==="
-            ALL_INPUT=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -V)
+            ALL_INPUT=$(echo "$INPUT_VERSIONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -rV)
           else
             echo "=== Git 태그에서 버전 추출 ==="
             # stable(X.Y.Z)만 대상으로 삼는다. prerelease 스냅샷(3.0.0-beta.<sha> 등)이 섞이면
             # 안정 릴리즈 경로(release.yml)로 흘러가 beta 태그를 stable 템플릿으로 덮어쓴다.
             # release.yml의 버전 검증 정규식은 prerelease를 허용하므로 여기서 걸러야 한다.
-            ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+            ALL_INPUT=$(git tag -l 'release/v*' | sed 's/release\/v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV)
           fi
 
           # prerelease 스냅샷 제외 + min_version 이상만 필터링

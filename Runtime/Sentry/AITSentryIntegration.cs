@@ -29,6 +29,7 @@ namespace AppsInToss.Sentry
     /// <remarks>
     /// RuntimeInitializeOnLoadMethod(AfterSceneLoad)로 자동 초기화됩니다.
     /// Sentry SDK와 AIT SDK 모두 BeforeSceneLoad에서 초기화되므로, AfterSceneLoad에서 안전하게 접근합니다.
+    /// Sentry 초기화가 첫 프레임 뒤로 미뤄진 경우(AITSentryDeferredInit) 그 초기화가 끝난 뒤 연동합니다.
     /// </remarks>
     [Preserve]
     internal static class AITSentryIntegration
@@ -39,9 +40,17 @@ namespace AppsInToss.Sentry
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Initialize()
         {
+            using var _hookTimer = AITHookTimer.Begin("Sentry");
+
             if (_initialized) return;
             _initialized = true;
 
+            // Sentry 초기화를 첫 프레임 뒤로 미룬 경우 그 다음에 연동한다(AITSentryDeferredInit).
+            AITSentryDeferredInit.RunAfterInit(Connect);
+        }
+
+        private static void Connect()
+        {
             if (!SentrySdk.IsEnabled)
             {
                 Debug.Log($"{Tag} Sentry SDK가 비활성 상태입니다. AIT 컨텍스트 연동을 건너뜁니다. (DSN 설정 확인: Tools > Sentry)");

@@ -14,6 +14,7 @@ using UnityEngine;
 using UnityEngine.Scripting;
 
 [assembly: InternalsVisibleTo("AppsInToss.Helpers")]
+[assembly: InternalsVisibleTo("AppsInTossEditModeTests")]
 
 namespace AppsInToss
 {

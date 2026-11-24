@@ -999,7 +999,7 @@ ${nestedCallbacksCode}
   /**
    * 전면 광고를 띄우는 API의 onEvent 에 넣는 코드.
    * Android WebView 는 광고가 오디오 포커스를 가져가면 재생 중인 HTMLMediaElement 를 멈추고 다시 틀지 않으므로,
-   * 광고가 닫혔을 때 ait-audio.js 의 복구를 부른다. 대상이 아니면 빈 문자열이다.
+   * 광고가 닫혔을 때 ait-pacing.js 의 복구(window.AITAudio.recover)를 부른다. 대상이 아니면 빈 문자열이다.
    */
   private adDismissedRecoverCode(api: ParsedAPI): string {
     if (!/show\w*(Ad|AdMob)$/i.test(api.name)) return '';

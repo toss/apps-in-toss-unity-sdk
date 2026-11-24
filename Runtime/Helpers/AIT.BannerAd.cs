@@ -164,6 +164,12 @@ namespace AppsInToss
     /// 컴포넌트를 사용하세요. 배너를 동시에 여러 개 띄우려면 AITBannerAdView를
     /// 여러 개 사용하세요 (이 정적 helper는 슬롯 1개를 유지하며 재호출 시 교체).
     ///
+    /// 게임이 넓은 화면/멀티 윈도우에서 레터박스(필러박스)를 두면 Top/Bottom 배너는
+    /// 게임 렌더 영역의 가로폭을 따릅니다. 기본은 <c>Camera.main.rect</c>에서 자동으로 읽고,
+    /// 다른 방식으로 영역을 만드는 게임은 <see cref="SetGameArea(Rect)"/> /
+    /// <see cref="SetGameArea(RectTransform)"/>로 직접 알려 주세요. 영역을 지정하지 않고
+    /// 카메라도 전체 화면이면 기존처럼 화면 전체 폭으로 표시됩니다.
+    ///
     /// 사용 예시:
     /// <code>
     /// AITBannerAd.OnAdEvent += evt => Debug.Log($"배너 이벤트: {evt}");
@@ -232,6 +238,102 @@ namespace AppsInToss
             AITBannerAdEngine.Hide(_instanceId);
             _instanceId = -1;
         }
+
+        /// <summary>
+        /// 게임 렌더 영역을 직접 지정 (정규화 0~1, 좌상단 원점, 캔버스 기준)
+        /// </summary>
+        /// <remarks>
+        /// Top/Bottom 배너(이 helper와 <see cref="AITBannerAdView"/>의 ScreenTop/ScreenBottom)가
+        /// 이 영역의 가로폭과 상/하단에 맞춰 표시됩니다. 폭이나 높이가 0 이하이거나 화면 전체이면
+        /// 영역 없음(<see cref="ClearGameArea"/>)과 같습니다. 호출 이후 <c>Camera.main.rect</c>
+        /// 자동 감지보다 이 값이 우선합니다.
+        /// </remarks>
+        /// <param name="normalizedRect">좌상단 원점 기준 정규화 rect (x, y, width, height)</param>
+        public static void SetGameArea(Rect normalizedRect)
+        {
+            AITBannerAdEngine.SetGameArea(normalizedRect);
+        }
+
+        /// <summary>
+        /// RectTransform의 화면 영역을 게임 렌더 영역으로 지정 (매 프레임 추적)
+        /// </summary>
+        /// <remarks>
+        /// 레터박스를 uGUI 영역으로 표현하는 게임용입니다. RectTransform이 이동·리사이즈하거나
+        /// 화면 크기가 바뀌면 자동으로 따라갑니다. 대상이 파괴되면 카메라 자동 감지로 돌아갑니다.
+        /// </remarks>
+        /// <param name="area">게임 렌더 영역을 나타내는 RectTransform (null이면 <see cref="ClearGameArea"/>)</param>
+        public static void SetGameArea(RectTransform area)
+        {
+            AITBannerAdEngine.SetGameArea(area);
+        }
+
+        /// <summary>
+        /// 지정한 게임 렌더 영역을 해제하고 <c>Camera.main.rect</c> 자동 감지로 복귀
+        /// </summary>
+        public static void ClearGameArea()
+        {
+            AITBannerAdEngine.ClearGameArea();
+        }
+    }
+
+    /// <summary>
+    /// 게임 렌더 영역(정규화 0~1, 좌상단 원점) 계산용 순수 함수 모음
+    /// </summary>
+    internal static class AITBannerGameArea
+    {
+        internal const float Epsilon = 0.0005f;
+
+        /// <summary>
+        /// 정규화 rect를 0~1로 보정. 크기가 없거나 화면 전체면 false (= 영역 없음)
+        /// </summary>
+        internal static bool TryNormalize(Rect topLeftRect, out Rect area)
+        {
+            area = default;
+
+            float left = Mathf.Clamp01(topLeftRect.xMin);
+            float top = Mathf.Clamp01(topLeftRect.yMin);
+            float right = Mathf.Clamp01(topLeftRect.xMax);
+            float bottom = Mathf.Clamp01(topLeftRect.yMax);
+            if (float.IsNaN(left + top + right + bottom)) return false;
+            if (right - left <= Epsilon || bottom - top <= Epsilon) return false;
+
+            if (left <= Epsilon && top <= Epsilon && right >= 1f - Epsilon && bottom >= 1f - Epsilon) return false;
+
+            area = Rect.MinMaxRect(left, top, right, bottom);
+            return true;
+        }
+
+        /// <summary>
+        /// Camera.rect(정규화, 좌하단 원점)를 좌상단 원점 영역으로 변환. 전체 화면이면 false
+        /// </summary>
+        internal static bool TryFromCameraRect(Rect cameraRect, out Rect area)
+        {
+            var topLeft = new Rect(cameraRect.x, 1f - cameraRect.y - cameraRect.height, cameraRect.width, cameraRect.height);
+            return TryNormalize(topLeft, out area);
+        }
+
+        /// <summary>
+        /// 화면 좌표(픽셀, 좌하단 원점) 사각형의 두 모서리를 좌상단 원점 영역으로 변환. 전체 화면이면 false
+        /// </summary>
+        internal static bool TryFromScreenCorners(Vector2 bottomLeft, Vector2 topRight, float screenWidth, float screenHeight, out Rect area)
+        {
+            area = default;
+            if (screenWidth <= 0f || screenHeight <= 0f) return false;
+
+            float xMin = Mathf.Min(bottomLeft.x, topRight.x) / screenWidth;
+            float xMax = Mathf.Max(bottomLeft.x, topRight.x) / screenWidth;
+            float yMin = (screenHeight - Mathf.Max(bottomLeft.y, topRight.y)) / screenHeight;
+            float yMax = (screenHeight - Mathf.Min(bottomLeft.y, topRight.y)) / screenHeight;
+            return TryNormalize(Rect.MinMaxRect(xMin, yMin, xMax, yMax), out area);
+        }
+
+        internal static bool ApproximatelyEqual(Rect a, Rect b)
+        {
+            return Mathf.Abs(a.x - b.x) < Epsilon &&
+                   Mathf.Abs(a.y - b.y) < Epsilon &&
+                   Mathf.Abs(a.width - b.width) < Epsilon &&
+                   Mathf.Abs(a.height - b.height) < Epsilon;
+        }
     }
 
     /// <summary>
@@ -255,8 +357,22 @@ namespace AppsInToss
         private static readonly Dictionary<int, Action<AITBannerAdEvent>> _handlers =
             new Dictionary<int, Action<AITBannerAdEvent>>();
 
+        private enum GameAreaSource
+        {
+            Auto,
+            Explicit,
+            Tracked,
+        }
+
         private static int _nextInstanceId = 1;
         private static AITBannerAdBridge _bridge;
+
+        // 게임 렌더 영역 — 모든 Top/Bottom 슬롯이 공유한다. 마지막으로 jslib에 보낸 값은 _pushedGameArea
+        // (width <= 0이면 영역 없음). 값이 바뀔 때만 보낸다.
+        private static GameAreaSource _gameAreaSource = GameAreaSource.Auto;
+        private static Rect _explicitGameArea;
+        private static RectTransform _trackedGameArea;
+        private static Rect _pushedGameArea;
 
         /// <summary>
         /// 새 배너 슬롯을 열고 instanceId를 반환
@@ -275,6 +391,7 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
             EnsureBridge();
             __AITBannerAd_Show(instanceId, adGroupId, mode, ThemeToString(theme), ToneToString(tone), VariantToString(variant));
+            SyncGameArea();
 #else
             Debug.Log($"[AIT Mock] AITBannerAd Show(instanceId: {instanceId}, adGroupId: {adGroupId}, mode: {mode}, " +
                       $"theme: {ThemeToString(theme)}, tone: {ToneToString(tone)}, variant: {VariantToString(variant)})");
@@ -290,6 +407,108 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
             __AITBannerAd_SetRect(instanceId, x, y, width, height);
 #endif
+        }
+
+        /// <summary>
+        /// 게임 렌더 영역을 직접 지정 (정규화 0~1, 좌상단 원점)
+        /// </summary>
+        internal static void SetGameArea(Rect normalizedRect)
+        {
+            _gameAreaSource = GameAreaSource.Explicit;
+            _explicitGameArea = normalizedRect;
+            _trackedGameArea = null;
+            SyncGameArea();
+        }
+
+        /// <summary>
+        /// RectTransform의 화면 영역을 게임 렌더 영역으로 추적 (null이면 해제)
+        /// </summary>
+        internal static void SetGameArea(RectTransform area)
+        {
+            if (area == null)
+            {
+                ClearGameArea();
+                return;
+            }
+
+            _gameAreaSource = GameAreaSource.Tracked;
+            _trackedGameArea = area;
+            SyncGameArea();
+        }
+
+        /// <summary>
+        /// 지정한 게임 렌더 영역을 해제 (Camera.main.rect 자동 감지로 복귀)
+        /// </summary>
+        internal static void ClearGameArea()
+        {
+            _gameAreaSource = GameAreaSource.Auto;
+            _trackedGameArea = null;
+            SyncGameArea();
+        }
+
+        /// <summary>
+        /// 현재 게임 렌더 영역을 계산해 값이 바뀌었을 때만 jslib에 전달
+        /// </summary>
+        /// <remarks>
+        /// 표시 중인 슬롯이 없으면 건너뛴다. jslib가 마지막 값을 보관하고 있다가 새 슬롯에 적용하며,
+        /// 다음 Show 직후 호출로 최신 값과 다시 맞춘다.
+        /// </remarks>
+        internal static void SyncGameArea()
+        {
+            if (_handlers.Count == 0) return;
+
+            Rect area;
+            if (!TryResolveGameArea(out area)) area = default;
+
+            if (AITBannerGameArea.ApproximatelyEqual(area, _pushedGameArea)) return;
+            _pushedGameArea = area;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            __AITBannerAd_SetGameArea(area.x, area.y, area.width, area.height);
+#else
+            Debug.Log($"[AIT Mock] AITBannerAd SetGameArea({area})");
+#endif
+        }
+
+        private static bool TryResolveGameArea(out Rect area)
+        {
+            area = default;
+
+            if (_gameAreaSource == GameAreaSource.Explicit)
+            {
+                return AITBannerGameArea.TryNormalize(_explicitGameArea, out area);
+            }
+
+            if (_gameAreaSource == GameAreaSource.Tracked)
+            {
+                if (_trackedGameArea != null) return TryProjectRectTransform(_trackedGameArea, out area);
+
+                // 대상이 파괴됨 — 자동 감지로 복귀
+                _gameAreaSource = GameAreaSource.Auto;
+                _trackedGameArea = null;
+            }
+
+            var cam = Camera.main;
+            if (cam == null) return false;
+            return AITBannerGameArea.TryFromCameraRect(cam.rect, out area);
+        }
+
+        private static readonly Vector3[] _corners = new Vector3[4];
+
+        private static bool TryProjectRectTransform(RectTransform target, out Rect area)
+        {
+            area = default;
+            if (Screen.width <= 0 || Screen.height <= 0) return false;
+
+            var canvas = target.GetComponentInParent<Canvas>();
+            var root = canvas != null ? canvas.rootCanvas : null;
+            Camera cam = null;
+            if (root != null && root.renderMode != RenderMode.ScreenSpaceOverlay) cam = root.worldCamera;
+
+            target.GetWorldCorners(_corners);
+            Vector2 min = RectTransformUtility.WorldToScreenPoint(cam, _corners[0]);
+            Vector2 max = RectTransformUtility.WorldToScreenPoint(cam, _corners[2]);
+            return AITBannerGameArea.TryFromScreenCorners(min, max, Screen.width, Screen.height, out area);
         }
 
         /// <summary>
@@ -439,6 +658,9 @@ namespace AppsInToss
         private static extern void __AITBannerAd_SetRect(int instanceId, float x, float y, float width, float height);
 
         [DllImport("__Internal")]
+        private static extern void __AITBannerAd_SetGameArea(float x, float y, float width, float height);
+
+        [DllImport("__Internal")]
         private static extern void __AITBannerAd_RefreshSizes();
 
         [DllImport("__Internal")]
@@ -461,6 +683,9 @@ namespace AppsInToss
         // 레이아웃 그룹 재계산은 LateUpdate보다 늦게 끝날 수 있어 다음 프레임에 한 번 더 요청한다.
         private void LateUpdate()
         {
+            // 카메라 rect·추적 RectTransform·화면 크기 변화를 반영 (값이 바뀔 때만 jslib로 전달)
+            AITBannerAdEngine.SyncGameArea();
+
             if (Screen.width != _screenWidth || Screen.height != _screenHeight)
             {
                 _screenWidth = Screen.width;

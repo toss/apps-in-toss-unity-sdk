@@ -20,10 +20,10 @@ namespace AppsInToss
         /// <summary>이 컴포넌트의 RectTransform 영역을 따라 배치 (이동/리사이즈 자동 추적)</summary>
         FollowRectTransform,
 
-        /// <summary>화면 상단 고정 (safe area 반영)</summary>
+        /// <summary>화면 상단 고정 (safe area 반영, 게임 렌더 영역이 있으면 그 가로폭을 따름 — <see cref="AITBannerAd.SetGameArea(Rect)"/>)</summary>
         ScreenTop,
 
-        /// <summary>화면 하단 고정 (safe area 반영)</summary>
+        /// <summary>화면 하단 고정 (safe area 반영, 게임 렌더 영역이 있으면 그 가로폭을 따름 — <see cref="AITBannerAd.SetGameArea(Rect)"/>)</summary>
         ScreenBottom,
     }
 

@@ -7,6 +7,9 @@
  * - window.__aitBannerInit: TossAds.initialize 직렬화 상태 머신
  *   (동시 Show 호출 시 initialize가 중복 실행되지 않도록 queue로 직렬화)
  *
+ * - window.__aitBannerGameArea: Top/Bottom 슬롯이 공유하는 게임 렌더 영역 {x, y, w, h}
+ *   (캔버스 기준 정규화 0~1, 좌상단 원점). 없으면(null) 뷰포트 전체 폭 + safe-area 기본 CSS 유지
+ *
  * 이벤트는 SendMessage('AITBannerAdBridge', 'OnBannerAdEvent', json)으로 C#에 전달.
  * web-bridge attachBanner는 실패를 throw하지 않고 callbacks로만 알리므로,
  * 모든 callbacks를 구독해 정규화된 페이로드로 릴레이한다.
@@ -68,6 +71,7 @@ mergeInto(LibraryManager.library, {
             container: container,
             banner: null,
             lastRect: null,
+            gameAreaApplied: false,
             resizeHandler: null,
             resizeObserver: null,
             destroyed: false,
@@ -82,6 +86,40 @@ mergeInto(LibraryManager.library, {
                 container.style.top = (base.top + r.y * base.height) + 'px';
                 container.style.width = (r.w * base.width) + 'px';
                 // 높이는 광고 소재가 결정 — 컨테이너는 가로폭·위치만 제공
+            },
+            // Top/Bottom 슬롯 — 게임 렌더 영역(레터박스/필러박스 안쪽)에 맞춰 가로폭·상하단을 정한다.
+            // 영역이 없으면 Show가 설정한 기본 CSS(뷰포트 전체 폭 + safe-area)로 되돌린다.
+            applyGameArea: function() {
+                if (slot.destroyed || mode === 2) return;
+                var g = window.__aitBannerGameArea;
+                var isTop = mode === 0;
+                if (!g) {
+                    if (!slot.gameAreaApplied) return;
+                    slot.gameAreaApplied = false;
+                    container.style.left = 'env(safe-area-inset-left, 0px)';
+                    container.style.right = 'env(safe-area-inset-right, 0px)';
+                    if (isTop) container.style.top = 'env(safe-area-inset-top, 0px)';
+                    else container.style.bottom = 'env(safe-area-inset-bottom, 0px)';
+                    return;
+                }
+                slot.gameAreaApplied = true;
+                var canvas = document.querySelector('#unity-canvas');
+                var base = canvas ? canvas.getBoundingClientRect()
+                                  : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+                var vw = window.innerWidth;
+                var vh = window.innerHeight;
+                var left = base.left + g.x * base.width;
+                var right = vw - (base.left + (g.x + g.w) * base.width);
+                // safe-area 안쪽으로는 밀어 넣지 않는다 (노치/홈 인디케이터 영역 침범 방지)
+                container.style.left = 'max(env(safe-area-inset-left, 0px), ' + left + 'px)';
+                container.style.right = 'max(env(safe-area-inset-right, 0px), ' + right + 'px)';
+                if (isTop) {
+                    var top = base.top + g.y * base.height;
+                    container.style.top = 'max(env(safe-area-inset-top, 0px), ' + top + 'px)';
+                } else {
+                    var bottom = vh - (base.top + (g.y + g.h) * base.height);
+                    container.style.bottom = 'max(env(safe-area-inset-bottom, 0px), ' + bottom + 'px)';
+                }
             },
             destroy: function() {
                 if (slot.destroyed) return;
@@ -104,10 +142,10 @@ mergeInto(LibraryManager.library, {
         };
         banners[instanceId] = slot;
 
-        if (mode === 2) {
-            slot.resizeHandler = function() { slot.applyRect(); };
-            window.addEventListener('resize', slot.resizeHandler);
-        }
+        // 창 크기가 바뀌면 캔버스 rect가 달라지므로 Rect/게임 영역 위치를 다시 맞춘다
+        slot.resizeHandler = function() { slot.applyRect(); slot.applyGameArea(); };
+        window.addEventListener('resize', slot.resizeHandler);
+        slot.applyGameArea(); // 이미 지정된 게임 영역이 있으면 attach 전에 적용
 
         // 렌더된 배너 높이를 C#에 통지한다.
         // 컨테이너는 높이를 명시하지 않아(광고 소재가 결정) container 높이 = 실제 배너 높이.
@@ -146,6 +184,7 @@ mergeInto(LibraryManager.library, {
         // iOS 키보드처럼 window resize 없이 캔버스만 바뀌는 경우가 있어 Rect 위치도 함께 다시 맞춘다.
         slot.refreshSize = function() {
             slot.applyRect();
+            slot.applyGameArea();
             sendResize(true);
         };
 
@@ -257,6 +296,16 @@ mergeInto(LibraryManager.library, {
         if (!slot || slot.destroyed) return;
         slot.lastRect = { x: x, y: y, w: width, h: height };
         slot.applyRect();
+    },
+
+    __AITBannerAd_SetGameArea: function(x, y, width, height) {
+        // width <= 0 = 영역 없음 (기본 CSS로 복귀)
+        window.__aitBannerGameArea = width > 0 && height > 0 ? { x: x, y: y, w: width, h: height } : null;
+        var banners = window.__aitBanners;
+        if (!banners) return;
+        Object.keys(banners).forEach(function(id) {
+            banners[id].applyGameArea();
+        });
     },
 
     __AITBannerAd_RefreshSizes: function() {

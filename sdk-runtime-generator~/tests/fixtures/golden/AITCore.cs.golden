@@ -535,45 +535,49 @@ namespace AppsInToss
                         var data_2 = AITJsonCodec.R_SubscriptionSuccessEvent(AITJson.Parse(apiResponse.data));
                         (rawCallback as Action<SubscriptionSuccessEvent>)?.Invoke(data_2);
                         break;
+                    case "HingeStateChangeEvent":
+                        var data_3 = AITJsonCodec.R_HingeStateChangeEvent(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<HingeStateChangeEvent>)?.Invoke(data_3);
+                        break;
                     case "SuccessEvent":
-                        var data_3 = AITJsonCodec.R_SuccessEvent(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_3);
+                        var data_4 = AITJsonCodec.R_SuccessEvent(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<SuccessEvent>)?.Invoke(data_4);
                         break;
                     case "LoadAdMobEvent":
-                        var data_4 = AITJsonCodec.R_LoadAdMobEvent(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<LoadAdMobEvent>)?.Invoke(data_4);
+                        var data_5 = AITJsonCodec.R_LoadAdMobEvent(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<LoadAdMobEvent>)?.Invoke(data_5);
                         break;
                     case "LoadFullScreenAdEvent":
-                        var data_5 = AITJsonCodec.R_LoadFullScreenAdEvent(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<LoadFullScreenAdEvent>)?.Invoke(data_5);
+                        var data_6 = AITJsonCodec.R_LoadFullScreenAdEvent(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<LoadFullScreenAdEvent>)?.Invoke(data_6);
                         break;
                     case "Location":
-                        var data_6 = AITJsonCodec.R_Location(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<Location>)?.Invoke(data_6);
+                        var data_7 = AITJsonCodec.R_Location(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<Location>)?.Invoke(data_7);
                         break;
                     case "RequestNotificationAgreementOptionsOnEventParam":
-                        var data_7 = AITJsonCodec.R_RequestNotificationAgreementOptionsOnEventParam(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<RequestNotificationAgreementOptionsOnEventParam>)?.Invoke(data_7);
+                        var data_8 = AITJsonCodec.R_RequestNotificationAgreementOptionsOnEventParam(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<RequestNotificationAgreementOptionsOnEventParam>)?.Invoke(data_8);
                         break;
                     case "SafeAreaInsets":
-                        var data_8 = AITJsonCodec.R_SafeAreaInsets(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<SafeAreaInsets>)?.Invoke(data_8);
+                        var data_9 = AITJsonCodec.R_SafeAreaInsets(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<SafeAreaInsets>)?.Invoke(data_9);
                         break;
                     case "ShowAdMobEvent":
-                        var data_9 = AITJsonCodec.R_ShowAdMobEvent(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_9);
+                        var data_10 = AITJsonCodec.R_ShowAdMobEvent(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<ShowAdMobEvent>)?.Invoke(data_10);
                         break;
                     case "ShowFullScreenAdEvent":
-                        var data_10 = AITJsonCodec.R_ShowFullScreenAdEvent(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<ShowFullScreenAdEvent>)?.Invoke(data_10);
+                        var data_11 = AITJsonCodec.R_ShowFullScreenAdEvent(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<ShowFullScreenAdEvent>)?.Invoke(data_11);
                         break;
                     case "TdsNavigationAccessoryEventData":
-                        var data_11 = AITJsonCodec.R_TdsNavigationAccessoryEventData(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_11);
+                        var data_12 = AITJsonCodec.R_TdsNavigationAccessoryEventData(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<TdsNavigationAccessoryEventData>)?.Invoke(data_12);
                         break;
                     case "bool":
-                        var data_12 = AITJson.Bool(AITJson.Parse(apiResponse.data));
-                        (rawCallback as Action<bool>)?.Invoke(data_12);
+                        var data_13 = AITJson.Bool(AITJson.Parse(apiResponse.data));
+                        (rawCallback as Action<bool>)?.Invoke(data_13);
                         break;
                     case "void":
                         // Void event - call Action directly
@@ -845,12 +849,12 @@ namespace AppsInToss
                         }
                     }
                     break;
-                case "IAPGetPendingOrdersResult":
+                case "GetFoldableDisplayInfoResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<IAPGetPendingOrdersResult>(callbackId, out var callback13) && callback13 != null)
+                        if (TryGetCallback<GetFoldableDisplayInfoResponse>(callbackId, out var callback13) && callback13 != null)
                         {
-                            var data13 = AITJsonCodec.R_IAPGetPendingOrdersResult(AITJson.Parse(apiResponse.data));
+                            var data13 = AITJsonCodec.R_GetFoldableDisplayInfoResponse(AITJson.Parse(apiResponse.data));
                             callback13(data13);
                         }
                     }
@@ -858,16 +862,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback13) && errorCallback13 != null)
                         {
-                            errorCallback13(new AITException("IAPGetPendingOrdersResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback13(new AITException("GetFoldableDisplayInfoResponse", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "GetUserKeyForGameResult":
+                case "IAPGetPendingOrdersResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback14) && callback14 != null)
+                        if (TryGetCallback<IAPGetPendingOrdersResult>(callbackId, out var callback14) && callback14 != null)
                         {
-                            var data14 = AITJsonCodec.R_GetUserKeyForGameResult(AITJson.Parse(apiResponse.data));
+                            var data14 = AITJsonCodec.R_IAPGetPendingOrdersResult(AITJson.Parse(apiResponse.data));
                             callback14(data14);
                         }
                     }
@@ -875,16 +879,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback14) && errorCallback14 != null)
                         {
-                            errorCallback14(new AITException("GetUserKeyForGameResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback14(new AITException("IAPGetPendingOrdersResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "GrantPromotionRewardResponse":
+                case "GetUserKeyForGameResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GrantPromotionRewardResponse>(callbackId, out var callback15) && callback15 != null)
+                        if (TryGetCallback<GetUserKeyForGameResult>(callbackId, out var callback15) && callback15 != null)
                         {
-                            var data15 = AITJsonCodec.R_GrantPromotionRewardResponse(AITJson.Parse(apiResponse.data));
+                            var data15 = AITJsonCodec.R_GetUserKeyForGameResult(AITJson.Parse(apiResponse.data));
                             callback15(data15);
                         }
                     }
@@ -892,16 +896,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback15) && errorCallback15 != null)
                         {
-                            errorCallback15(new AITException("GrantPromotionRewardResponse", apiResponse.error, apiResponse.errorName));
+                            errorCallback15(new AITException("GetUserKeyForGameResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "GrantPromotionRewardResult":
+                case "GrantPromotionRewardResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<GrantPromotionRewardResult>(callbackId, out var callback16) && callback16 != null)
+                        if (TryGetCallback<GrantPromotionRewardResponse>(callbackId, out var callback16) && callback16 != null)
                         {
-                            var data16 = AITJsonCodec.R_GrantPromotionRewardResult(AITJson.Parse(apiResponse.data));
+                            var data16 = AITJsonCodec.R_GrantPromotionRewardResponse(AITJson.Parse(apiResponse.data));
                             callback16(data16);
                         }
                     }
@@ -909,16 +913,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback16) && errorCallback16 != null)
                         {
-                            errorCallback16(new AITException("GrantPromotionRewardResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback16(new AITException("GrantPromotionRewardResponse", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "IAPGetProductItemListResult":
+                case "GrantPromotionRewardResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<IAPGetProductItemListResult>(callbackId, out var callback17) && callback17 != null)
+                        if (TryGetCallback<GrantPromotionRewardResult>(callbackId, out var callback17) && callback17 != null)
                         {
-                            var data17 = AITJsonCodec.R_IAPGetProductItemListResult(AITJson.Parse(apiResponse.data));
+                            var data17 = AITJsonCodec.R_GrantPromotionRewardResult(AITJson.Parse(apiResponse.data));
                             callback17(data17);
                         }
                     }
@@ -926,16 +930,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback17) && errorCallback17 != null)
                         {
-                            errorCallback17(new AITException("IAPGetProductItemListResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback17(new AITException("GrantPromotionRewardResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "IapSubscriptionInfoResponse":
+                case "IAPGetProductItemListResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<IapSubscriptionInfoResponse>(callbackId, out var callback18) && callback18 != null)
+                        if (TryGetCallback<IAPGetProductItemListResult>(callbackId, out var callback18) && callback18 != null)
                         {
-                            var data18 = AITJsonCodec.R_IapSubscriptionInfoResponse(AITJson.Parse(apiResponse.data));
+                            var data18 = AITJsonCodec.R_IAPGetProductItemListResult(AITJson.Parse(apiResponse.data));
                             callback18(data18);
                         }
                     }
@@ -943,16 +947,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback18) && errorCallback18 != null)
                         {
-                            errorCallback18(new AITException("IapSubscriptionInfoResponse", apiResponse.error, apiResponse.errorName));
+                            errorCallback18(new AITException("IAPGetProductItemListResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "ImageResponse":
+                case "IapSubscriptionInfoResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ImageResponse>(callbackId, out var callback19) && callback19 != null)
+                        if (TryGetCallback<IapSubscriptionInfoResponse>(callbackId, out var callback19) && callback19 != null)
                         {
-                            var data19 = AITJsonCodec.R_ImageResponse(AITJson.Parse(apiResponse.data));
+                            var data19 = AITJsonCodec.R_IapSubscriptionInfoResponse(AITJson.Parse(apiResponse.data));
                             callback19(data19);
                         }
                     }
@@ -960,16 +964,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback19) && errorCallback19 != null)
                         {
-                            errorCallback19(new AITException("ImageResponse", apiResponse.error, apiResponse.errorName));
+                            errorCallback19(new AITException("IapSubscriptionInfoResponse", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "ImageResponse[]":
+                case "ImageResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ImageResponse[]>(callbackId, out var callback20) && callback20 != null)
+                        if (TryGetCallback<ImageResponse>(callbackId, out var callback20) && callback20 != null)
                         {
-                            var data20 = AITJson.Arr<ImageResponse>(AITJson.Parse(apiResponse.data), j1 => AITJsonCodec.R_ImageResponse(j1));
+                            var data20 = AITJsonCodec.R_ImageResponse(AITJson.Parse(apiResponse.data));
                             callback20(data20);
                         }
                     }
@@ -977,16 +981,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback20) && errorCallback20 != null)
                         {
-                            errorCallback20(new AITException("ImageResponse[]", apiResponse.error, apiResponse.errorName));
+                            errorCallback20(new AITException("ImageResponse", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "Location":
+                case "ImageResponse[]":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<Location>(callbackId, out var callback21) && callback21 != null)
+                        if (TryGetCallback<ImageResponse[]>(callbackId, out var callback21) && callback21 != null)
                         {
-                            var data21 = AITJsonCodec.R_Location(AITJson.Parse(apiResponse.data));
+                            var data21 = AITJson.Arr<ImageResponse>(AITJson.Parse(apiResponse.data), j1 => AITJsonCodec.R_ImageResponse(j1));
                             callback21(data21);
                         }
                     }
@@ -994,16 +998,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback21) && errorCallback21 != null)
                         {
-                            errorCallback21(new AITException("Location", apiResponse.error, apiResponse.errorName));
+                            errorCallback21(new AITException("ImageResponse[]", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "MigrationGetOriginStorageResult":
+                case "Location":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<MigrationGetOriginStorageResult>(callbackId, out var callback22) && callback22 != null)
+                        if (TryGetCallback<Location>(callbackId, out var callback22) && callback22 != null)
                         {
-                            var data22 = AITJsonCodec.R_MigrationGetOriginStorageResult(AITJson.Parse(apiResponse.data));
+                            var data22 = AITJsonCodec.R_Location(AITJson.Parse(apiResponse.data));
                             callback22(data22);
                         }
                     }
@@ -1011,16 +1015,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback22) && errorCallback22 != null)
                         {
-                            errorCallback22(new AITException("MigrationGetOriginStorageResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback22(new AITException("Location", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "RequestTossPayPaysBillingResult":
+                case "MigrationGetOriginStorageResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<RequestTossPayPaysBillingResult>(callbackId, out var callback23) && callback23 != null)
+                        if (TryGetCallback<MigrationGetOriginStorageResult>(callbackId, out var callback23) && callback23 != null)
                         {
-                            var data23 = AITJsonCodec.R_RequestTossPayPaysBillingResult(AITJson.Parse(apiResponse.data));
+                            var data23 = AITJsonCodec.R_MigrationGetOriginStorageResult(AITJson.Parse(apiResponse.data));
                             callback23(data23);
                         }
                     }
@@ -1028,16 +1032,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback23) && errorCallback23 != null)
                         {
-                            errorCallback23(new AITException("RequestTossPayPaysBillingResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback23(new AITException("MigrationGetOriginStorageResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "SafeAreaInsets":
+                case "RequestTossPayPaysBillingResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback24) && callback24 != null)
+                        if (TryGetCallback<RequestTossPayPaysBillingResult>(callbackId, out var callback24) && callback24 != null)
                         {
-                            var data24 = AITJsonCodec.R_SafeAreaInsets(AITJson.Parse(apiResponse.data));
+                            var data24 = AITJsonCodec.R_RequestTossPayPaysBillingResult(AITJson.Parse(apiResponse.data));
                             callback24(data24);
                         }
                     }
@@ -1045,16 +1049,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback24) && errorCallback24 != null)
                         {
-                            errorCallback24(new AITException("SafeAreaInsets", apiResponse.error, apiResponse.errorName));
+                            errorCallback24(new AITException("RequestTossPayPaysBillingResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "ScreenSetAwakeModeResult":
+                case "SafeAreaInsets":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ScreenSetAwakeModeResult>(callbackId, out var callback25) && callback25 != null)
+                        if (TryGetCallback<SafeAreaInsets>(callbackId, out var callback25) && callback25 != null)
                         {
-                            var data25 = AITJsonCodec.R_ScreenSetAwakeModeResult(AITJson.Parse(apiResponse.data));
+                            var data25 = AITJsonCodec.R_SafeAreaInsets(AITJson.Parse(apiResponse.data));
                             callback25(data25);
                         }
                     }
@@ -1062,16 +1066,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback25) && errorCallback25 != null)
                         {
-                            errorCallback25(new AITException("ScreenSetAwakeModeResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback25(new AITException("SafeAreaInsets", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "ScreenSetSecureResult":
+                case "ScreenSetAwakeModeResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ScreenSetSecureResult>(callbackId, out var callback26) && callback26 != null)
+                        if (TryGetCallback<ScreenSetAwakeModeResult>(callbackId, out var callback26) && callback26 != null)
                         {
-                            var data26 = AITJsonCodec.R_ScreenSetSecureResult(AITJson.Parse(apiResponse.data));
+                            var data26 = AITJsonCodec.R_ScreenSetAwakeModeResult(AITJson.Parse(apiResponse.data));
                             callback26(data26);
                         }
                     }
@@ -1079,16 +1083,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback26) && errorCallback26 != null)
                         {
-                            errorCallback26(new AITException("ScreenSetSecureResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback26(new AITException("ScreenSetAwakeModeResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "SetScreenAwakeModeResult":
+                case "ScreenSetSecureResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SetScreenAwakeModeResult>(callbackId, out var callback27) && callback27 != null)
+                        if (TryGetCallback<ScreenSetSecureResult>(callbackId, out var callback27) && callback27 != null)
                         {
-                            var data27 = AITJsonCodec.R_SetScreenAwakeModeResult(AITJson.Parse(apiResponse.data));
+                            var data27 = AITJsonCodec.R_ScreenSetSecureResult(AITJson.Parse(apiResponse.data));
                             callback27(data27);
                         }
                     }
@@ -1096,16 +1100,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback27) && errorCallback27 != null)
                         {
-                            errorCallback27(new AITException("SetScreenAwakeModeResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback27(new AITException("ScreenSetSecureResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "SetSecureScreenResult":
+                case "SetScreenAwakeModeResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SetSecureScreenResult>(callbackId, out var callback28) && callback28 != null)
+                        if (TryGetCallback<SetScreenAwakeModeResult>(callbackId, out var callback28) && callback28 != null)
                         {
-                            var data28 = AITJsonCodec.R_SetSecureScreenResult(AITJson.Parse(apiResponse.data));
+                            var data28 = AITJsonCodec.R_SetScreenAwakeModeResult(AITJson.Parse(apiResponse.data));
                             callback28(data28);
                         }
                     }
@@ -1113,16 +1117,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback28) && errorCallback28 != null)
                         {
-                            errorCallback28(new AITException("SetSecureScreenResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback28(new AITException("SetScreenAwakeModeResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "SubmitGameCenterLeaderBoardScoreResponse":
+                case "SetSecureScreenResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback29) && callback29 != null)
+                        if (TryGetCallback<SetSecureScreenResult>(callbackId, out var callback29) && callback29 != null)
                         {
-                            var data29 = AITJsonCodec.R_SubmitGameCenterLeaderBoardScoreResponse(AITJson.Parse(apiResponse.data));
+                            var data29 = AITJsonCodec.R_SetSecureScreenResult(AITJson.Parse(apiResponse.data));
                             callback29(data29);
                         }
                     }
@@ -1130,16 +1134,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback29) && errorCallback29 != null)
                         {
-                            errorCallback29(new AITException("SubmitGameCenterLeaderBoardScoreResponse", apiResponse.error, apiResponse.errorName));
+                            errorCallback29(new AITException("SetSecureScreenResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "UserCreateAnonymousKeyAuthCodeResult":
+                case "SubmitGameCenterLeaderBoardScoreResponse":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<UserCreateAnonymousKeyAuthCodeResult>(callbackId, out var callback30) && callback30 != null)
+                        if (TryGetCallback<SubmitGameCenterLeaderBoardScoreResponse>(callbackId, out var callback30) && callback30 != null)
                         {
-                            var data30 = AITJsonCodec.R_UserCreateAnonymousKeyAuthCodeResult(AITJson.Parse(apiResponse.data));
+                            var data30 = AITJsonCodec.R_SubmitGameCenterLeaderBoardScoreResponse(AITJson.Parse(apiResponse.data));
                             callback30(data30);
                         }
                     }
@@ -1147,16 +1151,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback30) && errorCallback30 != null)
                         {
-                            errorCallback30(new AITException("UserCreateAnonymousKeyAuthCodeResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback30(new AITException("SubmitGameCenterLeaderBoardScoreResponse", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "ViralGetCampaignResult":
+                case "UserCreateAnonymousKeyAuthCodeResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<ViralGetCampaignResult>(callbackId, out var callback31) && callback31 != null)
+                        if (TryGetCallback<UserCreateAnonymousKeyAuthCodeResult>(callbackId, out var callback31) && callback31 != null)
                         {
-                            var data31 = AITJsonCodec.R_ViralGetCampaignResult(AITJson.Parse(apiResponse.data));
+                            var data31 = AITJsonCodec.R_UserCreateAnonymousKeyAuthCodeResult(AITJson.Parse(apiResponse.data));
                             callback31(data31);
                         }
                     }
@@ -1164,16 +1168,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback31) && errorCallback31 != null)
                         {
-                            errorCallback31(new AITException("ViralGetCampaignResult", apiResponse.error, apiResponse.errorName));
+                            errorCallback31(new AITException("UserCreateAnonymousKeyAuthCodeResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "bool?":
+                case "ViralGetCampaignResult":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<bool?>(callbackId, out var callback32) && callback32 != null)
+                        if (TryGetCallback<ViralGetCampaignResult>(callbackId, out var callback32) && callback32 != null)
                         {
-                            var data32 = AITJson.BoolN(AITJson.Parse(apiResponse.data));
+                            var data32 = AITJsonCodec.R_ViralGetCampaignResult(AITJson.Parse(apiResponse.data));
                             callback32(data32);
                         }
                     }
@@ -1181,16 +1185,16 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback32) && errorCallback32 != null)
                         {
-                            errorCallback32(new AITException("bool?", apiResponse.error, apiResponse.errorName));
+                            errorCallback32(new AITException("ViralGetCampaignResult", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;
-                case "double?":
+                case "bool?":
                     if (apiResponse.success)
                     {
-                        if (TryGetCallback<double?>(callbackId, out var callback33) && callback33 != null)
+                        if (TryGetCallback<bool?>(callbackId, out var callback33) && callback33 != null)
                         {
-                            var data33 = AITJson.DblN(AITJson.Parse(apiResponse.data));
+                            var data33 = AITJson.BoolN(AITJson.Parse(apiResponse.data));
                             callback33(data33);
                         }
                     }
@@ -1198,7 +1202,24 @@ namespace AppsInToss
                     {
                         if (TryGetErrorCallback(callbackId, out var errorCallback33) && errorCallback33 != null)
                         {
-                            errorCallback33(new AITException("double?", apiResponse.error, apiResponse.errorName));
+                            errorCallback33(new AITException("bool?", apiResponse.error, apiResponse.errorName));
+                        }
+                    }
+                    break;
+                case "double?":
+                    if (apiResponse.success)
+                    {
+                        if (TryGetCallback<double?>(callbackId, out var callback34) && callback34 != null)
+                        {
+                            var data34 = AITJson.DblN(AITJson.Parse(apiResponse.data));
+                            callback34(data34);
+                        }
+                    }
+                    else
+                    {
+                        if (TryGetErrorCallback(callbackId, out var errorCallback34) && errorCallback34 != null)
+                        {
+                            errorCallback34(new AITException("double?", apiResponse.error, apiResponse.errorName));
                         }
                     }
                     break;

@@ -889,6 +889,116 @@ namespace AppsInToss
         private static extern void __DeviceGetAlbumItemsIsSupported_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
+        /// 폴더블 디스플레이인지와 조회한 순간의 힌지 상태를 `{ isFoldableDisplay, hingeState }`로 돌려줘요.
+        /// 상태 변화를 따라가려면 `Device.subscribeHingeState`를 쓰세요.
+        /// 토스앱이 Android 5.283.0, iOS 5.282.0보다 낮으면 `UNSUPPORTED_APP_VERSION` 에러를 던져요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<GetFoldableDisplayInfoResponse> DeviceGetFoldableDisplayInfo(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<GetFoldableDisplayInfoResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<GetFoldableDisplayInfoResponse>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "DeviceGetFoldableDisplayInfo"
+            );
+            __DeviceGetFoldableDisplayInfo_Internal(callbackId, "GetFoldableDisplayInfoResponse");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceGetFoldableDisplayInfo called");
+            await Awaitable.NextFrameAsync();
+            return default(GetFoldableDisplayInfoResponse);
+#endif
+        }
+#else
+        public static async Task<GetFoldableDisplayInfoResponse> DeviceGetFoldableDisplayInfo(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<GetFoldableDisplayInfoResponse>();
+            string callbackId = AITCore.Instance.RegisterCallback<GetFoldableDisplayInfoResponse>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "DeviceGetFoldableDisplayInfo"
+            );
+            __DeviceGetFoldableDisplayInfo_Internal(callbackId, "GetFoldableDisplayInfoResponse");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceGetFoldableDisplayInfo called");
+            await Task.CompletedTask;
+            return default(GetFoldableDisplayInfoResponse);
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __DeviceGetFoldableDisplayInfo_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `Device.getFoldableDisplayInfo`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> DeviceGetFoldableDisplayInfoIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "DeviceGetFoldableDisplayInfoIsSupported"
+            );
+            __DeviceGetFoldableDisplayInfoIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceGetFoldableDisplayInfoIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> DeviceGetFoldableDisplayInfoIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "DeviceGetFoldableDisplayInfoIsSupported"
+            );
+            __DeviceGetFoldableDisplayInfoIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceGetFoldableDisplayInfoIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __DeviceGetFoldableDisplayInfoIsSupported_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
         /// 디바이스에 햅틱 진동을 일으켜요. `type`이 필수예요.
         /// </summary>
         /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
@@ -1082,6 +1192,94 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
         [System.Runtime.InteropServices.DllImport("__Internal")]
         private static extern void __DeviceSubscribeLocationOpenPermissionDialog_Internal(string callbackId, string typeName);
+#endif
+        /// <summary>
+        /// 힌지 상태 변화를 구독해요. 구독을 시작할 때 현재 상태로 `onEvent`가 한 번 실행되고,
+        /// 그 뒤로는 상태가 바뀔 때마다 실행돼요.
+        /// 힌지 상태를 감지할 수 없는 기기에서는 `{ available: false, angle: null, status: "unknown" }`이 한 번만 와요.
+        /// 화면을 벗어날 때 반환된 함수를 호출해 구독을 해제하세요.
+        /// 토스앱이 Android 5.283.0, iOS 5.282.0보다 낮으면 호출 즉시 `UNSUPPORTED_APP_VERSION` 에러를 던져요.
+        /// </summary>
+        /// <param name="onEvent">Event callback when the event is triggered</param>
+        /// <param name="onError">Error callback (optional)</param>
+        /// <returns>Action to call for unsubscribing from the event</returns>
+        [Preserve]
+        [APICategory("Device")]
+        public static Action DeviceSubscribeHingeState(
+            Action<HingeStateChangeEvent> onEvent,
+            Action<AITException> onError = null)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            string subscriptionId = AITCore.Instance.RegisterSubscriptionCallback<HingeStateChangeEvent>(
+                onEvent,
+                onError
+            );
+            __DeviceSubscribeHingeState_Internal(subscriptionId, "HingeStateChangeEvent");
+            return () => AITCore.Instance.Unsubscribe(subscriptionId);
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceSubscribeHingeState subscribed");
+            return () => UnityEngine.Debug.Log($"[AIT Mock] DeviceSubscribeHingeState unsubscribed");
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __DeviceSubscribeHingeState_Internal(string subscriptionId, string typeName);
+#endif
+        /// <summary>
+        /// 현재 앱 버전과 환경에서 `Device.subscribeHingeState`를 사용할 수 있는지 확인해요.
+        /// </summary>
+        /// <param name="timeoutMs">Optional client-side timeout in milliseconds. 0 (the default) waits indefinitely; a positive value throws <see cref="AITClientTimeoutException"/> if no response arrives before the deadline. The underlying platform work is not cancelled.</param>
+        /// <exception cref="AITException">Thrown when the API call fails</exception>
+        /// <exception cref="AITClientTimeoutException">Thrown when the timeoutMs deadline elapses before a response arrives</exception>
+        [Preserve]
+        [APICategory("Device")]
+#if UNITY_6000_0_OR_NEWER
+        public static async Awaitable<bool> DeviceSubscribeHingeStateIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var acs = new AwaitableCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => acs.SetResult(result),
+                error => acs.SetException(error),
+                timeoutMs,
+                "DeviceSubscribeHingeStateIsSupported"
+            );
+            __DeviceSubscribeHingeStateIsSupported_Internal(callbackId, "bool");
+            return await acs.Awaitable;
+#else
+            // Unity Editor mock implementation (Unity 6+)
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceSubscribeHingeStateIsSupported called");
+            await Awaitable.NextFrameAsync();
+            return false;
+#endif
+        }
+#else
+        public static async Task<bool> DeviceSubscribeHingeStateIsSupported(int timeoutMs = 0)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var tcs = new TaskCompletionSource<bool>();
+            string callbackId = AITCore.Instance.RegisterCallback<bool>(
+                result => tcs.TrySetResult(result),
+                error => tcs.TrySetException(error),
+                timeoutMs,
+                "DeviceSubscribeHingeStateIsSupported"
+            );
+            __DeviceSubscribeHingeStateIsSupported_Internal(callbackId, "bool");
+            return await tcs.Task;
+#else
+            // Unity Editor mock implementation
+            UnityEngine.Debug.Log($"[AIT Mock] DeviceSubscribeHingeStateIsSupported called");
+            await Task.CompletedTask;
+            return false;
+#endif
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void __DeviceSubscribeHingeStateIsSupported_Internal(string callbackId, string typeName);
 #endif
         /// <summary>
         /// 지정한 URL을 기기의 기본 브라우저나 관련 앱에서 열어요.

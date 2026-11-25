@@ -21,12 +21,12 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/web-framework':
-        specifier: 3.10.0
-        version: 3.10.0(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.11.0
+        version: 3.11.0(typanion@3.14.0)(typescript@7.0.2)
     devDependencies:
       '@apps-in-toss/devtools':
-        specifier: 3.10.0
-        version: 3.10.0(@apps-in-toss/web-framework@3.10.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.19)(vite@8.3.5(@types/node@26.6.6)(jiti@2.7.0))
+        specifier: 3.11.0
+        version: 3.11.0(@apps-in-toss/web-framework@3.11.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.19)(vite@8.3.5(@types/node@26.6.6)(jiti@2.7.0))
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -43,12 +43,12 @@ packages:
     resolution: {integrity: sha512-1no0CXOhPEeSCrGduT37KMmCqA6irhowXa0S7AaPHb4RQSHGioR3wvvD7HHBCaUriMYs0EvtqRJfOgYd0ycKlQ==}
     engines: {node: '>=24'}
 
-  '@apps-in-toss/cli@3.10.0':
-    resolution: {integrity: sha512-rqtMfOat591nAmSFb2G/tVuuh3bLIRud0hewjR1G+g7W+IhCus86V5nAaoVvuG2MTmOx0d6qcDaJP3JgK1nwgg==}
+  '@apps-in-toss/cli@3.11.0':
+    resolution: {integrity: sha512-+YusA6U/3lW9rAIpq5RjO+arNIcDj77bEFW+TqG00SJ9oL4TZTbM/VkqRiC7qoiEOUUYrA0Hg0t6gyYcKclLaA==}
     hasBin: true
 
-  '@apps-in-toss/devtools@3.10.0':
-    resolution: {integrity: sha512-GexaJcrKsKRMl5CGl4PsgbOY1LVwZIg1bT7p3nBbzlMTfFx72ngx9d9TMzFAP+W5EITD7e0UxqEhw6jemfQmdQ==}
+  '@apps-in-toss/devtools@3.11.0':
+    resolution: {integrity: sha512-Z/VTveT5BivLG0U3T7Mdu9aRt5jOtshqj6+APMJ/R7ocRrMYh4AXVysOlvAjEz9Ht2uy9LUXYs+pIXWrK/Mwqg==}
     engines: {node: '>=24'}
     peerDependencies:
       '@apps-in-toss/web-framework': '>=2.6.0 <3.0.0 || >=3.0.1 <4.0.0'
@@ -56,8 +56,8 @@ packages:
       '@apps-in-toss/web-framework':
         optional: true
 
-  '@apps-in-toss/web-framework@3.10.0':
-    resolution: {integrity: sha512-ikqqAJ4C0MFxdPuBiIDEr3JA64ZHwsbD+tXBGvzR6cgwGipwAC8yS2bKTzsYgiD1Bwz+cpXBqt31284c8cgyKQ==}
+  '@apps-in-toss/web-framework@3.11.0':
+    resolution: {integrity: sha512-0fA9sIZsoqH44JF1ut1M5NME1I9vq1Cwu0RoO1AueUSq5x48nYvx76KFR5uOAk7P0XVmLVtev0YLgGOYZyzlrg==}
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -537,14 +537,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@webview-bridge/types@1.7.10':
-    resolution: {integrity: sha512-s5JfIzkKo6SIMErw1u/UVHM8/rh4kRAuaQPeSk3iXH2momsv4GFY9U3NKUr+Wq2V4Nalrzx0dNxqFad6UcvX/Q==}
+  '@webview-bridge/types@1.9.0':
+    resolution: {integrity: sha512-/dWwGJHPJxW8gMzh31kacVfBsM1xbZHKksnpFGdyjmNZq5aKPODYih8Mk4HSyhgZpTlPU7M53pmixyN0eDcyaQ==}
 
-  '@webview-bridge/utils@1.7.10':
-    resolution: {integrity: sha512-otH5LE6P7F3nVZUqgxVcmNVsMioZBx6l+Djyl1cNwIBL3607b4Y5V1mt8lTSu6byCly2ADx6kxM2oldxBvgZzw==}
+  '@webview-bridge/utils@1.9.0':
+    resolution: {integrity: sha512-Hpb3lq0GmS2NGCjeWmX21qS7PWWG+oSHptAwFoqjQh+h7gjHnbA18oi/ZRsomZZuoO4/35Mur15IDtchPPGvrg==}
 
-  '@webview-bridge/web@1.7.10':
-    resolution: {integrity: sha512-E38r69W13RwizgtbQwMh7qf6Fk3VW0YzeasYpx7+RhNSufegCrIAtwEaGHLNJsnu2X0Od38gNOI4iWtTOSpFdg==}
+  '@webview-bridge/web@1.9.0':
+    resolution: {integrity: sha512-qsAEEwLPv0A96kK/znJ1D8U3d62U4zwjNvt+G/NT+gUfcg1jln7SqVoUNe6QL6Qrco/h9N2jS19QWPlP/Y4Xaw==}
 
   ast-types@0.16.3:
     resolution: {integrity: sha512-FvWoWYfSCM6kRxCSH+MGLHIKKGRL6A6AW7Zek2O32REPQRdg131428uRTKMBYAeRd3XXAaHDS60Wpri7CdKDrA==}
@@ -1087,7 +1087,7 @@ snapshots:
       '@apps-in-toss/ait-format-proto': 1.0.0
       fflate: 0.8.3
 
-  '@apps-in-toss/cli@3.10.0(typanion@3.14.0)':
+  '@apps-in-toss/cli@3.11.0(typanion@3.14.0)':
     dependencies:
       '@apps-in-toss/ait-format': 1.0.0
       '@clack/prompts': 1.9.0
@@ -1102,11 +1102,11 @@ snapshots:
       - supports-color
       - typanion
 
-  '@apps-in-toss/devtools@3.10.0(@apps-in-toss/web-framework@3.10.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.19)(vite@8.3.5(@types/node@26.6.6)(jiti@2.7.0))':
+  '@apps-in-toss/devtools@3.11.0(@apps-in-toss/web-framework@3.11.0(typanion@3.14.0)(typescript@7.0.2))(rolldown@1.2.19)(vite@8.3.5(@types/node@26.6.6)(jiti@2.7.0))':
     dependencies:
       unplugin: 3.7.0(rolldown@1.2.19)(vite@8.3.5(@types/node@26.6.6)(jiti@2.7.0))
     optionalDependencies:
-      '@apps-in-toss/web-framework': 3.10.0(typanion@3.14.0)(typescript@7.0.2)
+      '@apps-in-toss/web-framework': 3.11.0(typanion@3.14.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@farmfe/core'
       - '@rsbuild/core'
@@ -1119,10 +1119,10 @@ snapshots:
       - vite
       - webpack
 
-  '@apps-in-toss/web-framework@3.10.0(typanion@3.14.0)(typescript@7.0.2)':
+  '@apps-in-toss/web-framework@3.11.0(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
-      '@apps-in-toss/cli': 3.10.0(typanion@3.14.0)
-      '@webview-bridge/web': 1.7.10
+      '@apps-in-toss/cli': 3.11.0(typanion@3.14.0)
+      '@webview-bridge/web': 1.9.0
       semver: 7.8.6
       valibot: 1.5.0(typescript@7.0.2)
     transitivePeerDependencies:
@@ -1575,14 +1575,14 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@webview-bridge/types@1.7.10': {}
+  '@webview-bridge/types@1.9.0': {}
 
-  '@webview-bridge/utils@1.7.10': {}
+  '@webview-bridge/utils@1.9.0': {}
 
-  '@webview-bridge/web@1.7.10':
+  '@webview-bridge/web@1.9.0':
     dependencies:
-      '@webview-bridge/types': 1.7.10
-      '@webview-bridge/utils': 1.7.10
+      '@webview-bridge/types': 1.9.0
+      '@webview-bridge/utils': 1.9.0
 
   ast-types@0.16.3:
     dependencies:

@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@apps-in-toss/web-framework':
-        specifier: 3.10.0
-        version: 3.10.0(typanion@3.14.0)(typescript@7.0.2)
+        specifier: 3.11.0
+        version: 3.11.0(typanion@3.14.0)(typescript@7.0.2)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -73,6 +73,9 @@ importers:
       web-framework-3.10.0:
         specifier: npm:@apps-in-toss/web-framework@3.10.0
         version: '@apps-in-toss/web-framework@3.10.0(typanion@3.14.0)(typescript@7.0.2)'
+      web-framework-3.11.0:
+        specifier: npm:@apps-in-toss/web-framework@3.11.0
+        version: '@apps-in-toss/web-framework@3.11.0(typanion@3.14.0)(typescript@7.0.2)'
       web-framework-3.2.0:
         specifier: npm:@apps-in-toss/web-framework@3.2.0
         version: '@apps-in-toss/web-framework@3.2.0(typanion@3.14.0)(typescript@7.0.2)'
@@ -204,6 +207,10 @@ packages:
 
   '@apps-in-toss/web-framework@3.10.0':
     resolution: {integrity: sha512-ikqqAJ4C0MFxdPuBiIDEr3JA64ZHwsbD+tXBGvzR6cgwGipwAC8yS2bKTzsYgiD1Bwz+cpXBqt31284c8cgyKQ==}
+    hasBin: true
+
+  '@apps-in-toss/web-framework@3.11.0':
+    resolution: {integrity: sha512-0fA9sIZsoqH44JF1ut1M5NME1I9vq1Cwu0RoO1AueUSq5x48nYvx76KFR5uOAk7P0XVmLVtev0YLgGOYZyzlrg==}
     hasBin: true
 
   '@apps-in-toss/web-framework@3.2.0':
@@ -940,17 +947,26 @@ packages:
   '@webview-bridge/types@1.7.9':
     resolution: {integrity: sha512-Xqi6opGJB+LVpyb+2ZxqpKv2ox2/cnkbp0G2OMCnSNi/D6U5HkMsSbaW8GrXGEVwbybltK7uLKN+el1CqEGiRg==}
 
+  '@webview-bridge/types@1.9.0':
+    resolution: {integrity: sha512-/dWwGJHPJxW8gMzh31kacVfBsM1xbZHKksnpFGdyjmNZq5aKPODYih8Mk4HSyhgZpTlPU7M53pmixyN0eDcyaQ==}
+
   '@webview-bridge/utils@1.7.10':
     resolution: {integrity: sha512-otH5LE6P7F3nVZUqgxVcmNVsMioZBx6l+Djyl1cNwIBL3607b4Y5V1mt8lTSu6byCly2ADx6kxM2oldxBvgZzw==}
 
   '@webview-bridge/utils@1.7.9':
     resolution: {integrity: sha512-qTgppsE7ydroMJTeIpLiS7TIdKmdw2z6CtakPDutivkG2pztKa8CCB8ap1UkUoaE6RHQS1XeEBEII3HasW/WRw==}
 
+  '@webview-bridge/utils@1.9.0':
+    resolution: {integrity: sha512-Hpb3lq0GmS2NGCjeWmX21qS7PWWG+oSHptAwFoqjQh+h7gjHnbA18oi/ZRsomZZuoO4/35Mur15IDtchPPGvrg==}
+
   '@webview-bridge/web@1.7.10':
     resolution: {integrity: sha512-E38r69W13RwizgtbQwMh7qf6Fk3VW0YzeasYpx7+RhNSufegCrIAtwEaGHLNJsnu2X0Od38gNOI4iWtTOSpFdg==}
 
   '@webview-bridge/web@1.7.9':
     resolution: {integrity: sha512-CxOOGpE4yOwdpm15S6i/KagwYXX5W6CedPRKor+ublk8sDkbotWImSdO99L7Z1wEoSic0EF3fN3MeU7dObBG3w==}
+
+  '@webview-bridge/web@1.9.0':
+    resolution: {integrity: sha512-qsAEEwLPv0A96kK/znJ1D8U3d62U4zwjNvt+G/NT+gUfcg1jln7SqVoUNe6QL6Qrco/h9N2jS19QWPlP/Y4Xaw==}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -1970,6 +1986,19 @@ snapshots:
       - typanion
       - typescript
 
+  '@apps-in-toss/web-framework@3.11.0(typanion@3.14.0)(typescript@7.0.2)':
+    dependencies:
+      '@apps-in-toss/cli': 3.11.0(typanion@3.14.0)
+      '@webview-bridge/web': 1.9.0
+      semver: 7.8.6
+      valibot: 1.5.0(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - magicast
+      - supports-color
+      - typanion
+      - typescript
+
   '@apps-in-toss/web-framework@3.2.0(typanion@3.14.0)(typescript@7.0.2)':
     dependencies:
       '@apps-in-toss/cli': 3.2.0(typanion@3.14.0)
@@ -2689,9 +2718,13 @@ snapshots:
 
   '@webview-bridge/types@1.7.9': {}
 
+  '@webview-bridge/types@1.9.0': {}
+
   '@webview-bridge/utils@1.7.10': {}
 
   '@webview-bridge/utils@1.7.9': {}
+
+  '@webview-bridge/utils@1.9.0': {}
 
   '@webview-bridge/web@1.7.10':
     dependencies:
@@ -2702,6 +2735,11 @@ snapshots:
     dependencies:
       '@webview-bridge/types': 1.7.9
       '@webview-bridge/utils': 1.7.9
+
+  '@webview-bridge/web@1.9.0':
+    dependencies:
+      '@webview-bridge/types': 1.9.0
+      '@webview-bridge/utils': 1.9.0
 
   assertion-error@2.0.1: {}
 

@@ -159,6 +159,7 @@ namespace AppsInToss
             if (t == typeof(RequestNotificationAgreementOptionsOnEventParam)) return R_RequestNotificationAgreementOptionsOnEventParam(j);
             if (t == typeof(RequestNotificationAgreementOptionsOptions)) return R_RequestNotificationAgreementOptionsOptions(j);
             if (t == typeof(MigrationGetOriginStorageResult)) return R_MigrationGetOriginStorageResult(j);
+            if (t == typeof(HingeStateChangeEvent)) return R_HingeStateChangeEvent(j);
             if (t == typeof(AdMobLoadResult)) return R_AdMobLoadResult(j);
             if (t == typeof(ResponseInfo)) return R_ResponseInfo(j);
             if (t == typeof(AdNetworkResponseInfo)) return R_AdNetworkResponseInfo(j);
@@ -177,6 +178,7 @@ namespace AppsInToss
             if (t == typeof(RewardFromContactsViralEventData)) return R_RewardFromContactsViralEventData(j);
             if (t == typeof(CreateLinkParams)) return R_CreateLinkParams(j);
             if (t == typeof(DeclaredAgeRange)) return R_DeclaredAgeRange(j);
+            if (t == typeof(GetFoldableDisplayInfoResponse)) return R_GetFoldableDisplayInfoResponse(j);
             if (t == typeof(GrantRewardParams)) return R_GrantRewardParams(j);
             if (t == typeof(HapticFeedbackOptions)) return R_HapticFeedbackOptions(j);
             if (t == typeof(IapCreateOneTimePurchaseOrderResult)) return R_IapCreateOneTimePurchaseOrderResult(j);
@@ -216,6 +218,7 @@ namespace AppsInToss
             if (t == typeof(DeclaredAgeRangeStatus) || t == typeof(DeclaredAgeRangeStatus?)) return RE_DeclaredAgeRangeStatus(j);
             if (t == typeof(LocationAccessLocation) || t == typeof(LocationAccessLocation?)) return RE_LocationAccessLocation(j);
             if (t == typeof(Accuracy) || t == typeof(Accuracy?)) return RE_Accuracy(j);
+            if (t == typeof(HingeStatus) || t == typeof(HingeStatus?)) return RE_HingeStatus(j);
             if (t == typeof(AlbumItemType) || t == typeof(AlbumItemType?)) return RE_AlbumItemType(j);
             if (t == typeof(PermissionName) || t == typeof(PermissionName?)) return RE_PermissionName(j);
             if (t == typeof(PermissionAccess) || t == typeof(PermissionAccess?)) return RE_PermissionAccess(j);
@@ -388,6 +391,13 @@ namespace AppsInToss
         internal static void WE_Accuracy(AITJsonWriter w, Accuracy? v) { if (v.HasValue) AITJson.Enum(w, (int)v.Value, null, EV_Accuracy); else w.Null(); }
         internal static bool TE_Accuracy(JsonValue j, out Accuracy v) { if (!AITJson.IsNullOrEmpty(j) && AITJson.Enum(j, EN_Accuracy, EN_Accuracy, EV_Accuracy, out var n)) { v = (Accuracy)n; return true; } v = default(Accuracy); return false; }
         internal static bool TEN_Accuracy(JsonValue j, out Accuracy? v) { if (AITJson.IsNullOrEmpty(j)) { v = null; return true; } if (TE_Accuracy(j, out var e)) { v = e; return true; } v = null; return false; }
+
+        private static readonly string[] EN_HingeStatus = { "Unknown", "Closed", "PartiallyOpen", "FullyOpen" };
+        private static readonly string[] EW_HingeStatus = { "unknown", "closed", "partiallyOpen", "fullyOpen" };
+        internal static HingeStatus? RE_HingeStatus(JsonValue j) => AITJson.Enum(j, EW_HingeStatus, EN_HingeStatus, null, out var v) ? (HingeStatus)v : (HingeStatus?)null;
+        internal static void WE_HingeStatus(AITJsonWriter w, HingeStatus? v) { if (v.HasValue) AITJson.Enum(w, (int)v.Value, EW_HingeStatus, null); else w.Null(); }
+        internal static bool TE_HingeStatus(JsonValue j, out HingeStatus v) { if (!AITJson.IsNullOrEmpty(j) && AITJson.Enum(j, EW_HingeStatus, EN_HingeStatus, null, out var n)) { v = (HingeStatus)n; return true; } v = default(HingeStatus); return false; }
+        internal static bool TEN_HingeStatus(JsonValue j, out HingeStatus? v) { if (AITJson.IsNullOrEmpty(j)) { v = null; return true; } if (TE_HingeStatus(j, out var e)) { v = e; return true; } v = null; return false; }
 
         private static readonly string[] EN_AlbumItemType = { "PHOTO", "VIDEO" };
         internal static AlbumItemType? RE_AlbumItemType(JsonValue j) => AITJson.Enum(j, EN_AlbumItemType, EN_AlbumItemType, null, out var v) ? (AlbumItemType)v : (AlbumItemType?)null;
@@ -2775,6 +2785,25 @@ namespace AppsInToss
             return o;
         }
 
+        private static readonly string[] N_HingeStateChangeEvent = { "available", "angle", "status" };
+        internal static HingeStateChangeEvent R_HingeStateChangeEvent(JsonValue j)
+        {
+            if (j == null || j.Kind != JsonValueKind.Object) return null;
+            var o = new HingeStateChangeEvent();
+            foreach (var p in j._members)
+            {
+                var v = p.Value;
+                switch (AITJson.Match(p.Key, N_HingeStateChangeEvent))
+                {
+                    case 0: if (AITJson.TryBool(v, out bool x0)) { o.Available = x0; } break;
+                    case 1: if (AITJson.TryDblN(v, out double? x1)) { o.Angle = x1; } break;
+                    case 2: if (AITJsonCodec.TE_HingeStatus(v, out HingeStatus x2)) { o.Status = x2; } break;
+                    default: AITJson.Ext(ref o._extensionData, p); break;
+                }
+            }
+            return o;
+        }
+
         private static readonly string[] N_AdMobLoadResult = { "adGroupId", "adUnitId", "responseInfo" };
         internal static AdMobLoadResult R_AdMobLoadResult(JsonValue j)
         {
@@ -3120,6 +3149,24 @@ namespace AppsInToss
                     case 4: if (AITJson.TryArr<string>(v, AITJson.TryStr, out string[] x4)) { o.ActiveParentalControls = x4; } break;
                     case 5: if (AITJson.TryBoolN(v, out bool? x5)) { o.IsEligibleForAgeFeatures = x5; } break;
                     case 6: if (AITJson.TryStr(v, out string x6)) { o.ErrorCode = x6; } break;
+                    default: AITJson.Ext(ref o._extensionData, p); break;
+                }
+            }
+            return o;
+        }
+
+        private static readonly string[] N_GetFoldableDisplayInfoResponse = { "isFoldableDisplay", "hingeState" };
+        internal static GetFoldableDisplayInfoResponse R_GetFoldableDisplayInfoResponse(JsonValue j)
+        {
+            if (j == null || j.Kind != JsonValueKind.Object) return null;
+            var o = new GetFoldableDisplayInfoResponse();
+            foreach (var p in j._members)
+            {
+                var v = p.Value;
+                switch (AITJson.Match(p.Key, N_GetFoldableDisplayInfoResponse))
+                {
+                    case 0: if (AITJson.TryBool(v, out bool x0)) { o.IsFoldableDisplay = x0; } break;
+                    case 1: if (AITJson.TryObj<HingeStateChangeEvent>(v, AITJsonCodec.R_HingeStateChangeEvent, out HingeStateChangeEvent x1)) { o.HingeState = x1; } break;
                     default: AITJson.Ext(ref o._extensionData, p); break;
                 }
             }
@@ -5065,6 +5112,19 @@ namespace AppsInToss
         }
     }
 
+    partial class HingeStateChangeEvent : IAITJsonWritable
+    {
+        void IAITJsonWritable.WriteJson(AITJsonWriter w)
+        {
+            w.BeginObject();
+            w.Name("available"); w.Value(this.Available);
+            w.Name("angle"); w.Value(this.Angle);
+            w.Name("status"); AITJsonCodec.WE_HingeStatus(w, this.Status);
+            AITJson.Ext(w, this._extensionData);
+            w.EndObject();
+        }
+    }
+
     partial class AdMobLoadResult : IAITJsonWritable
     {
         void IAITJsonWritable.WriteJson(AITJsonWriter w)
@@ -5303,6 +5363,18 @@ namespace AppsInToss
             w.Name("activeParentalControls"); AITJson.Arr<string>(w, this.ActiveParentalControls, (w1, x1) => w1.Value(x1));
             w.Name("isEligibleForAgeFeatures"); w.Value(this.IsEligibleForAgeFeatures);
             w.Name("errorCode"); w.Value(this.ErrorCode);
+            AITJson.Ext(w, this._extensionData);
+            w.EndObject();
+        }
+    }
+
+    partial class GetFoldableDisplayInfoResponse : IAITJsonWritable
+    {
+        void IAITJsonWritable.WriteJson(AITJsonWriter w)
+        {
+            w.BeginObject();
+            w.Name("isFoldableDisplay"); w.Value(this.IsFoldableDisplay);
+            w.Name("hingeState"); AITJson.Obj(w, this.HingeState);
             AITJson.Ext(w, this._extensionData);
             w.EndObject();
         }

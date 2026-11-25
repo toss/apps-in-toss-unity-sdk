@@ -57,6 +57,21 @@ namespace AppsInToss
 
     [Serializable]
     [Preserve]
+    public partial class HingeStateChangeEvent
+    {
+        [Preserve]
+        public bool Available;
+        [Preserve]
+        public double? Angle;
+        [Preserve]
+        public HingeStatus Status;
+
+        [Preserve]
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
     public partial class AdMobLoadResult
     {
         [Preserve]
@@ -138,6 +153,25 @@ namespace AppsInToss
 
         [Preserve]
         public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
+    }
+
+    /// <summary>
+    /// 기기가 접힌 정도예요.
+    /// - `"unknown"`: 판별할 수 없어요.
+    /// - `"closed"`: 완전히 접혀 있어요.
+    /// - `"partiallyOpen"`: 일부만 펼쳐져 있어요.
+    /// - `"fullyOpen"`: 완전히 펼쳐져 있어요.
+    /// </summary>
+    public enum HingeStatus
+    {
+        [EnumMember(Value = "unknown")]
+        Unknown,
+        [EnumMember(Value = "closed")]
+        Closed,
+        [EnumMember(Value = "partiallyOpen")]
+        PartiallyOpen,
+        [EnumMember(Value = "fullyOpen")]
+        FullyOpen
     }
 
     [Serializable]
@@ -500,6 +534,21 @@ namespace AppsInToss
         public bool? IsEligibleForAgeFeatures; // optional
         [Preserve]
         public string ErrorCode; // optional
+
+        [Preserve]
+        public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;
+    }
+
+    [Serializable]
+    [Preserve]
+    public partial class GetFoldableDisplayInfoResponse
+    {
+        /// <summary>폴더블 디스플레이를 감지하면 true예요.</summary>
+        [Preserve]
+        public bool IsFoldableDisplay;
+        /// <summary>조회 시점의 힌지 상태예요. 이후 상태 변화는 구독으로 받아요.</summary>
+        [Preserve]
+        public HingeStateChangeEvent HingeState;
 
         [Preserve]
         public System.Collections.Generic.IDictionary<string, JsonValue> _extensionData;

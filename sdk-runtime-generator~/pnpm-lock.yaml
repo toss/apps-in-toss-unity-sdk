@@ -1113,12 +1113,12 @@ packages:
   flatted@3.4.4:
     resolution: {integrity: sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==}
 
-  flow-estree@0.341.0:
-    resolution: {integrity: sha512-SnvoBk9JFlkXuXb+xl68OL0L+exEgRTZLBFdItXZOWcFiCa0qNUHnPjntnSpmXvU9XuI5mOHpRXwyIGex38/ng==}
+  flow-estree@0.342.0:
+    resolution: {integrity: sha512-2rg7I00BciYpwlOik/Am7JQcvCi+uB7A9dMlLkh+cru+0I8Ky3jFuS6bgucI9j0FmxbkDr4fRYRMYy5C9G8+HQ==}
     engines: {node: '>=18'}
 
-  flow-parser@0.341.0:
-    resolution: {integrity: sha512-u7/ZY0Fracx3OL4m3cnL9NZe0FrInp7WuUJiW++9mDJEEWg58HcaMxn5imQFF6D4VH0QKksV10Qwkqy4+gZuEg==}
+  flow-parser@0.342.0:
+    resolution: {integrity: sha512-ut+LDX8oFMtXhI9ENjHrZ7V/V5m6aek+1zXg6H3IYKNWPEy0EAS3MjlcPyjX5YbgEcVeW9Ttm+pVIUQFoLnB1g==}
     engines: {node: '>=0.4.0'}
 
   fsevents@2.3.3:
@@ -2857,11 +2857,11 @@ snapshots:
 
   flatted@3.4.4: {}
 
-  flow-estree@0.341.0: {}
+  flow-estree@0.342.0: {}
 
-  flow-parser@0.341.0:
+  flow-parser@0.342.0:
     dependencies:
-      flow-estree: 0.341.0
+      flow-estree: 0.342.0
 
   fsevents@2.3.3:
     optional: true
@@ -2911,7 +2911,7 @@ snapshots:
       '@babel/preset-flow': 7.29.7(@babel/core@7.29.13)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.13)
       '@babel/register': 7.29.13(@babel/core@7.29.13)
-      flow-parser: 0.341.0
+      flow-parser: 0.342.0
       graceful-fs: 4.2.12
       neo-async: 2.6.2
       picocolors: 1.1.1

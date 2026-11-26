@@ -35,6 +35,10 @@ public class BannerAdTester : MonoBehaviour
     private int _letterboxScreenHeight = -1;
     private Text _letterboxLabel;
 
+    // 정적 helper의 배너 범위 — Screen은 기존(화면 전체 폭) 동작, GameArea는 Camera.main.rect 가로 범위
+    private bool _useGameAreaBounds = true;
+    private Text _boundsLabel;
+
     // uGUI 참조
     private Text _statusText;
     private GameObject _eventLogContainer;
@@ -91,19 +95,30 @@ public class BannerAdTester : MonoBehaviour
         UIBuilder.CreateText(section, "Static: AITBannerAd.Show (Top/Bottom preset, 단일 슬롯)",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
+        // 범위 선택: GameArea(레터박스 안쪽) / Screen(기존 전체 폭, 비교용). 다음 Show부터 적용
+        _boundsLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
+        var boundsBtn = UIBuilder.CreateButton(section, "Bounds 전환 (GameArea / Screen)", onClick: () =>
+        {
+            _useGameAreaBounds = !_useGameAreaBounds;
+            LogEvent($"Bounds = {BoundsName()} (다음 Show부터 적용)");
+            UpdateUI();
+        });
+        UIBuilder.SetLayout(boundsBtn.gameObject, flexibleWidth: 1);
+
         var staticRow = UIBuilder.CreateHorizontalLayout(section, UIBuilder.Theme.SpacingSmall);
         staticRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var showTopBtn = UIBuilder.CreateButton(staticRow, "Show Top (문구)", onClick: () =>
         {
-            LogEvent("AITBannerAd.Show(Top, 문구)");
-            AITBannerAd.Show(TEST_BANNER_TEXT_AD_ID, AITBannerPosition.Top);
+            LogEvent($"AITBannerAd.Show(Top, 문구, {BoundsName()})");
+            AITBannerAd.Show(TEST_BANNER_TEXT_AD_ID, AITBannerPosition.Top, CurrentBounds());
             UpdateUI();
         });
         UIBuilder.SetLayout(showTopBtn.gameObject, flexibleWidth: 1);
         var showBottomBtn = UIBuilder.CreateButton(staticRow, "Show Bottom (이미지)", onClick: () =>
         {
-            LogEvent("AITBannerAd.Show(Bottom, 이미지)");
-            AITBannerAd.Show(TEST_BANNER_IMAGE_AD_ID, AITBannerPosition.Bottom);
+            LogEvent($"AITBannerAd.Show(Bottom, 이미지, {BoundsName()})");
+            AITBannerAd.Show(TEST_BANNER_IMAGE_AD_ID, AITBannerPosition.Bottom, CurrentBounds());
             UpdateUI();
         });
         UIBuilder.SetLayout(showBottomBtn.gameObject, flexibleWidth: 1);
@@ -195,6 +210,16 @@ public class BannerAdTester : MonoBehaviour
         return view;
     }
 
+    private AITBannerBounds CurrentBounds()
+    {
+        return _useGameAreaBounds ? AITBannerBounds.GameArea : AITBannerBounds.Screen;
+    }
+
+    private string BoundsName()
+    {
+        return _useGameAreaBounds ? "GameArea" : "Screen";
+    }
+
     private void Update()
     {
         if (!_letterboxOn) return;
@@ -268,6 +293,11 @@ public class BannerAdTester : MonoBehaviour
             bool textShowing = _textView != null && _textView.IsShowing;
             bool imageShowing = _imageView != null && _imageView.IsShowing;
             _statusText.text = $"문구: {(textShowing ? "표시" : "숨김")} / 이미지: {(imageShowing ? "표시" : "숨김")} / Static: {(AITBannerAd.IsShowing ? "표시" : "숨김")}";
+        }
+
+        if (_boundsLabel != null)
+        {
+            _boundsLabel.text = $"Static bounds: {BoundsName()}";
         }
 
         UpdateEventLog();

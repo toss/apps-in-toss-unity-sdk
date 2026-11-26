@@ -26,6 +26,19 @@ public class BannerAdTester : MonoBehaviour
     private AITBannerAdView _imageView;
     private Action<AITBannerAdEvent> _staticEventHandler;
 
+    // 레터박스(필러박스) 재현용 — 넓은 화면/멀티 윈도우에서 게임이 Camera.rect를 줄여 좌우에 검은 띠를 두는 상황
+    private const float LetterboxAspect = 9f / 16f;
+    private bool _letterboxOn;
+    private Camera _letterboxCamera;
+    private GameObject _letterboxBackground;
+    private int _letterboxScreenWidth = -1;
+    private int _letterboxScreenHeight = -1;
+    private Text _letterboxLabel;
+
+    // 정적 helper의 배너 범위 — Screen은 기존(화면 전체 폭) 동작, GameArea는 Camera.main.rect 가로 범위
+    private bool _useGameAreaBounds = true;
+    private Text _boundsLabel;
+
     // uGUI 참조
     private Text _statusText;
     private GameObject _eventLogContainer;
@@ -82,19 +95,30 @@ public class BannerAdTester : MonoBehaviour
         UIBuilder.CreateText(section, "Static: AITBannerAd.Show (Top/Bottom preset, 단일 슬롯)",
             UIBuilder.Theme.FontSmall, UIBuilder.Theme.TextSecondary);
 
+        // 범위 선택: GameArea(레터박스 안쪽) / Screen(기존 전체 폭, 비교용). 다음 Show부터 적용
+        _boundsLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
+        var boundsBtn = UIBuilder.CreateButton(section, "Bounds 전환 (GameArea / Screen)", onClick: () =>
+        {
+            _useGameAreaBounds = !_useGameAreaBounds;
+            LogEvent($"Bounds = {BoundsName()} (다음 Show부터 적용)");
+            UpdateUI();
+        });
+        UIBuilder.SetLayout(boundsBtn.gameObject, flexibleWidth: 1);
+
         var staticRow = UIBuilder.CreateHorizontalLayout(section, UIBuilder.Theme.SpacingSmall);
         staticRow.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var showTopBtn = UIBuilder.CreateButton(staticRow, "Show Top (문구)", onClick: () =>
         {
-            LogEvent("AITBannerAd.Show(Top, 문구)");
-            AITBannerAd.Show(TEST_BANNER_TEXT_AD_ID, AITBannerPosition.Top);
+            LogEvent($"AITBannerAd.Show(Top, 문구, {BoundsName()})");
+            AITBannerAd.Show(TEST_BANNER_TEXT_AD_ID, AITBannerPosition.Top, CurrentBounds());
             UpdateUI();
         });
         UIBuilder.SetLayout(showTopBtn.gameObject, flexibleWidth: 1);
         var showBottomBtn = UIBuilder.CreateButton(staticRow, "Show Bottom (이미지)", onClick: () =>
         {
-            LogEvent("AITBannerAd.Show(Bottom, 이미지)");
-            AITBannerAd.Show(TEST_BANNER_IMAGE_AD_ID, AITBannerPosition.Bottom);
+            LogEvent($"AITBannerAd.Show(Bottom, 이미지, {BoundsName()})");
+            AITBannerAd.Show(TEST_BANNER_IMAGE_AD_ID, AITBannerPosition.Bottom, CurrentBounds());
             UpdateUI();
         });
         UIBuilder.SetLayout(showBottomBtn.gameObject, flexibleWidth: 1);
@@ -105,6 +129,17 @@ public class BannerAdTester : MonoBehaviour
             UpdateUI();
         });
         UIBuilder.SetLayout(hideStaticBtn.gameObject, flexibleWidth: 1);
+
+        // 레터박스 재현: 화면이 9:16보다 넓으면 Camera.main.rect를 가운데 9:16으로 줄이고 나머지는 검게 칠한다
+        _letterboxLabel = UIBuilder.CreateText(section, "",
+            UIBuilder.Theme.FontTiny, UIBuilder.Theme.TextCallback);
+        var letterboxBtn = UIBuilder.CreateButton(section, "Letterbox 9:16 (toggle)", onClick: () =>
+        {
+            SetLetterbox(!_letterboxOn);
+            LogEvent($"Letterbox 9:16 {(_letterboxOn ? "ON" : "OFF")}");
+            UpdateUI();
+        });
+        UIBuilder.SetLayout(letterboxBtn.gameObject, flexibleWidth: 1);
 
         // Clear Log
         _clearLogBtn = UIBuilder.CreateButton(section, "Clear Log", onClick: () =>
@@ -175,6 +210,76 @@ public class BannerAdTester : MonoBehaviour
         return view;
     }
 
+    private AITBannerBounds CurrentBounds()
+    {
+        return _useGameAreaBounds ? AITBannerBounds.GameArea : AITBannerBounds.Screen;
+    }
+
+    private string BoundsName()
+    {
+        return _useGameAreaBounds ? "GameArea" : "Screen";
+    }
+
+    private void Update()
+    {
+        if (!_letterboxOn) return;
+        if (Screen.width == _letterboxScreenWidth && Screen.height == _letterboxScreenHeight) return;
+        ApplyLetterbox();
+    }
+
+    private void SetLetterbox(bool on)
+    {
+        _letterboxOn = on;
+        if (on)
+        {
+            ApplyLetterbox();
+            return;
+        }
+
+        var cam = Camera.main;
+        if (cam != null) cam.rect = new Rect(0f, 0f, 1f, 1f);
+        if (_letterboxBackground != null) _letterboxBackground.SetActive(false);
+        if (_letterboxLabel != null) _letterboxLabel.text = "";
+    }
+
+    /// <summary>
+    /// 화면이 9:16보다 넓으면 Camera.main.rect를 가운데 9:16 영역으로 줄인다 (좁으면 전체 rect).
+    /// 뷰포트 밖은 렌더되지 않으므로 전체 화면을 검게 칠하는 배경 카메라를 함께 켜 검은 띠가 보이게 한다.
+    /// </summary>
+    private void ApplyLetterbox()
+    {
+        _letterboxScreenWidth = Screen.width;
+        _letterboxScreenHeight = Screen.height;
+
+        var cam = Camera.main;
+        if (cam == null || Screen.width <= 0 || Screen.height <= 0)
+        {
+            if (_letterboxLabel != null) _letterboxLabel.text = "Letterbox: Camera.main 없음";
+            return;
+        }
+
+        float screenAspect = (float)Screen.width / Screen.height;
+        float widthRatio = screenAspect > LetterboxAspect ? LetterboxAspect / screenAspect : 1f;
+        cam.rect = new Rect((1f - widthRatio) * 0.5f, 0f, widthRatio, 1f);
+
+        if (_letterboxBackground == null)
+        {
+            _letterboxBackground = new GameObject("LetterboxBackgroundCamera");
+            _letterboxCamera = _letterboxBackground.AddComponent<Camera>();
+            _letterboxCamera.clearFlags = CameraClearFlags.SolidColor;
+            _letterboxCamera.backgroundColor = Color.black;
+            _letterboxCamera.cullingMask = 0;
+            _letterboxCamera.rect = new Rect(0f, 0f, 1f, 1f);
+        }
+        _letterboxCamera.depth = cam.depth - 1f; // 메인 카메라보다 먼저 그려 검은 바탕만 깐다
+        _letterboxBackground.SetActive(true);
+
+        if (_letterboxLabel != null)
+        {
+            _letterboxLabel.text = $"Letterbox: Camera.main.rect = ({cam.rect.x:F3}, {cam.rect.y:F3}, {cam.rect.width:F3}, {cam.rect.height:F3})";
+        }
+    }
+
     private void LogEvent(string message)
     {
         adEventLog.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
@@ -188,6 +293,11 @@ public class BannerAdTester : MonoBehaviour
             bool textShowing = _textView != null && _textView.IsShowing;
             bool imageShowing = _imageView != null && _imageView.IsShowing;
             _statusText.text = $"문구: {(textShowing ? "표시" : "숨김")} / 이미지: {(imageShowing ? "표시" : "숨김")} / Static: {(AITBannerAd.IsShowing ? "표시" : "숨김")}";
+        }
+
+        if (_boundsLabel != null)
+        {
+            _boundsLabel.text = $"Static bounds: {BoundsName()}";
         }
 
         UpdateEventLog();
@@ -242,6 +352,9 @@ public class BannerAdTester : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (_letterboxOn) SetLetterbox(false);
+        if (_letterboxBackground != null) Destroy(_letterboxBackground);
+
         if (_staticEventHandler != null)
         {
             AITBannerAd.OnAdEvent -= _staticEventHandler;

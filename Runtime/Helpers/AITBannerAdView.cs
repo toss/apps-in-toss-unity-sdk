@@ -20,11 +20,27 @@ namespace AppsInToss
         /// <summary>이 컴포넌트의 RectTransform 영역을 따라 배치 (이동/리사이즈 자동 추적)</summary>
         FollowRectTransform,
 
-        /// <summary>화면 상단 고정 (safe area 반영)</summary>
+        /// <summary>화면 상단 고정, 화면 전체 폭 (safe area 반영)</summary>
+        [Obsolete("항상 화면 전체 폭으로 표시됩니다. 표시 범위가 명확한 GameTop(레터박스 게임) 또는 코드의 AITBannerAd.Show(adGroupId, position, AITBannerBounds)를 사용하세요. " +
+                  "기존 동작을 유지하려면 이 값을 그대로 둬도 됩니다(경고만 표시).", false)]
         ScreenTop,
 
-        /// <summary>화면 하단 고정 (safe area 반영)</summary>
+        /// <summary>화면 하단 고정, 화면 전체 폭 (safe area 반영)</summary>
+        [Obsolete("항상 화면 전체 폭으로 표시됩니다. 표시 범위가 명확한 GameBottom(레터박스 게임) 또는 코드의 AITBannerAd.Show(adGroupId, position, AITBannerBounds)를 사용하세요. " +
+                  "기존 동작을 유지하려면 이 값을 그대로 둬도 됩니다(경고만 표시).", false)]
         ScreenBottom,
+
+        /// <summary>
+        /// 화면 상단 고정, 가로는 게임 렌더 영역(Camera.main.rect의 x/width)을 따름 (safe area 반영).
+        /// 카메라가 없거나 가로가 전체 화면이면 화면 전체 폭
+        /// </summary>
+        GameTop,
+
+        /// <summary>
+        /// 화면 하단 고정, 가로는 게임 렌더 영역(Camera.main.rect의 x/width)을 따름 (safe area 반영).
+        /// 카메라가 없거나 가로가 전체 화면이면 화면 전체 폭
+        /// </summary>
+        GameBottom,
     }
 
     /// <summary>
@@ -165,13 +181,24 @@ namespace AppsInToss
             Hide();
 
             int mode;
+            var bounds = AITBannerBounds.Screen;
             switch (placement)
             {
+#pragma warning disable CS0618 // 기존 직렬화 값(ScreenTop/ScreenBottom)은 계속 동작해야 한다
                 case AITBannerAdPlacement.ScreenTop:
                     mode = AITBannerAdEngine.ModeTop;
                     break;
                 case AITBannerAdPlacement.ScreenBottom:
                     mode = AITBannerAdEngine.ModeBottom;
+                    break;
+#pragma warning restore CS0618
+                case AITBannerAdPlacement.GameTop:
+                    mode = AITBannerAdEngine.ModeTop;
+                    bounds = AITBannerBounds.GameArea;
+                    break;
+                case AITBannerAdPlacement.GameBottom:
+                    mode = AITBannerAdEngine.ModeBottom;
+                    bounds = AITBannerBounds.GameArea;
                     break;
                 default:
                     mode = AITBannerAdEngine.ModeRect;
@@ -185,7 +212,7 @@ namespace AppsInToss
             _lastProjectedHeight = -1f;
             RenderedHeightLocal = 0f; // 새 표시 사이클 — 다음 Resized까지 역산값 없음
 
-            _instanceId = AITBannerAdEngine.Show(adGroupId, mode, theme, tone, variant, HandleAdEvent);
+            _instanceId = AITBannerAdEngine.Show(adGroupId, mode, theme, tone, variant, bounds, HandleAdEvent);
 
             // attach 전에 초기 위치를 잡는다 (jslib가 attach를 한 틱 미루므로 순서 보장됨)
             if (mode == AITBannerAdEngine.ModeRect)

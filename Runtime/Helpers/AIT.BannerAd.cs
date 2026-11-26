@@ -164,10 +164,14 @@ namespace AppsInToss
     /// 컴포넌트를 사용하세요. 배너를 동시에 여러 개 띄우려면 AITBannerAdView를
     /// 여러 개 사용하세요 (이 정적 helper는 슬롯 1개를 유지하며 재호출 시 교체).
     ///
+    /// 게임이 넓은 화면/멀티 윈도우에서 레터박스(필러박스)를 두면 <see cref="AITBannerBounds"/>로
+    /// 배너가 놓일 가로 범위를 지정하세요. <see cref="AITBannerBounds.Screen"/>은 화면 전체 폭,
+    /// <see cref="AITBannerBounds.GameArea"/>는 <c>Camera.main.rect</c>의 가로 범위를 따릅니다.
+    ///
     /// 사용 예시:
     /// <code>
     /// AITBannerAd.OnAdEvent += evt => Debug.Log($"배너 이벤트: {evt}");
-    /// AITBannerAd.Show("my-ad-group-id", AITBannerPosition.Bottom);
+    /// AITBannerAd.Show("my-ad-group-id", AITBannerPosition.Bottom, AITBannerBounds.GameArea);
     /// // ...
     /// AITBannerAd.Hide();
     /// </code>
@@ -193,16 +197,47 @@ namespace AppsInToss
         public static bool IsShowing => _instanceId >= 0;
 
         /// <summary>
-        /// 배너 광고를 화면 프리셋 위치에 표시
+        /// 배너 광고를 화면 프리셋 위치에 표시 (화면 전체 폭)
         /// </summary>
+        /// <remarks>
+        /// 기존 동작(뷰포트 전체 폭 + safe area)을 그대로 유지합니다. 레터박스(필러박스)가 있는 게임은
+        /// <see cref="Show(string, AITBannerPosition, AITBannerBounds, AITBannerTheme, AITBannerTone, AITBannerVariant)"/>를 사용하세요.
+        /// </remarks>
         /// <param name="adGroupId">광고 그룹 ID</param>
         /// <param name="position">표시 위치 (기본 하단)</param>
         /// <param name="theme">테마 (기본 Auto)</param>
         /// <param name="tone">톤 (기본 BlackAndWhite)</param>
         /// <param name="variant">변형 (기본 Expanded)</param>
+        [Obsolete("배너가 항상 화면 전체 폭으로 표시됩니다. 표시 범위를 명시하는 Show(adGroupId, position, AITBannerBounds, ...)를 사용하세요. " +
+                  "기존 동작은 AITBannerBounds.Screen, 레터박스(필러박스) 게임은 AITBannerBounds.GameArea입니다.", false)]
         public static void Show(
             string adGroupId,
             AITBannerPosition position = AITBannerPosition.Bottom,
+            AITBannerTheme theme = AITBannerTheme.Auto,
+            AITBannerTone tone = AITBannerTone.BlackAndWhite,
+            AITBannerVariant variant = AITBannerVariant.Expanded)
+        {
+            Show(adGroupId, position, LegacyBounds, theme, tone, variant);
+        }
+
+        /// <summary>
+        /// 기존(범위 미지정) Show 오버로드가 쓰는 범위 — 자동 감지 없이 항상 화면 전체 폭
+        /// </summary>
+        internal static AITBannerBounds LegacyBounds => AITBannerBounds.Screen;
+
+        /// <summary>
+        /// 배너 광고를 화면 프리셋 위치에 표시하되, 가로(및 지정 시 세로) 범위를 명시
+        /// </summary>
+        /// <param name="adGroupId">광고 그룹 ID</param>
+        /// <param name="position">표시 위치 (상단/하단)</param>
+        /// <param name="bounds">배너가 놓일 범위 — <see cref="AITBannerBounds.Screen"/>, <see cref="AITBannerBounds.GameArea"/>, Custom</param>
+        /// <param name="theme">테마 (기본 Auto)</param>
+        /// <param name="tone">톤 (기본 BlackAndWhite)</param>
+        /// <param name="variant">변형 (기본 Expanded)</param>
+        public static void Show(
+            string adGroupId,
+            AITBannerPosition position,
+            AITBannerBounds bounds,
             AITBannerTheme theme = AITBannerTheme.Auto,
             AITBannerTone tone = AITBannerTone.BlackAndWhite,
             AITBannerVariant variant = AITBannerVariant.Expanded)
@@ -220,7 +255,7 @@ namespace AppsInToss
             int mode = position == AITBannerPosition.Top
                 ? AITBannerAdEngine.ModeTop
                 : AITBannerAdEngine.ModeBottom;
-            _instanceId = AITBannerAdEngine.Show(adGroupId, mode, theme, tone, variant, evt => OnAdEvent?.Invoke(evt));
+            _instanceId = AITBannerAdEngine.Show(adGroupId, mode, theme, tone, variant, bounds, evt => OnAdEvent?.Invoke(evt));
         }
 
         /// <summary>
@@ -231,6 +266,173 @@ namespace AppsInToss
             if (_instanceId < 0) return;
             AITBannerAdEngine.Hide(_instanceId);
             _instanceId = -1;
+        }
+    }
+
+    /// <summary>
+    /// 배너가 놓일 범위의 종류
+    /// </summary>
+    internal enum AITBannerBoundsKind
+    {
+        /// <summary>화면 전체 폭 (기본값)</summary>
+        Screen = 0,
+
+        /// <summary>Camera.main.rect의 가로 범위</summary>
+        GameArea = 1,
+
+        /// <summary>정규화 rect 직접 지정</summary>
+        CustomRect = 2,
+
+        /// <summary>RectTransform 화면 영역 추적</summary>
+        CustomRectTransform = 3,
+    }
+
+    /// <summary>
+    /// Top/Bottom 배너가 놓일 범위 — 호출(Show)마다 명시합니다
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Screen"/>은 기존 동작(뷰포트 전체 폭 + safe area)입니다. <see cref="GameArea"/>는
+    /// <c>Camera.main.rect</c>의 가로 범위(x/width)만 따르고 상/하단은 화면 가장자리 + safe area를 유지합니다
+    /// (카메라 rect를 세로로 줄여 배너 자리를 비워 두는 게임에서 배너가 게임 안으로 밀려 들어오지 않도록).
+    /// Custom은 가로뿐 아니라 세로 가장자리도 지정한 영역에 맞춥니다. default 값은 <see cref="Screen"/>입니다.
+    /// </remarks>
+    public readonly struct AITBannerBounds
+    {
+        internal readonly AITBannerBoundsKind Kind;
+        internal readonly Rect NormalizedRect;
+        internal readonly RectTransform Target;
+
+        private AITBannerBounds(AITBannerBoundsKind kind, Rect rect, RectTransform target)
+        {
+            Kind = kind;
+            NormalizedRect = rect;
+            Target = target;
+        }
+
+        /// <summary>
+        /// 화면 전체 폭 (기존 동작)
+        /// </summary>
+        public static AITBannerBounds Screen => default;
+
+        /// <summary>
+        /// <c>Camera.main.rect</c>의 가로 범위를 따름 (카메라가 없거나 가로가 전체 화면이면 <see cref="Screen"/>과 같음)
+        /// </summary>
+        public static AITBannerBounds GameArea => new AITBannerBounds(AITBannerBoundsKind.GameArea, default, null);
+
+        /// <summary>
+        /// 정규화 rect(0~1, 좌상단 원점, 캔버스 기준)로 지정. 폭/높이가 0 이하이거나 화면 전체면 <see cref="Screen"/>과 같음
+        /// </summary>
+        public static AITBannerBounds Custom(Rect normalizedTopLeft)
+        {
+            return new AITBannerBounds(AITBannerBoundsKind.CustomRect, normalizedTopLeft, null);
+        }
+
+        /// <summary>
+        /// RectTransform의 화면 영역으로 지정 (매 프레임 추적). 대상이 null이거나 파괴되면 <see cref="Screen"/>과 같음
+        /// </summary>
+        public static AITBannerBounds Custom(RectTransform area)
+        {
+            return new AITBannerBounds(AITBannerBoundsKind.CustomRectTransform, default, area);
+        }
+    }
+
+    /// <summary>
+    /// 배너 범위(정규화 0~1, 좌상단 원점) 계산용 순수 함수 모음
+    /// </summary>
+    internal static class AITBannerBoundsMath
+    {
+        internal const float Epsilon = 0.0005f;
+
+        // jslib SetBounds의 edges 비트마스크 — 범위의 어느 가장자리를 적용할지 (0 = 기본 CSS 유지)
+        internal const int EdgeLeft = 1;
+        internal const int EdgeRight = 2;
+        internal const int EdgeTop = 4;
+        internal const int EdgeBottom = 8;
+        internal const int EdgesHorizontal = EdgeLeft | EdgeRight;
+        internal const int EdgesAll = EdgesHorizontal | EdgeTop | EdgeBottom;
+
+        /// <summary>
+        /// 정규화 rect를 0~1로 보정. 크기가 없거나 화면 전체면 false (= 범위 없음)
+        /// </summary>
+        internal static bool TryNormalize(Rect topLeftRect, out Rect area)
+        {
+            area = default;
+
+            float left = Mathf.Clamp01(topLeftRect.xMin);
+            float top = Mathf.Clamp01(topLeftRect.yMin);
+            float right = Mathf.Clamp01(topLeftRect.xMax);
+            float bottom = Mathf.Clamp01(topLeftRect.yMax);
+            if (float.IsNaN(left + top + right + bottom)) return false;
+            if (right - left <= Epsilon || bottom - top <= Epsilon) return false;
+
+            if (left <= Epsilon && top <= Epsilon && right >= 1f - Epsilon && bottom >= 1f - Epsilon) return false;
+
+            area = Rect.MinMaxRect(left, top, right, bottom);
+            return true;
+        }
+
+        /// <summary>
+        /// Camera.rect의 가로 범위(x/width)만 뽑는다. 세로는 항상 전체(0~1). 가로가 전체 화면이면 false
+        /// </summary>
+        internal static bool TryHorizontalFromCameraRect(Rect cameraRect, out Rect area)
+        {
+            area = default;
+
+            float left = Mathf.Clamp01(cameraRect.xMin);
+            float right = Mathf.Clamp01(cameraRect.xMax);
+            if (float.IsNaN(left + right)) return false;
+            if (right - left <= Epsilon) return false;
+            if (left <= Epsilon && right >= 1f - Epsilon) return false;
+
+            area = Rect.MinMaxRect(left, 0f, right, 1f);
+            return true;
+        }
+
+        /// <summary>
+        /// 화면 좌표(픽셀, 좌하단 원점) 사각형의 두 모서리를 좌상단 원점 영역으로 변환. 전체 화면이면 false
+        /// </summary>
+        internal static bool TryFromScreenCorners(Vector2 bottomLeft, Vector2 topRight, float screenWidth, float screenHeight, out Rect area)
+        {
+            area = default;
+            if (screenWidth <= 0f || screenHeight <= 0f) return false;
+
+            float xMin = Mathf.Min(bottomLeft.x, topRight.x) / screenWidth;
+            float xMax = Mathf.Max(bottomLeft.x, topRight.x) / screenWidth;
+            float yMin = (screenHeight - Mathf.Max(bottomLeft.y, topRight.y)) / screenHeight;
+            float yMax = (screenHeight - Mathf.Min(bottomLeft.y, topRight.y)) / screenHeight;
+            return TryNormalize(Rect.MinMaxRect(xMin, yMin, xMax, yMax), out area);
+        }
+
+        /// <summary>
+        /// 범위 종류를 jslib에 보낼 (영역, edges)로 변환. edges가 0이면 화면 전체 폭(기본 CSS)
+        /// </summary>
+        /// <param name="kind">범위 종류</param>
+        /// <param name="customRect">Custom 정규화 rect (CustomRect/CustomRectTransform의 투영 결과)</param>
+        /// <param name="hasCamera">Camera.main 존재 여부 (GameArea 전용)</param>
+        /// <param name="cameraRect">Camera.main.rect (GameArea 전용)</param>
+        /// <param name="area">전달할 영역</param>
+        internal static int Resolve(AITBannerBoundsKind kind, Rect customRect, bool hasCamera, Rect cameraRect, out Rect area)
+        {
+            area = default;
+            switch (kind)
+            {
+                case AITBannerBoundsKind.GameArea:
+                    if (!hasCamera) return 0;
+                    return TryHorizontalFromCameraRect(cameraRect, out area) ? EdgesHorizontal : 0;
+                case AITBannerBoundsKind.CustomRect:
+                case AITBannerBoundsKind.CustomRectTransform:
+                    return TryNormalize(customRect, out area) ? EdgesAll : 0;
+                default:
+                    return 0;
+            }
+        }
+
+        internal static bool ApproximatelyEqual(Rect a, Rect b)
+        {
+            return Mathf.Abs(a.x - b.x) < Epsilon &&
+                   Mathf.Abs(a.y - b.y) < Epsilon &&
+                   Mathf.Abs(a.width - b.width) < Epsilon &&
+                   Mathf.Abs(a.height - b.height) < Epsilon;
         }
     }
 
@@ -258,6 +460,18 @@ namespace AppsInToss
         private static int _nextInstanceId = 1;
         private static AITBannerAdBridge _bridge;
 
+        // 슬롯별 범위 — Screen(기본)은 등록하지 않는다 (jslib 호출 없음 = 기존 CSS 그대로)
+        private sealed class SlotBounds
+        {
+            internal AITBannerBounds Bounds;
+            internal int PushedEdges;
+            internal Rect PushedArea;
+        }
+
+        private static readonly Dictionary<int, SlotBounds> _slotBounds = new Dictionary<int, SlotBounds>();
+        private static readonly List<int> _syncIds = new List<int>();
+        private static readonly Vector3[] _corners = new Vector3[4];
+
         /// <summary>
         /// 새 배너 슬롯을 열고 instanceId를 반환
         /// </summary>
@@ -267,10 +481,17 @@ namespace AppsInToss
             AITBannerTheme theme,
             AITBannerTone tone,
             AITBannerVariant variant,
+            AITBannerBounds bounds,
             Action<AITBannerAdEvent> handler)
         {
             int instanceId = _nextInstanceId++;
             _handlers[instanceId] = handler;
+
+            // Rect 모드는 SetRect가 위치를 정하므로 범위를 쓰지 않는다
+            if (mode != ModeRect && bounds.Kind != AITBannerBoundsKind.Screen)
+            {
+                _slotBounds[instanceId] = new SlotBounds { Bounds = bounds };
+            }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             EnsureBridge();
@@ -279,6 +500,7 @@ namespace AppsInToss
             Debug.Log($"[AIT Mock] AITBannerAd Show(instanceId: {instanceId}, adGroupId: {adGroupId}, mode: {mode}, " +
                       $"theme: {ThemeToString(theme)}, tone: {ToneToString(tone)}, variant: {VariantToString(variant)})");
 #endif
+            SyncBounds(instanceId); // attach 전에 초기 범위를 잡는다 (jslib가 attach를 한 틱 미루므로 순서 보장됨)
             return instanceId;
         }
 
@@ -290,6 +512,77 @@ namespace AppsInToss
 #if UNITY_WEBGL && !UNITY_EDITOR
             __AITBannerAd_SetRect(instanceId, x, y, width, height);
 #endif
+        }
+
+        /// <summary>
+        /// 범위를 가진 모든 슬롯의 값을 다시 계산해 바뀐 것만 jslib에 전달
+        /// </summary>
+        internal static void SyncAllBounds()
+        {
+            if (_slotBounds.Count == 0) return;
+
+            _syncIds.Clear();
+            foreach (var id in _slotBounds.Keys) _syncIds.Add(id);
+            for (int i = 0; i < _syncIds.Count; i++) SyncBounds(_syncIds[i]);
+        }
+
+        private static void SyncBounds(int instanceId)
+        {
+            if (!_slotBounds.TryGetValue(instanceId, out var slot)) return;
+
+            var bounds = slot.Bounds;
+            Rect customRect = default;
+            if (bounds.Kind == AITBannerBoundsKind.CustomRect)
+            {
+                customRect = bounds.NormalizedRect;
+            }
+            else if (bounds.Kind == AITBannerBoundsKind.CustomRectTransform)
+            {
+                if (bounds.Target == null || !TryProjectRectTransform(bounds.Target, out customRect)) customRect = default;
+            }
+
+            bool hasCamera = false;
+            Rect cameraRect = default;
+            if (bounds.Kind == AITBannerBoundsKind.GameArea)
+            {
+                var cam = Camera.main;
+                if (cam != null)
+                {
+                    hasCamera = true;
+                    cameraRect = cam.rect;
+                }
+            }
+
+            int edges = AITBannerBoundsMath.Resolve(bounds.Kind, customRect, hasCamera, cameraRect, out var area);
+            if (edges == slot.PushedEdges && (edges == 0 || AITBannerBoundsMath.ApproximatelyEqual(area, slot.PushedArea))) return;
+
+            slot.PushedEdges = edges;
+            slot.PushedArea = area;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            __AITBannerAd_SetBounds(instanceId, area.x, area.y, area.width, area.height, edges);
+#else
+            Debug.Log($"[AIT Mock] AITBannerAd SetBounds(instanceId: {instanceId}, area: {area}, edges: {edges})");
+#endif
+        }
+
+        /// <summary>
+        /// RectTransform의 화면 영역을 정규화 rect(좌상단 원점)로 투영. 전체 화면/무효면 false
+        /// </summary>
+        private static bool TryProjectRectTransform(RectTransform target, out Rect area)
+        {
+            area = default;
+            if (UnityEngine.Screen.width <= 0 || UnityEngine.Screen.height <= 0) return false;
+
+            var canvas = target.GetComponentInParent<Canvas>();
+            var root = canvas != null ? canvas.rootCanvas : null;
+            Camera cam = null;
+            if (root != null && root.renderMode != RenderMode.ScreenSpaceOverlay) cam = root.worldCamera;
+
+            target.GetWorldCorners(_corners);
+            Vector2 min = RectTransformUtility.WorldToScreenPoint(cam, _corners[0]);
+            Vector2 max = RectTransformUtility.WorldToScreenPoint(cam, _corners[2]);
+            return AITBannerBoundsMath.TryFromScreenCorners(min, max, UnityEngine.Screen.width, UnityEngine.Screen.height, out area);
         }
 
         /// <summary>
@@ -308,6 +601,7 @@ namespace AppsInToss
         internal static void Hide(int instanceId)
         {
             if (!_handlers.Remove(instanceId)) return;
+            _slotBounds.Remove(instanceId);
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             __AITBannerAd_Hide(instanceId);
@@ -439,6 +733,9 @@ namespace AppsInToss
         private static extern void __AITBannerAd_SetRect(int instanceId, float x, float y, float width, float height);
 
         [DllImport("__Internal")]
+        private static extern void __AITBannerAd_SetBounds(int instanceId, float x, float y, float width, float height, int edges);
+
+        [DllImport("__Internal")]
         private static extern void __AITBannerAd_RefreshSizes();
 
         [DllImport("__Internal")]
@@ -461,6 +758,9 @@ namespace AppsInToss
         // 레이아웃 그룹 재계산은 LateUpdate보다 늦게 끝날 수 있어 다음 프레임에 한 번 더 요청한다.
         private void LateUpdate()
         {
+            // 카메라 rect·추적 RectTransform·화면 크기 변화를 슬롯별 범위에 반영 (값이 바뀔 때만 jslib로 전달)
+            AITBannerAdEngine.SyncAllBounds();
+
             if (Screen.width != _screenWidth || Screen.height != _screenHeight)
             {
                 _screenWidth = Screen.width;

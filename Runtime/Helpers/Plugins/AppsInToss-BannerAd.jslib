@@ -7,6 +7,13 @@
  * - window.__aitBannerInit: TossAds.initialize 직렬화 상태 머신
  *   (동시 Show 호출 시 initialize가 중복 실행되지 않도록 queue로 직렬화)
  *
+ * - slot.bounds: Top/Bottom 슬롯별 배치 범위 {x, y, w, h, edges}
+ *   (캔버스 기준 정규화 0~1, 좌상단 원점. edges 비트마스크 1=left 2=right 4=top 8=bottom 중 적용할 가장자리).
+ *   없으면(null) 뷰포트 전체 폭 + safe-area 기본 CSS 유지
+ *
+ * 구성: 레이아웃 계산(computeBoundsLayout)은 엔진과 무관한 순수 로직이고,
+ * UTF8ToString/SendMessage 같은 Emscripten 글루는 export 함수 본문에만 둔다.
+ *
  * 이벤트는 SendMessage('AITBannerAdBridge', 'OnBannerAdEvent', json)으로 C#에 전달.
  * web-bridge attachBanner는 실패를 throw하지 않고 callbacks로만 알리므로,
  * 모든 callbacks를 구독해 정규화된 페이로드로 릴레이한다.
@@ -35,6 +42,30 @@ mergeInto(LibraryManager.library, {
                 errorCode: typeof err.code === 'number' ? err.code : 0,
                 errorMessage: err.message || ''
             }));
+        }
+
+        // 엔진 중립 레이아웃 계산: 캔버스 기준 정규화 bounds와 적용할 가장자리(edges)를
+        // 컨테이너 CSS 값으로 바꾼다. 적용하지 않는 가장자리는 null(= 기본 safe-area CSS).
+        // safe-area 안쪽으로는 밀어 넣지 않는다 (노치/홈 인디케이터 영역 침범 방지).
+        function computeBoundsLayout(slotMode, bounds, base, viewportWidth, viewportHeight) {
+            if (!bounds || !bounds.edges) return null;
+            var e = bounds.edges;
+            var out = { left: null, right: null, top: null, bottom: null };
+            if (e & 1) {
+                out.left = 'max(env(safe-area-inset-left, 0px), ' + (base.left + bounds.x * base.width) + 'px)';
+            }
+            if (e & 2) {
+                out.right = 'max(env(safe-area-inset-right, 0px), ' +
+                    (viewportWidth - (base.left + (bounds.x + bounds.w) * base.width)) + 'px)';
+            }
+            if (slotMode === 0 && (e & 4)) {
+                out.top = 'max(env(safe-area-inset-top, 0px), ' + (base.top + bounds.y * base.height) + 'px)';
+            }
+            if (slotMode === 1 && (e & 8)) {
+                out.bottom = 'max(env(safe-area-inset-bottom, 0px), ' +
+                    (viewportHeight - (base.top + (bounds.y + bounds.h) * base.height)) + 'px)';
+            }
+            return out;
         }
 
         // 같은 instanceId 재호출 = 교체 (다른 슬롯은 건드리지 않음)
@@ -68,6 +99,8 @@ mergeInto(LibraryManager.library, {
             container: container,
             banner: null,
             lastRect: null,
+            bounds: null,
+            boundsApplied: false,
             resizeHandler: null,
             resizeObserver: null,
             destroyed: false,
@@ -82,6 +115,29 @@ mergeInto(LibraryManager.library, {
                 container.style.top = (base.top + r.y * base.height) + 'px';
                 container.style.width = (r.w * base.width) + 'px';
                 // 높이는 광고 소재가 결정 — 컨테이너는 가로폭·위치만 제공
+            },
+            // Top/Bottom 슬롯 — 지정된 bounds의 가장자리에 맞춰 가로폭·상하단을 정한다.
+            // bounds가 없으면 Show가 설정한 기본 CSS(뷰포트 전체 폭 + safe-area)로 되돌린다.
+            applyBounds: function() {
+                if (slot.destroyed || mode === 2) return;
+                var canvas = document.querySelector('#unity-canvas');
+                var base = canvas ? canvas.getBoundingClientRect()
+                                  : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+                var layout = computeBoundsLayout(mode, slot.bounds, base, window.innerWidth, window.innerHeight);
+                if (!layout) {
+                    if (!slot.boundsApplied) return;
+                    slot.boundsApplied = false;
+                    layout = { left: null, right: null, top: null, bottom: null };
+                } else {
+                    slot.boundsApplied = true;
+                }
+                container.style.left = layout.left !== null ? layout.left : 'env(safe-area-inset-left, 0px)';
+                container.style.right = layout.right !== null ? layout.right : 'env(safe-area-inset-right, 0px)';
+                if (mode === 0) {
+                    container.style.top = layout.top !== null ? layout.top : 'env(safe-area-inset-top, 0px)';
+                } else {
+                    container.style.bottom = layout.bottom !== null ? layout.bottom : 'env(safe-area-inset-bottom, 0px)';
+                }
             },
             destroy: function() {
                 if (slot.destroyed) return;
@@ -104,11 +160,10 @@ mergeInto(LibraryManager.library, {
         };
         banners[instanceId] = slot;
 
-        if (mode === 2) {
-            slot.resizeHandler = function() { slot.applyRect(); };
-            window.addEventListener('resize', slot.resizeHandler);
-        }
-
+        // 창 크기가 바뀌면 캔버스 rect가 달라지므로 Rect/bounds 위치를 다시 맞춘다
+        slot.resizeHandler = function() { slot.applyRect(); slot.applyBounds(); };
+        window.addEventListener('resize', slot.resizeHandler);
+        
         // 렌더된 배너 높이를 C#에 통지한다.
         // 컨테이너는 높이를 명시하지 않아(광고 소재가 결정) container 높이 = 실제 배너 높이.
         // ResizeObserver로 그 높이를 관찰해 '캔버스 대비 비율(heightFraction)'로 보고하면
@@ -146,6 +201,7 @@ mergeInto(LibraryManager.library, {
         // iOS 키보드처럼 window resize 없이 캔버스만 바뀌는 경우가 있어 Rect 위치도 함께 다시 맞춘다.
         slot.refreshSize = function() {
             slot.applyRect();
+            slot.applyBounds();
             sendResize(true);
         };
 
@@ -257,6 +313,15 @@ mergeInto(LibraryManager.library, {
         if (!slot || slot.destroyed) return;
         slot.lastRect = { x: x, y: y, w: width, h: height };
         slot.applyRect();
+    },
+
+    __AITBannerAd_SetBounds: function(instanceId, x, y, width, height, edges) {
+        // edges 0 = bounds 없음 (기본 CSS로 복귀)
+        var banners = window.__aitBanners;
+        var slot = banners && banners[instanceId];
+        if (!slot || slot.destroyed) return;
+        slot.bounds = edges ? { x: x, y: y, w: width, h: height, edges: edges } : null;
+        slot.applyBounds();
     },
 
     __AITBannerAd_RefreshSizes: function() {
